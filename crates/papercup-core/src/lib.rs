@@ -13,6 +13,7 @@
 // brings voice WS + sync/sse + workspaces), swap to progenitor.
 
 pub mod client;
+pub mod sync;
 pub mod types;
 
 /// The crate version, as compiled in. Returned to the platform UI as

@@ -3,6 +3,7 @@
 // UniFFI bindings layer. Re-exports `papercup-core` to Kotlin + Swift.
 
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
+use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
 use papercup_core::types::{HarnessLite, PairBody};
 
 uniffi::include_scaffolding!("papercup");
@@ -118,6 +119,54 @@ pub struct PairOutcome {
     pub device_id: String,
     pub workspace_id: String,
     pub desktop_host: String,
+}
+
+pub struct SyncEvent {
+    pub id: String,
+    pub name: String,
+    pub args_json: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SyncError {
+    #[error("stream closed")]
+    Closed,
+}
+
+impl From<CoreSyncError> for SyncError {
+    fn from(e: CoreSyncError) -> Self {
+        match e {
+            CoreSyncError::Closed => SyncError::Closed,
+        }
+    }
+}
+
+pub struct SyncStream {
+    inner: CoreSync,
+}
+
+impl SyncStream {
+    pub fn new(base_url: String, device_token: String) -> Self {
+        // Constructing the core stream spawns a tokio task; ensure our
+        // shared runtime is current so the spawn lands on it.
+        let _g = rt().enter();
+        Self {
+            inner: CoreSync::connect(&base_url, &device_token),
+        }
+    }
+
+    pub async fn next_event(&self) -> Result<SyncEvent, SyncError> {
+        let ev = self.inner.next_event().await?;
+        Ok(SyncEvent {
+            id: ev.id,
+            name: ev.name,
+            args_json: ev.args_json,
+        })
+    }
+
+    pub fn disconnect(&self) {
+        self.inner.close();
+    }
 }
 
 // ── OperatorClient ──────────────────────────────────────────────────────

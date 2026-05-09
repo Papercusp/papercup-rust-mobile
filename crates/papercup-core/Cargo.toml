@@ -16,4 +16,6 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "stream"] }
+reqwest-eventsource = "0.6"
+futures-util = { version = "0.3", default-features = false }

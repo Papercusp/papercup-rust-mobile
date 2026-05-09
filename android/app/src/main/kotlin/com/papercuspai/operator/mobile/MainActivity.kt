@@ -15,9 +15,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
 import uniffi.papercup.Harness
 import uniffi.papercup.OperatorClient
+import uniffi.papercup.SyncException
+import uniffi.papercup.SyncStream
 import uniffi.papercup.version
 
 class MainActivity : ComponentActivity() {
@@ -66,8 +70,10 @@ private sealed interface ScreenState {
 fun HarnessListScreen(creds: DeviceCredentials, onForget: () -> Unit) {
     var state by remember { mutableStateOf<ScreenState>(ScreenState.Loading) }
     var menuOpen by remember { mutableStateOf(false) }
+    var liveTick by remember { mutableStateOf(0) }
+    var lastInvalidate by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(creds.deviceToken) {
+    LaunchedEffect(creds.deviceToken, liveTick) {
         state = ScreenState.Loading
         state = try {
             val client = OperatorClient(creds.server, creds.deviceToken)
@@ -76,6 +82,29 @@ fun HarnessListScreen(creds: DeviceCredentials, onForget: () -> Unit) {
             ScreenState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")
         } catch (t: Throwable) {
             ScreenState.Failed("Unexpected: ${t::class.simpleName}: ${t.message ?: "no detail"}")
+        }
+    }
+
+    // Phase 3: live invalidations. Refetch on harness:* keys.
+    DisposableEffect(creds.deviceToken) {
+        val stream = SyncStream(creds.server, creds.deviceToken)
+        val job = kotlinx.coroutines.MainScope().launch {
+            try {
+                while (true) {
+                    val ev = stream.nextEvent()
+                    lastInvalidate = ev.name
+                    if (ev.name.startsWith("harness")) {
+                        liveTick += 1
+                    }
+                }
+            } catch (_: CancellationException) {
+            } catch (_: SyncException) {
+            }
+        }
+        onDispose {
+            stream.disconnect()
+            stream.close()
+            job.cancel()
         }
     }
 
@@ -153,11 +182,25 @@ fun HarnessListScreen(creds: DeviceCredentials, onForget: () -> Unit) {
                     }
                 }
                 is ScreenState.Ready -> {
-                    Text(
-                        "${s.harnesses.size} ${if (s.harnesses.size == 1) "harness" else "harnesses"}",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${s.harnesses.size} ${if (s.harnesses.size == 1) "harness" else "harnesses"}",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    lastInvalidate?.let { "live · $it" } ?: "live",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                        )
+                    }
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(s.harnesses) { harness ->
                             HarnessRow(harness)
