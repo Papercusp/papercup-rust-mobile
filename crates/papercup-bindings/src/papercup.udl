@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Phase 0 surface: just enough to prove the FFI bridge is wired.
+// Subsequent phases extend this file as papercup-core grows.
+
+namespace papercup {
+    /// Returns the version of `papercup-core` baked into this build.
+    /// The Android Compose screen and the iOS SwiftUI screen both call
+    /// this and display the result.
+    string version();
+};

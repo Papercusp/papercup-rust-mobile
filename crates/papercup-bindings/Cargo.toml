@@ -1,0 +1,26 @@
+[package]
+name = "papercup-bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "UniFFI bindings layer: re-exports papercup-core's public surface to Kotlin (Android) and Swift (iOS)."
+
+[lib]
+name = "papercup"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+papercup-core = { path = "../papercup-core" }
+uniffi = { workspace = true }
+
+[build-dependencies]
+uniffi = { workspace = true, features = ["build"] }
+
+[[bin]]
+# Generates the Kotlin/Swift bindings:
+#   cargo run --bin uniffi-bindgen -- generate src/papercup.udl --language kotlin --out-dir ../../android/papercup
+#   cargo run --bin uniffi-bindgen -- generate src/papercup.udl --language swift --out-dir ../../ios/PapercupCore
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1082348406326",
+    "project_id": "papercusp-mobile",
+    "storage_bucket": "papercusp-mobile.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1082348406326:android:73473953effbb7a8633a97",
+        "android_client_info": {
+          "package_name": "com.papercuspai.operator.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBM7YAUZty2EfilRg9RE5LIqvWQ3kviUAM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

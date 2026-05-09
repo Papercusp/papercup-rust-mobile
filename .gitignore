@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Rust
+/target/
+**/*.rs.bk
+
+# Built native libs (regenerable from cargo)
+/android/app/src/main/jniLibs/
+
+# Generated UniFFI bindings (regenerable from .udl)
+/android/app/src/main/kotlin/uniffi/
+/ios/PapercupCore/
+
+# Android Studio / Gradle
+/android/.idea/
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+
+# iOS / Xcode
+/ios/build/
+/ios/PapercupCore.xcframework/
+/ios/*.xcodeproj/xcuserdata/
+/ios/*.xcworkspace/xcuserdata/
+
+# Secrets — NEVER commit
+/android/app/google-services.json
+/android/app/picovoice.access-key
+*.p12
+*.mobileprovision
+
+# OS junk
+.DS_Store
+Thumbs.db

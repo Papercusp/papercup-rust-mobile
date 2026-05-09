@@ -1,0 +1,15 @@
+[package]
+name = "papercup-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Tiny CLI for poking the Papercup core off-device. Useful for development; not shipped."
+
+[[bin]]
+name = "papercup"
+path = "src/main.rs"
+
+[dependencies]
+papercup-core = { path = "../papercup-core" }
