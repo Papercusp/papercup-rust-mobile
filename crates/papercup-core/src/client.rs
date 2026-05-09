@@ -13,7 +13,7 @@
 
 use crate::types::{
     DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull, ListResp, PairBody,
-    PairResp, PushRegisterBody, WorkspaceItem, WorkspacesResp,
+    PairResp, PauseInfo, PushRegisterBody, WorkspaceItem, WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -141,6 +141,47 @@ impl OperatorClient {
             });
         }
         Ok(())
+    }
+
+    /// `GET /api/mobile/operator/pause` — current global pause state.
+    pub async fn pause_get(&self) -> Result<PauseInfo, ApiError> {
+        let url = format!("{}/api/mobile/operator/pause", self.base_url);
+        self.bearer_get_json::<PauseInfo>(&url).await
+    }
+
+    /// `POST` (set) or `DELETE` (clear) the global pause flag. Returns
+    /// the new state. The server fires a `sync_invalidate` for
+    /// `operatorPauseFlag` so peer clients converge instantly.
+    pub async fn pause_set(&self, paused: bool) -> Result<bool, ApiError> {
+        let url = format!("{}/api/mobile/operator/pause", self.base_url);
+        let mut req = if paused {
+            self.http.post(&url)
+        } else {
+            self.http.delete(&url)
+        };
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail: status.canonical_reason().unwrap_or("").to_string(),
+            });
+        }
+        #[derive(serde::Deserialize)]
+        struct R {
+            paused: bool,
+        }
+        resp.json::<R>()
+            .await
+            .map(|r| r.paused)
+            .map_err(|e| ApiError::Decode(e.to_string()))
     }
 
     /// `GET /api/mobile/workspaces` — list of workspaces the device can

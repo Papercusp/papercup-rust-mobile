@@ -298,6 +298,7 @@ fun HarnessListScreen(
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            PauseButton(creds = creds, liveTick = liveTick)
                             creds.meshAssignedIp?.let { ip ->
                                 MeshButton(creds = creds, ip = ip)
                             }
@@ -321,6 +322,50 @@ fun HarnessListScreen(
             }
         }
     }
+}
+
+@Composable
+private fun PauseButton(creds: DeviceCredentials, liveTick: Int) {
+    var paused by remember { mutableStateOf<Boolean?>(null) }
+    var inflight by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(creds.deviceToken, liveTick) {
+        try {
+            paused = OperatorClient(creds.server, creds.deviceToken).pauseGet().paused
+        } catch (_: Throwable) { /* keep last-known state */ }
+    }
+
+    AssistChip(
+        onClick = {
+            if (inflight) return@AssistChip
+            val target = !(paused ?: false)
+            inflight = true
+            scope.launch {
+                try {
+                    paused = OperatorClient(creds.server, creds.deviceToken).pauseSet(target)
+                } catch (_: Throwable) {
+                } finally {
+                    inflight = false
+                }
+            }
+        },
+        label = {
+            val label = when (paused) {
+                true -> "paused"
+                false -> "running"
+                null -> "…"
+            }
+            Text(label, style = MaterialTheme.typography.labelSmall)
+        },
+        colors = if (paused == true) {
+            AssistChipDefaults.assistChipColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+            )
+        } else {
+            AssistChipDefaults.assistChipColors()
+        },
+    )
 }
 
 @Composable

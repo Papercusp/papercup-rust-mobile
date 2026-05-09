@@ -102,6 +102,12 @@ dictionary WgKeyPair {
     string public_key_b64;
 };
 
+dictionary PauseInfo {
+    boolean paused;
+    string? at;
+    string? by;
+};
+
 dictionary Workspace {
     string id;
     string name;
@@ -155,6 +161,14 @@ interface OperatorClient {
     /// `POST /api/mobile/heartbeat` — bumps server-side last_seen.
     [Throws=ApiError, Async]
     void heartbeat();
+
+    /// `GET /api/mobile/operator/pause` — current global pause state.
+    [Throws=ApiError, Async]
+    PauseInfo pause_get();
+
+    /// Set or clear the global pause flag; returns the new value.
+    [Throws=ApiError, Async]
+    boolean pause_set(boolean paused);
 
     /// `GET /api/mobile/workspaces`.
     [Throws=ApiError, Async]

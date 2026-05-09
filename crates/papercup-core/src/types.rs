@@ -65,6 +65,23 @@ pub struct ProjectShort {
     pub path: String,
 }
 
+// ── /api/mobile/operator/pause ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PauseInfo {
+    pub paused: bool,
+    #[serde(default)]
+    pub at: Option<String>,
+    #[serde(default)]
+    pub by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PauseToggleResp {
+    pub ok: bool,
+    pub paused: bool,
+}
+
 // ── /api/mobile/workspaces ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

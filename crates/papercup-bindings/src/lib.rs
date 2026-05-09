@@ -8,8 +8,8 @@ use papercup_core::mesh::{
 };
 use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
 use papercup_core::types::{
-    DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody, PushRegisterBody,
-    WorkspaceItem as CoreWorkspace,
+    DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
+    PauseInfo as CorePauseInfo, PushRegisterBody, WorkspaceItem as CoreWorkspace,
 };
 
 uniffi::include_scaffolding!("papercup");
@@ -199,6 +199,18 @@ pub struct WgKeyPair {
     pub public_key_b64: String,
 }
 
+pub struct PauseInfo {
+    pub paused: bool,
+    pub at: Option<String>,
+    pub by: Option<String>,
+}
+
+impl From<CorePauseInfo> for PauseInfo {
+    fn from(p: CorePauseInfo) -> Self {
+        Self { paused: p.paused, at: p.at, by: p.by }
+    }
+}
+
 pub struct Workspace {
     pub id: String,
     pub name: String,
@@ -363,6 +375,24 @@ impl OperatorClient {
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(())
+    }
+
+    pub async fn pause_get(&self) -> Result<PauseInfo, ApiError> {
+        let core = self.inner.clone();
+        let p = rt()
+            .spawn(async move { core.pause_get().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(p.into())
+    }
+
+    pub async fn pause_set(&self, paused: bool) -> Result<bool, ApiError> {
+        let core = self.inner.clone();
+        let p = rt()
+            .spawn(async move { core.pause_set(paused).await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(p)
     }
 
     pub async fn list_workspaces(&self) -> Result<Vec<Workspace>, ApiError> {
