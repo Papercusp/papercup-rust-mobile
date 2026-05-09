@@ -132,6 +132,11 @@ interface OperatorClient {
     [Throws=ApiError, Async]
     HarnessStatus get_harness_status(string slug);
 
+    /// `POST /api/mobile/push/register`. `platform` is "fcm" (Android)
+    /// or "apns" (iOS).
+    [Throws=ApiError, Async]
+    void register_push(string platform, string token);
+
     /// `POST /api/mobile/pair` — exchanges a one-time pair token for a
     /// long-lived device JWT. The client's `device_token` is ignored
     /// for this call. `wireguard_pubkey_b64` is optional but should be

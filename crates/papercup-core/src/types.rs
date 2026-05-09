@@ -65,6 +65,15 @@ pub struct ProjectShort {
     pub path: String,
 }
 
+// ── /api/mobile/push/register ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushRegisterBody {
+    /// "fcm" or "apns".
+    pub platform: String,
+    pub token: String,
+}
+
 // ── /api/mobile/pair ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

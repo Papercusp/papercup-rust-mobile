@@ -3,6 +3,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -78,6 +79,12 @@ dependencies {
 
     // Phase 6b.2: WireGuard tunnel binding (zx2c4 official Android lib).
     implementation("com.wireguard.android:tunnel:1.0.20230706")
+
+    // Phase 5a: Firebase Cloud Messaging for push notifications.
+    implementation(platform("com.google.firebase:firebase-bom:33.6.0"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
+    // Tasks → coroutines bridge for awaiting FirebaseMessaging.getToken().
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
     debugImplementation(composeBom)
     debugImplementation("androidx.compose.ui:ui-tooling")

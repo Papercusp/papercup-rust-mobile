@@ -2,12 +2,16 @@
 package com.papercuspai.operator.mobile
 
 import android.os.Bundle
+import android.Manifest
 import android.content.Intent
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.tasks.await
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -82,6 +86,19 @@ private fun AppRoot(store: CredentialStore) {
             stream.disconnect()
             stream.close()
             job.cancel()
+        }
+    }
+
+    // Phase 5a: keep the FCM token registered with the operator so the
+    // desktop can push to this device. Idempotent server-side; only
+    // hits the wire on credential change or app cold-start.
+    LaunchedEffect(current.deviceToken) {
+        try {
+            val token = FirebaseMessaging.getInstance().token.await()
+            OperatorClient(current.server, current.deviceToken)
+                .registerPush(platform = "fcm", token = token)
+        } catch (_: Throwable) {
+            // Ignore here; PushService.onNewToken will retry on rotation.
         }
     }
 

@@ -7,7 +7,7 @@ use papercup_core::mesh::{
     generate_wg_keypair as core_keygen, to_wg_quick as core_wgq, MeshSpec, WgKeyPair as CoreKp,
 };
 use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
-use papercup_core::types::{HarnessLite, HarnessStatusFull, PairBody};
+use papercup_core::types::{HarnessLite, HarnessStatusFull, PairBody, PushRegisterBody};
 
 uniffi::include_scaffolding!("papercup");
 
@@ -304,6 +304,15 @@ impl OperatorClient {
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(resp.into())
+    }
+
+    pub async fn register_push(&self, platform: String, token: String) -> Result<(), ApiError> {
+        let core = self.inner.clone();
+        rt()
+            .spawn(async move { core.register_push(PushRegisterBody { platform, token }).await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(())
     }
 
     pub async fn pair(

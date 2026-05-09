@@ -11,7 +11,9 @@
 // Later phases extend with: SSE sync stream (Phase 3), voice WS (Phase 4),
 // mesh-aware base URL fallback (Phase 6).
 
-use crate::types::{ErrorBody, HarnessLite, HarnessStatusFull, ListResp, PairBody, PairResp};
+use crate::types::{
+    ErrorBody, HarnessLite, HarnessStatusFull, ListResp, PairBody, PairResp, PushRegisterBody,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -114,6 +116,32 @@ impl OperatorClient {
         resp.json::<HarnessStatusFull>()
             .await
             .map_err(|e| ApiError::Decode(e.to_string()))
+    }
+
+    /// `POST /api/mobile/push/register` — registers an FCM/APNS token
+    /// with the backend so the desktop can deliver push notifications.
+    /// Idempotent (server upserts).
+    pub async fn register_push(&self, body: PushRegisterBody) -> Result<(), ApiError> {
+        let url = format!("{}/api/mobile/push/register", self.base_url);
+        let mut req = self.http.post(&url).json(&body);
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            let detail = resp
+                .json::<ErrorBody>()
+                .await
+                .map(|e| e.error)
+                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
+            return Err(ApiError::Server { status: status.as_u16(), detail });
+        }
+        Ok(())
     }
 
     /// `POST /api/mobile/pair` — exchanges a one-time pair token (from
