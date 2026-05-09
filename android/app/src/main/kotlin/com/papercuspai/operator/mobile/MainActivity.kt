@@ -34,25 +34,53 @@ import uniffi.papercup.SyncStream
 import uniffi.papercup.version
 
 class MainActivity : ComponentActivity() {
+    private val deepLinkSlug = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val store = CredentialStore(applicationContext)
+        ensureNotificationChannel(applicationContext)
+        deepLinkSlug.value = intent?.getStringExtra(EXTRA_DEEPLINK_SLUG)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    AppRoot(store)
+                    AppRoot(store, deepLinkSlug)
                 }
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(EXTRA_DEEPLINK_SLUG)?.let { deepLinkSlug.value = it }
+    }
 }
 
 @Composable
-private fun AppRoot(store: CredentialStore) {
+private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runtime.MutableState<String?>) {
     var creds by remember { mutableStateOf(store.load()) }
     var route by remember { mutableStateOf<Route>(Route.List) }
     var liveTick by remember { mutableStateOf(0) }
     var lastInvalidate by remember { mutableStateOf<String?>(null) }
+
+    // Deep-link from a tapped notification → harness detail. Cleared
+    // immediately so a back-press doesn't re-navigate on recomposition.
+    LaunchedEffect(deepLinkSlug.value) {
+        val slug = deepLinkSlug.value ?: return@LaunchedEffect
+        if (creds != null) route = Route.Detail(slug)
+        deepLinkSlug.value = null
+    }
+
+    // Android 13+ runtime grant for showing notifications. Best-effort:
+    // a denied permission just means pushes silently won't appear.
+    val notifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* ignored */ }
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     val current = creds
     if (current == null) {
