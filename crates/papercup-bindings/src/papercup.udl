@@ -1,11 +1,46 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Phase 0 surface: just enough to prove the FFI bridge is wired.
+// Phase 1 surface: HTTP client + harness list.
+//   - `version()` for diagnostics (Phase 0 carry-over)
+//   - `Harness` plain record (re-shaped from core::types::HarnessLite for FFI)
+//   - `OperatorClient` object with constructor + suspend `listHarnesses()`
+//   - `ApiError` for propagation
+//
 // Subsequent phases extend this file as papercup-core grows.
 
 namespace papercup {
     /// Returns the version of `papercup-core` baked into this build.
-    /// The Android Compose screen and the iOS SwiftUI screen both call
-    /// this and display the result.
     string version();
+};
+
+[Error]
+enum ApiError {
+    "Network",
+    "Server",
+    "Decode",
+    "Unauthorized",
+};
+
+dictionary Harness {
+    string slug;
+    string path;
+    boolean has_state;
+    string? harness_kind;
+    i64? iteration;
+    i64? last_active_ts;
+    string? status;
+};
+
+interface OperatorClient {
+    /// `base_url` should not include a trailing slash. e.g.
+    /// "https://api.papercupai.com" or "http://10.10.0.2:3070".
+    /// `device_token` is the JWT from `pair()`; pass null when calling
+    /// the pair endpoint itself.
+    constructor(string base_url, string? device_token);
+
+    /// `GET /api/mobile/harnesses` — returns the user's harnesses.
+    /// Throws `ApiError::Unauthorized` if `device_token` was null or
+    /// rejected.
+    [Throws=ApiError, Async]
+    sequence<Harness> list_harnesses();
 };

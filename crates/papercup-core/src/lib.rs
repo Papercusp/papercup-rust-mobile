@@ -2,18 +2,22 @@
 //
 // Papercup Core — UI-agnostic logic for the Papercup mobile app.
 //
-// Layers added in later phases:
-//   - http client (reqwest + progenitor types from openapi.yaml)
-//   - sync stream (SSE + in-memory cache with subscriber pattern)
-//   - voice WS (tokio-tungstenite, hello/transcript/speak protocol)
-//   - mesh decisions (which base URL to talk to)
-//   - JWT storage (via UniFFI callback into platform keychain)
+// Phase 0 stubbed `version()`; Phase 1 adds:
+//   - types: hand-mirrored from papercup-rust-server/openapi.yaml
+//   - http client: reqwest + bearer auth, mirrors the operator API
+//   - errors: a single ApiError enum the UI can pattern-match on
 //
-// Phase 0: just expose `version()` so the platform shells can prove the
-// FFI bridge is wired correctly.
+// Hand-mirrored shapes are deliberate. There are 3 mobile ops in the
+// spec today; pulling in `progenitor` for that surface costs more in
+// build time than it pays back. Once we hit ~10 mobile ops (Phase 4
+// brings voice WS + sync/sse + workspaces), swap to progenitor.
+
+pub mod client;
+pub mod types;
 
 /// The crate version, as compiled in. Returned to the platform UI as
-/// the world's smallest "is the bridge wired?" check.
+/// the world's smallest "is the bridge wired?" check. Still useful in
+/// Phase 1 for diagnostics screens.
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }

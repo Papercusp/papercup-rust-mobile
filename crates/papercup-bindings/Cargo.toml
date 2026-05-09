@@ -13,7 +13,9 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 papercup-core = { path = "../papercup-core" }
-uniffi = { workspace = true }
+uniffi = { workspace = true, features = ["tokio"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
 
 [build-dependencies]
 uniffi = { workspace = true, features = ["build"] }
