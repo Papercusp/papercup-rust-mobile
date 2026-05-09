@@ -65,6 +65,48 @@ pub struct ProjectShort {
     pub path: String,
 }
 
+// ── /api/mobile/notifications/recent ───────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToastsResp {
+    pub toasts: Vec<ToastRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToastRow {
+    pub id: i64,
+    pub level: String,
+    pub message: String,
+    pub created_at: i64,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub harness_slug: Option<String>,
+    #[serde(default)]
+    pub action_href: Option<String>,
+    #[serde(default)]
+    pub action_label: Option<String>,
+}
+
+// ── /api/mobile/actions/recent ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditResp {
+    pub entries: Vec<AuditRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditRow {
+    pub id: String,
+    pub ts: i64,
+    pub actor: String,
+    pub action: String,
+    pub subject: String,
+    /// Free-form JSON. Mobile keeps it as an opaque string for display.
+    #[serde(default)]
+    pub details: serde_json::Value,
+}
+
 // ── /api/mobile/operator/pause ─────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

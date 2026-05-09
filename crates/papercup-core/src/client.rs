@@ -12,8 +12,9 @@
 // mesh-aware base URL fallback (Phase 6).
 
 use crate::types::{
-    DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull, ListResp, PairBody,
-    PairResp, PauseInfo, PushRegisterBody, WorkspaceItem, WorkspacesResp,
+    AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
+    ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, ToastRow, ToastsResp, WorkspaceItem,
+    WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -141,6 +142,20 @@ impl OperatorClient {
             });
         }
         Ok(())
+    }
+
+    /// `GET /api/mobile/notifications/recent` — most recent toast_log
+    /// entries scoped to the device's workspace. Limit defaults to 50.
+    pub async fn recent_notifications(&self) -> Result<Vec<ToastRow>, ApiError> {
+        let url = format!("{}/api/mobile/notifications/recent", self.base_url);
+        self.bearer_get_json::<ToastsResp>(&url).await.map(|r| r.toasts)
+    }
+
+    /// `GET /api/mobile/actions/recent` — most recent audit_log entries
+    /// scoped to the device's workspace.
+    pub async fn recent_actions(&self) -> Result<Vec<AuditRow>, ApiError> {
+        let url = format!("{}/api/mobile/actions/recent", self.base_url);
+        self.bearer_get_json::<AuditResp>(&url).await.map(|r| r.entries)
     }
 
     /// `GET /api/mobile/operator/pause` — current global pause state.

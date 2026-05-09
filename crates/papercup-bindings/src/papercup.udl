@@ -108,6 +108,27 @@ dictionary PauseInfo {
     string? by;
 };
 
+dictionary Toast {
+    i64 id;
+    string level;
+    string message;
+    i64 created_at;
+    string? description;
+    string? harness_slug;
+    string? action_href;
+    string? action_label;
+};
+
+dictionary AuditEntry {
+    string id;
+    i64 ts;
+    string actor;
+    string action;
+    string subject;
+    /// Raw JSON for `details`, possibly the literal string `"null"`.
+    string details_json;
+};
+
 dictionary Workspace {
     string id;
     string name;
@@ -169,6 +190,14 @@ interface OperatorClient {
     /// Set or clear the global pause flag; returns the new value.
     [Throws=ApiError, Async]
     boolean pause_set(boolean paused);
+
+    /// `GET /api/mobile/notifications/recent`.
+    [Throws=ApiError, Async]
+    sequence<Toast> recent_notifications();
+
+    /// `GET /api/mobile/actions/recent`.
+    [Throws=ApiError, Async]
+    sequence<AuditEntry> recent_actions();
 
     /// `GET /api/mobile/workspaces`.
     [Throws=ApiError, Async]

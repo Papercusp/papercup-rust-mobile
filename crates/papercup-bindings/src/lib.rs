@@ -8,8 +8,9 @@ use papercup_core::mesh::{
 };
 use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
 use papercup_core::types::{
-    DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
-    PauseInfo as CorePauseInfo, PushRegisterBody, WorkspaceItem as CoreWorkspace,
+    AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
+    PauseInfo as CorePauseInfo, PushRegisterBody, ToastRow as CoreToast,
+    WorkspaceItem as CoreWorkspace,
 };
 
 uniffi::include_scaffolding!("papercup");
@@ -197,6 +198,54 @@ pub struct MeshConfig {
 pub struct WgKeyPair {
     pub private_key_b64: String,
     pub public_key_b64: String,
+}
+
+pub struct Toast {
+    pub id: i64,
+    pub level: String,
+    pub message: String,
+    pub created_at: i64,
+    pub description: Option<String>,
+    pub harness_slug: Option<String>,
+    pub action_href: Option<String>,
+    pub action_label: Option<String>,
+}
+
+impl From<CoreToast> for Toast {
+    fn from(t: CoreToast) -> Self {
+        Self {
+            id: t.id,
+            level: t.level,
+            message: t.message,
+            created_at: t.created_at,
+            description: t.description,
+            harness_slug: t.harness_slug,
+            action_href: t.action_href,
+            action_label: t.action_label,
+        }
+    }
+}
+
+pub struct AuditEntry {
+    pub id: String,
+    pub ts: i64,
+    pub actor: String,
+    pub action: String,
+    pub subject: String,
+    pub details_json: String,
+}
+
+impl From<CoreAudit> for AuditEntry {
+    fn from(a: CoreAudit) -> Self {
+        Self {
+            id: a.id,
+            ts: a.ts,
+            actor: a.actor,
+            action: a.action,
+            subject: a.subject,
+            details_json: a.details.to_string(),
+        }
+    }
 }
 
 pub struct PauseInfo {
@@ -393,6 +442,24 @@ impl OperatorClient {
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(p)
+    }
+
+    pub async fn recent_notifications(&self) -> Result<Vec<Toast>, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.recent_notifications().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(result.into_iter().map(Toast::from).collect())
+    }
+
+    pub async fn recent_actions(&self) -> Result<Vec<AuditEntry>, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.recent_actions().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(result.into_iter().map(AuditEntry::from).collect())
     }
 
     pub async fn list_workspaces(&self) -> Result<Vec<Workspace>, ApiError> {

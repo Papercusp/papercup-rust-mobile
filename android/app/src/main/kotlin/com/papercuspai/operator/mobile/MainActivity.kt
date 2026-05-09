@@ -148,6 +148,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             lastInvalidate = lastInvalidate,
             onSelect = { slug -> route = Route.Detail(slug) },
             onSettings = { route = Route.Settings },
+            onActivity = { route = Route.Activity },
             onForget = {
                 store.clear()
                 creds = null
@@ -167,12 +168,19 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
                 creds = null
             },
         )
+        Route.Activity -> ActivityScreen(
+            creds = current,
+            invalidationTick = liveTick,
+            onBack = { route = Route.List },
+            onSelectHarness = { slug -> route = Route.Detail(slug) },
+        )
     }
 }
 
 private sealed interface Route {
     data object List : Route
     data object Settings : Route
+    data object Activity : Route
     data class Detail(val slug: String) : Route
 }
 
@@ -190,6 +198,7 @@ fun HarnessListScreen(
     lastInvalidate: String?,
     onSelect: (String) -> Unit,
     onSettings: () -> Unit,
+    onActivity: () -> Unit,
     onForget: () -> Unit,
 ) {
     var state by remember { mutableStateOf<ScreenState>(ScreenState.Loading) }
@@ -226,6 +235,13 @@ fun HarnessListScreen(
                             Icon(Icons.Default.MoreVert, contentDescription = "Menu")
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Activity") },
+                                onClick = {
+                                    menuOpen = false
+                                    onActivity()
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {
