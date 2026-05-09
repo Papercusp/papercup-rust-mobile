@@ -44,31 +44,75 @@ struct HarnessDetailView: View {
             .padding()
         case .ready(let s):
             List {
-                Section {
-                    HStack {
-                        Text(s.slug).font(.title3.bold())
-                        Spacer()
-                        Text(s.status)
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.gray.opacity(0.2), in: Capsule())
-                    }
-                    KeyValueRow(key: "iteration", value: "\(s.iteration)")
-                    if let ts = s.lastActiveTs {
-                        let date = Date(timeIntervalSince1970: TimeInterval(ts))
-                        KeyValueRow(key: "last active", value: Self.fmt.string(from: date))
-                    }
-                }
-                Section("More detail coming") {
-                    Text(
-                        "Cost / tokens / last decision / pending checkpoints / smoke / " +
-                        "alive — pending a backend update to /api/mobile/harnesses/:slug."
-                    )
-                    .font(.caption)
-                }
+                headerSection(s)
+                missionSection(s)
+                if !s.counts.isEmpty { featuresSection(s) }
+                if let d = s.lastDecision, !d.isEmpty { lastDecisionSection(d) }
             }
         }
+    }
+
+    private func headerSection(_ s: HarnessStatus) -> some View {
+        Section {
+            HStack {
+                Text(s.slug).font(.title3.bold())
+                Spacer()
+                statusChips(s)
+            }
+            if !s.path.isEmpty {
+                Text(s.path).font(.caption.monospaced()).foregroundStyle(.secondary)
+            }
+            KeyValueRow(key: "iteration", value: "\(s.iteration)")
+            KeyValueRow(key: "features", value: "\(s.featureCount)")
+            KeyValueRow(key: "pending checkpoints", value: "\(s.pendingCheckpoints)")
+            if s.activeCompetitions > 0 {
+                KeyValueRow(key: "active competitions", value: "\(s.activeCompetitions)")
+            }
+        }
+    }
+
+    private func statusChips(_ s: HarnessStatus) -> some View {
+        HStack(spacing: 4) {
+            chip(s.alive ? "alive" : "idle", warn: false)
+            if s.escalated { chip("escalated", warn: true) }
+            if s.smokeFail { chip("smoke fail", warn: true) }
+        }
+    }
+
+    private func chip(_ text: String, warn: Bool) -> some View {
+        Text(text)
+            .font(.caption)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(warn ? Color.red.opacity(0.2) : Color.gray.opacity(0.2), in: Capsule())
+    }
+
+    private func missionSection(_ s: HarnessStatus) -> some View {
+        Section("Mission") {
+            KeyValueRow(key: "cost", value: String(format: "$%.4f", s.missionCostUsd))
+            KeyValueRow(key: "input tokens", value: formatNum(s.missionInputTokens))
+            KeyValueRow(key: "output tokens", value: formatNum(s.missionOutputTokens))
+        }
+    }
+
+    private func featuresSection(_ s: HarnessStatus) -> some View {
+        Section("Features by status") {
+            ForEach(s.counts.sorted { $0.value > $1.value }, id: \.key) { (k, v) in
+                KeyValueRow(key: k, value: "\(v)")
+            }
+        }
+    }
+
+    private func lastDecisionSection(_ text: String) -> some View {
+        Section("Last decision") {
+            Text(text).font(.callout)
+        }
+    }
+
+    private func formatNum(_ n: Int64) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        return f.string(from: NSNumber(value: n)) ?? "\(n)"
     }
 
     private func refetch() async {
@@ -83,12 +127,6 @@ struct HarnessDetailView: View {
             state = .failed("Unexpected: \(error)")
         }
     }
-
-    private static let fmt: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return f
-    }()
 }
 
 private struct KeyValueRow: View {

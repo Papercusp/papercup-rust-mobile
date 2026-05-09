@@ -132,18 +132,39 @@ impl From<HarnessLite> for Harness {
 
 pub struct HarnessStatus {
     pub slug: String,
-    pub status: String,
+    pub path: String,
     pub iteration: i64,
-    pub last_active_ts: Option<i64>,
+    pub alive: bool,
+    pub escalated: bool,
+    pub smoke_fail: bool,
+    pub pending_checkpoints: i64,
+    pub active_competitions: i64,
+    pub mission_cost_usd: f64,
+    pub mission_input_tokens: i64,
+    pub mission_output_tokens: i64,
+    pub last_decision: Option<String>,
+    pub counts: std::collections::HashMap<String, i64>,
+    pub feature_count: i64,
 }
 
 impl From<HarnessStatusFull> for HarnessStatus {
     fn from(h: HarnessStatusFull) -> Self {
+        let feature_count = h.counts.values().sum();
         Self {
-            slug: h.slug,
-            status: h.status,
+            slug: h.project.slug,
+            path: h.project.path,
             iteration: h.iteration,
-            last_active_ts: h.last_active_ts,
+            alive: h.alive,
+            escalated: h.escalated,
+            smoke_fail: h.smoke_fail,
+            pending_checkpoints: h.pending_checkpoints,
+            active_competitions: h.active_competitions,
+            mission_cost_usd: h.mission_cost_usd,
+            mission_input_tokens: h.mission_input_tokens,
+            mission_output_tokens: h.mission_output_tokens,
+            last_decision: h.last_decision,
+            counts: h.counts,
+            feature_count,
         }
     }
 }

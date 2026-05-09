@@ -2,6 +2,8 @@
 package com.papercuspai.operator.mobile
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -10,9 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import uniffi.papercup.ApiException
 import uniffi.papercup.HarnessStatus
 import uniffi.papercup.OperatorClient
@@ -61,7 +60,8 @@ fun HarnessDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             when (val s = state) {
@@ -87,34 +87,22 @@ fun HarnessDetailScreen(
                         )
                     }
                 }
-                is DetailState.Ready -> {
-                    StatusCard(s.status)
-                    // Backend-extension placeholder. The mobile endpoint
-                    // currently returns only slug/status/iteration/
-                    // last_active_ts. Fields below light up once backend
-                    // folds the desktop StatusResp shape into mobile.
-                    Card {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(
-                                "More detail coming",
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "Cost / tokens / last decision / pending checkpoints / smoke / " +
-                                    "alive — pending a backend update to /api/mobile/harnesses/:slug.",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                }
+                is DetailState.Ready -> StatusCards(s.status)
             }
         }
     }
 }
 
 @Composable
-private fun StatusCard(s: HarnessStatus) {
+private fun StatusCards(s: HarnessStatus) {
+    HeaderCard(s)
+    MissionCard(s)
+    if (s.counts.isNotEmpty()) FeaturesCard(s)
+    s.lastDecision?.takeIf { it.isNotBlank() }?.let { LastDecisionCard(it) }
+}
+
+@Composable
+private fun HeaderCard(s: HarnessStatus) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(
@@ -123,14 +111,85 @@ private fun StatusCard(s: HarnessStatus) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(s.slug, style = MaterialTheme.typography.titleLarge)
-                AssistChip(onClick = {}, label = { Text(s.status) })
+                StatusChips(s)
+            }
+            if (s.path.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    s.path,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                )
             }
             Spacer(Modifier.height(8.dp))
             KeyValue("iteration", s.iteration.toString())
-            s.lastActiveTs?.let {
-                val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
-                KeyValue("last active", fmt.format(Date(it * 1000)))
+            KeyValue("features", s.featureCount.toString())
+            KeyValue("pending checkpoints", s.pendingCheckpoints.toString())
+            if (s.activeCompetitions > 0) {
+                KeyValue("active competitions", s.activeCompetitions.toString())
             }
+        }
+    }
+}
+
+@Composable
+private fun StatusChips(s: HarnessStatus) {
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        AssistChip(onClick = {}, label = { Text(if (s.alive) "alive" else "idle") })
+        if (s.escalated) {
+            AssistChip(
+                onClick = {},
+                label = { Text("escalated") },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+            )
+        }
+        if (s.smokeFail) {
+            AssistChip(
+                onClick = {},
+                label = { Text("smoke fail") },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MissionCard(s: HarnessStatus) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Mission", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            KeyValue("cost", String.format("$%.4f", s.missionCostUsd))
+            KeyValue("input tokens", "%,d".format(s.missionInputTokens))
+            KeyValue("output tokens", "%,d".format(s.missionOutputTokens))
+        }
+    }
+}
+
+@Composable
+private fun FeaturesCard(s: HarnessStatus) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Features by status", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            s.counts.entries.sortedByDescending { it.value }.forEach { (k, v) ->
+                KeyValue(k, v.toString())
+            }
+        }
+    }
+}
+
+@Composable
+private fun LastDecisionCard(text: String) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Last decision", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            Text(text, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -31,14 +31,38 @@ pub struct HarnessLite {
 }
 
 // ── /api/mobile/harnesses/:slug ────────────────────────────────────────
+//
+// Stage 2.6 (backend) folded the desktop StatusResp shape into the mobile
+// route. Field names are camelCase to match the wire contract.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HarnessStatusFull {
-    pub slug: String,
-    pub status: String,
+    pub project: ProjectShort,
+    /// Per-status feature counts (e.g. {"DONE": 12, "IN_PROGRESS": 3}).
+    pub counts: std::collections::HashMap<String, i64>,
     pub iteration: i64,
+    pub alive: bool,
+    pub escalated: bool,
+    pub pending_checkpoints: i64,
+    pub active_competitions: i64,
+    pub smoke_fail: bool,
+    pub mission_cost_usd: f64,
+    pub mission_input_tokens: i64,
+    pub mission_output_tokens: i64,
     #[serde(default)]
-    pub last_active_ts: Option<i64>,
+    pub last_decision: Option<String>,
+    /// `features` is a heavyweight array we don't render on mobile yet;
+    /// captured as `serde_json::Value` so the type stays robust to
+    /// backend-side schema additions (e.g. claims/metadata churn).
+    #[serde(default)]
+    pub features: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectShort {
+    pub slug: String,
+    pub path: String,
 }
 
 // ── /api/mobile/pair ───────────────────────────────────────────────────

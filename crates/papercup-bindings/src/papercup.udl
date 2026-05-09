@@ -50,11 +50,26 @@ dictionary Harness {
     string? status;
 };
 
+/// Per `/api/mobile/harnesses/:slug` (Stage 2.6 backend). camelCase
+/// fields preserved on the wire; UDL convention is snake — translation
+/// happens in core::types.
 dictionary HarnessStatus {
     string slug;
-    string status;
+    string path;
     i64 iteration;
-    i64? last_active_ts;
+    boolean alive;
+    boolean escalated;
+    boolean smoke_fail;
+    i64 pending_checkpoints;
+    i64 active_competitions;
+    f64 mission_cost_usd;
+    i64 mission_input_tokens;
+    i64 mission_output_tokens;
+    string? last_decision;
+    /// status -> count, e.g. {"DONE":12,"IN_PROGRESS":3}.
+    record<string, i64> counts;
+    /// Rough total just for the header chip; computed from `counts`.
+    i64 feature_count;
 };
 
 dictionary QrPayload {
