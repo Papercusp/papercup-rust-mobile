@@ -41,6 +41,13 @@ dictionary Harness {
     string? status;
 };
 
+dictionary HarnessStatus {
+    string slug;
+    string status;
+    i64 iteration;
+    i64? last_active_ts;
+};
+
 dictionary QrPayload {
     string server;
     string pair_token;
@@ -80,6 +87,9 @@ interface OperatorClient {
 
     [Throws=ApiError, Async]
     sequence<Harness> list_harnesses();
+
+    [Throws=ApiError, Async]
+    HarnessStatus get_harness_status(string slug);
 
     /// `POST /api/mobile/pair` — exchanges a one-time pair token for a
     /// long-lived device JWT. The client's `device_token` is ignored

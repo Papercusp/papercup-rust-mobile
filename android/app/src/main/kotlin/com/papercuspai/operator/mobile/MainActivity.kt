@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -41,53 +42,25 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AppRoot(store: CredentialStore) {
     var creds by remember { mutableStateOf(store.load()) }
+    var route by remember { mutableStateOf<Route>(Route.List) }
+    var liveTick by remember { mutableStateOf(0) }
+    var lastInvalidate by remember { mutableStateOf<String?>(null) }
 
     val current = creds
     if (current == null) {
         PairScreen(onPaired = { fresh ->
             store.save(fresh)
             creds = fresh
+            route = Route.List
         })
-    } else {
-        HarnessListScreen(
-            creds = current,
-            onForget = {
-                store.clear()
-                creds = null
-            },
-        )
-    }
-}
-
-private sealed interface ScreenState {
-    data object Loading : ScreenState
-    data class Ready(val harnesses: List<Harness>) : ScreenState
-    data class Failed(val message: String) : ScreenState
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun HarnessListScreen(creds: DeviceCredentials, onForget: () -> Unit) {
-    var state by remember { mutableStateOf<ScreenState>(ScreenState.Loading) }
-    var menuOpen by remember { mutableStateOf(false) }
-    var liveTick by remember { mutableStateOf(0) }
-    var lastInvalidate by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(creds.deviceToken, liveTick) {
-        state = ScreenState.Loading
-        state = try {
-            val client = OperatorClient(creds.server, creds.deviceToken)
-            ScreenState.Ready(client.listHarnesses())
-        } catch (e: ApiException) {
-            ScreenState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")
-        } catch (t: Throwable) {
-            ScreenState.Failed("Unexpected: ${t::class.simpleName}: ${t.message ?: "no detail"}")
-        }
+        return
     }
 
-    // Phase 3: live invalidations. Refetch on harness:* keys.
-    DisposableEffect(creds.deviceToken) {
-        val stream = SyncStream(creds.server, creds.deviceToken)
+    // Single SSE subscription, lives for the duration of the paired
+    // session — both the list and detail screens read from it via the
+    // hoisted `liveTick` / `lastInvalidate` state below.
+    DisposableEffect(current.deviceToken) {
+        val stream = SyncStream(current.server, current.deviceToken)
         val job = kotlinx.coroutines.MainScope().launch {
             try {
                 while (true) {
@@ -105,6 +78,61 @@ fun HarnessListScreen(creds: DeviceCredentials, onForget: () -> Unit) {
             stream.disconnect()
             stream.close()
             job.cancel()
+        }
+    }
+
+    when (val r = route) {
+        Route.List -> HarnessListScreen(
+            creds = current,
+            liveTick = liveTick,
+            lastInvalidate = lastInvalidate,
+            onSelect = { slug -> route = Route.Detail(slug) },
+            onForget = {
+                store.clear()
+                creds = null
+            },
+        )
+        is Route.Detail -> HarnessDetailScreen(
+            creds = current,
+            slug = r.slug,
+            invalidationTick = liveTick,
+            onBack = { route = Route.List },
+        )
+    }
+}
+
+private sealed interface Route {
+    data object List : Route
+    data class Detail(val slug: String) : Route
+}
+
+private sealed interface ScreenState {
+    data object Loading : ScreenState
+    data class Ready(val harnesses: List<Harness>) : ScreenState
+    data class Failed(val message: String) : ScreenState
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HarnessListScreen(
+    creds: DeviceCredentials,
+    liveTick: Int,
+    lastInvalidate: String?,
+    onSelect: (String) -> Unit,
+    onForget: () -> Unit,
+) {
+    var state by remember { mutableStateOf<ScreenState>(ScreenState.Loading) }
+    var menuOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(creds.deviceToken, liveTick) {
+        state = ScreenState.Loading
+        state = try {
+            val client = OperatorClient(creds.server, creds.deviceToken)
+            ScreenState.Ready(client.listHarnesses())
+        } catch (e: ApiException) {
+            ScreenState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")
+        } catch (t: Throwable) {
+            ScreenState.Failed("Unexpected: ${t::class.simpleName}: ${t.message ?: "no detail"}")
         }
     }
 
@@ -203,7 +231,7 @@ fun HarnessListScreen(creds: DeviceCredentials, onForget: () -> Unit) {
                     }
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(s.harnesses) { harness ->
-                            HarnessRow(harness)
+                            HarnessRow(harness, onClick = { onSelect(harness.slug) })
                         }
                     }
                 }
@@ -213,8 +241,8 @@ fun HarnessListScreen(creds: DeviceCredentials, onForget: () -> Unit) {
 }
 
 @Composable
-private fun HarnessRow(harness: Harness) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun HarnessRow(harness: Harness, onClick: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

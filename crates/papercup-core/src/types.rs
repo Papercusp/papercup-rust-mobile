@@ -30,6 +30,17 @@ pub struct HarnessLite {
     pub status: Option<String>,
 }
 
+// ── /api/mobile/harnesses/:slug ────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HarnessStatusFull {
+    pub slug: String,
+    pub status: String,
+    pub iteration: i64,
+    #[serde(default)]
+    pub last_active_ts: Option<i64>,
+}
+
 // ── /api/mobile/pair ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

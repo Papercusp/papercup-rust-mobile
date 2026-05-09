@@ -11,7 +11,7 @@
 // Later phases extend with: SSE sync stream (Phase 3), voice WS (Phase 4),
 // mesh-aware base URL fallback (Phase 6).
 
-use crate::types::{ErrorBody, HarnessLite, ListResp, PairBody, PairResp};
+use crate::types::{ErrorBody, HarnessLite, HarnessStatusFull, ListResp, PairBody, PairResp};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -85,6 +85,35 @@ impl OperatorClient {
         }
         let body = resp.json::<ListResp>().await.map_err(|e| ApiError::Decode(e.to_string()))?;
         Ok(body.harnesses)
+    }
+
+    /// `GET /api/mobile/harnesses/{slug}` — returns the per-harness
+    /// status. Today this is thin (slug/status/iteration/last_active_ts);
+    /// backend has the rich `StatusResp` shape on the desktop endpoint
+    /// and will fold it into this route in a later stage.
+    pub async fn get_harness_status(&self, slug: &str) -> Result<HarnessStatusFull, ApiError> {
+        let url = format!("{}/api/mobile/harnesses/{}", self.base_url, slug);
+        let mut req = self.http.get(&url);
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            let detail = resp
+                .json::<ErrorBody>()
+                .await
+                .map(|e| e.error)
+                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
+            return Err(ApiError::Server { status: status.as_u16(), detail });
+        }
+        resp.json::<HarnessStatusFull>()
+            .await
+            .map_err(|e| ApiError::Decode(e.to_string()))
     }
 
     /// `POST /api/mobile/pair` — exchanges a one-time pair token (from

@@ -4,7 +4,7 @@
 
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
 use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
-use papercup_core::types::{HarnessLite, PairBody};
+use papercup_core::types::{HarnessLite, HarnessStatusFull, PairBody};
 
 uniffi::include_scaffolding!("papercup");
 
@@ -108,6 +108,24 @@ impl From<HarnessLite> for Harness {
     }
 }
 
+pub struct HarnessStatus {
+    pub slug: String,
+    pub status: String,
+    pub iteration: i64,
+    pub last_active_ts: Option<i64>,
+}
+
+impl From<HarnessStatusFull> for HarnessStatus {
+    fn from(h: HarnessStatusFull) -> Self {
+        Self {
+            slug: h.slug,
+            status: h.status,
+            iteration: h.iteration,
+            last_active_ts: h.last_active_ts,
+        }
+    }
+}
+
 pub struct QrPayload {
     pub server: String,
     pub pair_token: String,
@@ -202,6 +220,15 @@ impl OperatorClient {
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(result.into_iter().map(Harness::from).collect())
+    }
+
+    pub async fn get_harness_status(&self, slug: String) -> Result<HarnessStatus, ApiError> {
+        let core = self.inner.clone();
+        let resp = rt()
+            .spawn(async move { core.get_harness_status(&slug).await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(resp.into())
     }
 
     pub async fn pair(&self, pair_token: String) -> Result<PairOutcome, PairError> {
