@@ -269,7 +269,7 @@ fun HarnessListScreen(
 @Composable
 private fun MeshButton(creds: DeviceCredentials, ip: String) {
     val context = LocalContext.current
-    var active by remember { mutableStateOf(false) }
+    val tunnelState by MeshState.state.collectAsState()
     var pendingActivate by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(
@@ -277,17 +277,18 @@ private fun MeshButton(creds: DeviceCredentials, ip: String) {
     ) { result ->
         if (pendingActivate && result.resultCode == android.app.Activity.RESULT_OK) {
             creds.wgQuickConfig?.let { MeshController.activate(context, it) }
-            active = true
         }
         pendingActivate = false
     }
 
+    val isUp = tunnelState == com.wireguard.android.backend.Tunnel.State.UP
+    val isToggling = tunnelState == com.wireguard.android.backend.Tunnel.State.TOGGLE
+
     AssistChip(
         onClick = {
             val cfg = creds.wgQuickConfig ?: return@AssistChip
-            if (active) {
+            if (isUp) {
                 MeshController.deactivate(context)
-                active = false
             } else {
                 val prepare = MeshController.prepareIntent(context)
                 if (prepare != null) {
@@ -295,15 +296,16 @@ private fun MeshButton(creds: DeviceCredentials, ip: String) {
                     launcher.launch(prepare)
                 } else {
                     MeshController.activate(context, cfg)
-                    active = true
                 }
             }
         },
         label = {
-            Text(
-                if (active) "mesh ✓ $ip" else "mesh · $ip",
-                style = MaterialTheme.typography.labelSmall,
-            )
+            val prefix = when {
+                isUp -> "mesh ✓"
+                isToggling -> "mesh ⟳"
+                else -> "mesh ·"
+            }
+            Text("$prefix $ip", style = MaterialTheme.typography.labelSmall)
         },
     )
 }

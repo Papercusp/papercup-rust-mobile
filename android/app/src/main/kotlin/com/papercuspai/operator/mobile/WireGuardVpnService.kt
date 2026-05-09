@@ -58,10 +58,12 @@ class WireGuardVpnService : VpnService() {
                     override fun getName() = "papercup-mesh"
                     override fun onStateChange(newState: Tunnel.State) {
                         Log.i(TAG, "tunnel state -> $newState")
+                        MeshState.set(newState)
                     }
                 }
                 tunnel = t
                 backend!!.setState(t, Tunnel.State.UP, config)
+                MeshState.set(Tunnel.State.UP)
                 updateNotification("Papercup mesh: connected")
             } catch (e: Exception) {
                 Log.e(TAG, "tunnel start failed", e)
@@ -78,6 +80,7 @@ class WireGuardVpnService : VpnService() {
         } catch (_: Exception) {}
         backend = null
         tunnel = null
+        MeshState.set(Tunnel.State.DOWN)
         super.onDestroy()
     }
 
