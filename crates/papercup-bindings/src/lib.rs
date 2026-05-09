@@ -7,7 +7,10 @@ use papercup_core::mesh::{
     generate_wg_keypair as core_keygen, to_wg_quick as core_wgq, MeshSpec, WgKeyPair as CoreKp,
 };
 use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
-use papercup_core::types::{HarnessLite, HarnessStatusFull, PairBody, PushRegisterBody};
+use papercup_core::types::{
+    DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody, PushRegisterBody,
+    WorkspaceItem as CoreWorkspace,
+};
 
 uniffi::include_scaffolding!("papercup");
 
@@ -196,6 +199,44 @@ pub struct WgKeyPair {
     pub public_key_b64: String,
 }
 
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub current: bool,
+    pub last_activity_at: Option<i64>,
+}
+
+impl From<CoreWorkspace> for Workspace {
+    fn from(w: CoreWorkspace) -> Self {
+        Self {
+            id: w.id,
+            name: w.name,
+            current: w.current,
+            last_activity_at: w.last_activity_at,
+        }
+    }
+}
+
+pub struct Device {
+    pub device_id: String,
+    pub workspace_id: String,
+    pub device_label: Option<String>,
+    pub last_seen: Option<String>,
+    pub paired_at: Option<String>,
+}
+
+impl From<CoreDevice> for Device {
+    fn from(d: CoreDevice) -> Self {
+        Self {
+            device_id: d.device_id,
+            workspace_id: d.workspace_id,
+            device_label: d.device_label,
+            last_seen: d.last_seen,
+            paired_at: d.paired_at,
+        }
+    }
+}
+
 fn parse_mesh(value: &serde_json::Value) -> Option<MeshConfig> {
     #[derive(serde::Deserialize)]
     struct Raw {
@@ -310,6 +351,42 @@ impl OperatorClient {
         let core = self.inner.clone();
         rt()
             .spawn(async move { core.register_push(PushRegisterBody { platform, token }).await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(())
+    }
+
+    pub async fn heartbeat(&self) -> Result<(), ApiError> {
+        let core = self.inner.clone();
+        rt()
+            .spawn(async move { core.heartbeat().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(())
+    }
+
+    pub async fn list_workspaces(&self) -> Result<Vec<Workspace>, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.list_workspaces().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(result.into_iter().map(Workspace::from).collect())
+    }
+
+    pub async fn list_desktop_devices(&self) -> Result<Vec<Device>, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.list_desktop_devices().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(result.into_iter().map(Device::from).collect())
+    }
+
+    pub async fn revoke_device(&self, device_id: String) -> Result<(), ApiError> {
+        let core = self.inner.clone();
+        rt()
+            .spawn(async move { core.revoke_device(&device_id).await })
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(())

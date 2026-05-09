@@ -102,12 +102,24 @@ private fun AppRoot(store: CredentialStore) {
         }
     }
 
+    // Phase 7a: heartbeat tick while the app is alive so the desktop's
+    // 'paired phone is connected' badge stays green. 60s is plenty —
+    // backend doesn't expire fast.
+    LaunchedEffect(current.deviceToken) {
+        val client = OperatorClient(current.server, current.deviceToken)
+        while (true) {
+            try { client.heartbeat() } catch (_: Throwable) {}
+            kotlinx.coroutines.delay(60_000)
+        }
+    }
+
     when (val r = route) {
         Route.List -> HarnessListScreen(
             creds = current,
             liveTick = liveTick,
             lastInvalidate = lastInvalidate,
             onSelect = { slug -> route = Route.Detail(slug) },
+            onSettings = { route = Route.Settings },
             onForget = {
                 store.clear()
                 creds = null
@@ -119,11 +131,20 @@ private fun AppRoot(store: CredentialStore) {
             invalidationTick = liveTick,
             onBack = { route = Route.List },
         )
+        Route.Settings -> SettingsScreen(
+            creds = current,
+            onBack = { route = Route.List },
+            onForget = {
+                store.clear()
+                creds = null
+            },
+        )
     }
 }
 
 private sealed interface Route {
     data object List : Route
+    data object Settings : Route
     data class Detail(val slug: String) : Route
 }
 
@@ -140,6 +161,7 @@ fun HarnessListScreen(
     liveTick: Int,
     lastInvalidate: String?,
     onSelect: (String) -> Unit,
+    onSettings: () -> Unit,
     onForget: () -> Unit,
 ) {
     var state by remember { mutableStateOf<ScreenState>(ScreenState.Loading) }
@@ -176,6 +198,13 @@ fun HarnessListScreen(
                             Icon(Icons.Default.MoreVert, contentDescription = "Menu")
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                onClick = {
+                                    menuOpen = false
+                                    onSettings()
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Forget device") },
                                 onClick = {

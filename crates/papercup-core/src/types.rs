@@ -65,6 +65,43 @@ pub struct ProjectShort {
     pub path: String,
 }
 
+// ── /api/mobile/workspaces ─────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspacesResp {
+    pub workspaces: Vec<WorkspaceItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceItem {
+    pub id: String,
+    pub name: String,
+    pub current: bool,
+    #[serde(default)]
+    pub last_activity_at: Option<i64>,
+}
+
+// ── /api/mobile/desktop/devices ────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesktopDevicesResp {
+    pub devices: Vec<DeviceRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceRow {
+    pub device_id: String,
+    pub workspace_id: String,
+    #[serde(default)]
+    pub device_label: Option<String>,
+    /// Backend serialises these as ISO-8601; keep as string and let the
+    /// platform format for display.
+    #[serde(default)]
+    pub last_seen: Option<String>,
+    #[serde(default)]
+    pub paired_at: Option<String>,
+}
+
 // ── /api/mobile/push/register ──────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

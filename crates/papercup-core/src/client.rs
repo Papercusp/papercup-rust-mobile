@@ -12,7 +12,8 @@
 // mesh-aware base URL fallback (Phase 6).
 
 use crate::types::{
-    ErrorBody, HarnessLite, HarnessStatusFull, ListResp, PairBody, PairResp, PushRegisterBody,
+    DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull, ListResp, PairBody,
+    PairResp, PushRegisterBody, WorkspaceItem, WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -114,6 +115,95 @@ impl OperatorClient {
             return Err(ApiError::Server { status: status.as_u16(), detail });
         }
         resp.json::<HarnessStatusFull>()
+            .await
+            .map_err(|e| ApiError::Decode(e.to_string()))
+    }
+
+    /// `POST /api/mobile/heartbeat` — bumps `last_seen` server-side so
+    /// the desktop's "is the phone connected" badge stays fresh. Cheap;
+    /// safe to call every minute while foregrounded.
+    pub async fn heartbeat(&self) -> Result<(), ApiError> {
+        let url = format!("{}/api/mobile/heartbeat", self.base_url);
+        let mut req = self.http.post(&url);
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail: status.canonical_reason().unwrap_or("").to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// `GET /api/mobile/workspaces` — list of workspaces the device can
+    /// see, with the currently-selected one flagged.
+    pub async fn list_workspaces(&self) -> Result<Vec<WorkspaceItem>, ApiError> {
+        let url = format!("{}/api/mobile/workspaces", self.base_url);
+        self.bearer_get_json::<WorkspacesResp>(&url).await.map(|r| r.workspaces)
+    }
+
+    /// `GET /api/mobile/desktop/devices` — every paired device, including
+    /// this one (matched by device_id).
+    pub async fn list_desktop_devices(&self) -> Result<Vec<DeviceRow>, ApiError> {
+        let url = format!("{}/api/mobile/desktop/devices", self.base_url);
+        self.bearer_get_json::<DesktopDevicesResp>(&url).await.map(|r| r.devices)
+    }
+
+    /// `DELETE /api/mobile/desktop/devices/{id}` — unpair the given device.
+    /// Server also invokes Defguard revoke_user.
+    pub async fn revoke_device(&self, device_id: &str) -> Result<(), ApiError> {
+        let url = format!("{}/api/mobile/desktop/devices/{}", self.base_url, device_id);
+        let mut req = self.http.delete(&url);
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail: status.canonical_reason().unwrap_or("").to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Bearer-auth GET → JSON. Helper for the read-only mobile endpoints.
+    async fn bearer_get_json<T: serde::de::DeserializeOwned>(
+        &self,
+        url: &str,
+    ) -> Result<T, ApiError> {
+        let mut req = self.http.get(url);
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            let detail = resp
+                .json::<ErrorBody>()
+                .await
+                .map(|e| e.error)
+                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
+            return Err(ApiError::Server { status: status.as_u16(), detail });
+        }
+        resp.json::<T>()
             .await
             .map_err(|e| ApiError::Decode(e.to_string()))
     }
