@@ -76,6 +76,9 @@ dependencies {
     // Compose ↔ Lifecycle helpers used in the pair screen.
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
 
+    // Phase 6b.2: WireGuard tunnel binding (zx2c4 official Android lib).
+    implementation("com.wireguard.android:tunnel:1.0.20230706")
+
     debugImplementation(composeBom)
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

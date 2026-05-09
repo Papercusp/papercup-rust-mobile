@@ -2,8 +2,12 @@
 package com.papercuspai.operator.mobile
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -221,12 +225,7 @@ fun HarnessListScreen(
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             creds.meshAssignedIp?.let { ip ->
-                                AssistChip(
-                                    onClick = {},
-                                    label = {
-                                        Text("mesh · $ip", style = MaterialTheme.typography.labelSmall)
-                                    },
-                                )
+                                MeshButton(creds = creds, ip = ip)
                             }
                             AssistChip(
                                 onClick = {},
@@ -248,6 +247,48 @@ fun HarnessListScreen(
             }
         }
     }
+}
+
+@Composable
+private fun MeshButton(creds: DeviceCredentials, ip: String) {
+    val context = LocalContext.current
+    var active by remember { mutableStateOf(false) }
+    var pendingActivate by remember { mutableStateOf(false) }
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (pendingActivate && result.resultCode == android.app.Activity.RESULT_OK) {
+            creds.wgQuickConfig?.let { MeshController.activate(context, it) }
+            active = true
+        }
+        pendingActivate = false
+    }
+
+    AssistChip(
+        onClick = {
+            val cfg = creds.wgQuickConfig ?: return@AssistChip
+            if (active) {
+                MeshController.deactivate(context)
+                active = false
+            } else {
+                val prepare = MeshController.prepareIntent(context)
+                if (prepare != null) {
+                    pendingActivate = true
+                    launcher.launch(prepare)
+                } else {
+                    MeshController.activate(context, cfg)
+                    active = true
+                }
+            }
+        },
+        label = {
+            Text(
+                if (active) "mesh ✓ $ip" else "mesh · $ip",
+                style = MaterialTheme.typography.labelSmall,
+            )
+        },
+    )
 }
 
 @Composable

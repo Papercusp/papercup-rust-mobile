@@ -5,7 +5,11 @@
     <!-- Phase 2: QR scanning for the pair flow. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <!-- Phase 4+: RECORD_AUDIO, FOREGROUND_SERVICE, POST_NOTIFICATIONS, etc. -->
+    <!-- Phase 6b.2: WireGuard mesh tunnel (foreground VpnService + post notifications). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Phase 4+: RECORD_AUDIO, etc. -->
 
     <application
         android:label="Papercup"
@@ -22,5 +26,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".WireGuardVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Papercup mesh tunnel for paired desktop access" />
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
