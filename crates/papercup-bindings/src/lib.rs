@@ -1,19 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // UniFFI bindings layer. Re-exports `papercup-core` to Kotlin + Swift.
-//
-// Phase 1 surface:
-//   - free fn `version()`
-//   - opaque `OperatorClient` object
-//   - `Harness` plain record (FFI-friendly version of core::HarnessLite)
-//   - `ApiError` enum (variants discriminated by core::client::ApiError)
-//
-// All async fns require a runtime; we install a multi-thread tokio
-// runtime once at first use so each call can run blocking I/O without
-// the platform shells caring.
 
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
-use papercup_core::types::HarnessLite;
+use papercup_core::types::{HarnessLite, PairBody};
 
 uniffi::include_scaffolding!("papercup");
 
@@ -23,11 +13,27 @@ fn version() -> String {
     papercup_core::version()
 }
 
+fn parse_qr_payload(text: String) -> Result<QrPayload, PairError> {
+    #[derive(serde::Deserialize)]
+    struct Raw {
+        server: String,
+        #[serde(rename = "pairToken")]
+        pair_token: String,
+        #[serde(rename = "workspaceId")]
+        workspace_id: String,
+    }
+    let raw: Raw = serde_json::from_str(text.trim()).map_err(|_| PairError::InvalidQr)?;
+    if raw.server.is_empty() || raw.pair_token.is_empty() || raw.workspace_id.is_empty() {
+        return Err(PairError::InvalidQr);
+    }
+    Ok(QrPayload {
+        server: raw.server,
+        pair_token: raw.pair_token,
+        workspace_id: raw.workspace_id,
+    })
+}
+
 // ── error mapping ───────────────────────────────────────────────────────
-//
-// UniFFI can wrap thiserror::Error directly, but core::ApiError carries
-// runtime data we don't want to expose verbatim across the FFI. Map to
-// a flat enum that matches the .udl exactly.
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -48,6 +54,29 @@ impl From<CoreApiError> for ApiError {
             CoreApiError::Server { .. } => ApiError::Server,
             CoreApiError::Decode(_) => ApiError::Decode,
             CoreApiError::Unauthorized => ApiError::Unauthorized,
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PairError {
+    #[error("QR payload is malformed or missing required fields")]
+    InvalidQr,
+    #[error("network error")]
+    Network,
+    #[error("server error")]
+    Server,
+    #[error("decode error")]
+    Decode,
+}
+
+impl From<CoreApiError> for PairError {
+    fn from(e: CoreApiError) -> Self {
+        match e {
+            CoreApiError::Network(_) => PairError::Network,
+            CoreApiError::Server { .. } => PairError::Server,
+            CoreApiError::Decode(_) => PairError::Decode,
+            CoreApiError::Unauthorized => PairError::Server,
         }
     }
 }
@@ -78,10 +107,21 @@ impl From<HarnessLite> for Harness {
     }
 }
 
+pub struct QrPayload {
+    pub server: String,
+    pub pair_token: String,
+    pub workspace_id: String,
+}
+
+pub struct PairOutcome {
+    pub device_token: String,
+    pub device_id: String,
+    pub workspace_id: String,
+    pub desktop_host: String,
+}
+
 // ── OperatorClient ──────────────────────────────────────────────────────
 
-/// Tokio runtime shared by all UniFFI async fns. Lazily initialized so
-/// non-async paths don't pay for it.
 fn rt() -> &'static tokio::runtime::Runtime {
     use std::sync::OnceLock;
     static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
@@ -108,11 +148,30 @@ impl OperatorClient {
 
     pub async fn list_harnesses(&self) -> Result<Vec<Harness>, ApiError> {
         let core = self.inner.clone();
-        // Run the request on the shared runtime, then ferry the result back.
         let result = rt()
             .spawn(async move { core.list_harnesses().await })
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(result.into_iter().map(Harness::from).collect())
+    }
+
+    pub async fn pair(&self, pair_token: String) -> Result<PairOutcome, PairError> {
+        let core = self.inner.clone();
+        let resp = rt()
+            .spawn(async move {
+                core.pair(PairBody {
+                    pair_token,
+                    wireguard_pubkey: None,
+                })
+                .await
+            })
+            .await
+            .map_err(|_| PairError::Network)??;
+        Ok(PairOutcome {
+            device_token: resp.device_token,
+            device_id: resp.device_id,
+            workspace_id: resp.workspace_id,
+            desktop_host: resp.desktop_host,
+        })
     }
 }

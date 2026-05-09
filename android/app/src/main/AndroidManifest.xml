@@ -2,7 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Phase 4+: RECORD_AUDIO, CAMERA, FOREGROUND_SERVICE, POST_NOTIFICATIONS, etc. -->
+    <!-- Phase 2: QR scanning for the pair flow. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Phase 4+: RECORD_AUDIO, FOREGROUND_SERVICE, POST_NOTIFICATIONS, etc. -->
 
     <application
         android:label="Papercup"

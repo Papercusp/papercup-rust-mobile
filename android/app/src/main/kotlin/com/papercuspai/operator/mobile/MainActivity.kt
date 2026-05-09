@@ -7,6 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,29 +20,38 @@ import uniffi.papercup.Harness
 import uniffi.papercup.OperatorClient
 import uniffi.papercup.version
 
-// Phase 1: hardcoded base URL + device JWT until Phase 2 ships the pair flow.
-// Override these via local edits while iterating; never commit a real JWT.
-//
-// To get a JWT for testing right now:
-//   1. open the desktop operator at http://localhost:3070/settings/mobile
-//   2. mint a pair token, then redeem it with curl:
-//        curl -X POST https://api.papercupai.com/api/mobile/pair \
-//          -H 'content-type: application/json' \
-//          -d '{"pairToken":"<TOKEN>"}'
-//   3. paste the returned `deviceToken` value into PHASE1_TOKEN below.
-private const val PHASE1_BASE_URL = "https://api.papercupai.com"
-private const val PHASE1_TOKEN: String = ""
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val store = CredentialStore(applicationContext)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    HarnessListScreen()
+                    AppRoot(store)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AppRoot(store: CredentialStore) {
+    var creds by remember { mutableStateOf(store.load()) }
+
+    val current = creds
+    if (current == null) {
+        PairScreen(onPaired = { fresh ->
+            store.save(fresh)
+            creds = fresh
+        })
+    } else {
+        HarnessListScreen(
+            creds = current,
+            onForget = {
+                store.clear()
+                creds = null
+            },
+        )
     }
 }
 
@@ -50,20 +61,16 @@ private sealed interface ScreenState {
     data class Failed(val message: String) : ScreenState
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HarnessListScreen() {
+fun HarnessListScreen(creds: DeviceCredentials, onForget: () -> Unit) {
     var state by remember { mutableStateOf<ScreenState>(ScreenState.Loading) }
+    var menuOpen by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        if (PHASE1_TOKEN.isBlank()) {
-            state = ScreenState.Failed(
-                "Phase 1 needs a JWT in PHASE1_TOKEN. " +
-                    "See the comment in MainActivity.kt for how to mint one.",
-            )
-            return@LaunchedEffect
-        }
+    LaunchedEffect(creds.deviceToken) {
+        state = ScreenState.Loading
         state = try {
-            val client = OperatorClient(PHASE1_BASE_URL, PHASE1_TOKEN)
+            val client = OperatorClient(creds.server, creds.deviceToken)
             ScreenState.Ready(client.listHarnesses())
         } catch (e: ApiException) {
             ScreenState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")
@@ -72,61 +79,89 @@ fun HarnessListScreen() {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(
-            text = "Papercup",
-            style = MaterialTheme.typography.displaySmall,
-        )
-        Text(
-            text = "core ${version()} · phase 1 · $PHASE1_BASE_URL",
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-        )
-        Spacer(Modifier.height(16.dp))
-        when (val s = state) {
-            ScreenState.Loading -> {
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 32.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CircularProgressIndicator(strokeWidth = 2.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Loading harnesses…")
-                }
-            }
-            is ScreenState.Failed -> {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(Modifier.padding(16.dp)) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("Papercup", style = MaterialTheme.typography.titleLarge)
                         Text(
-                            "Couldn't load harnesses",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            s.message,
+                            "core ${version()} · ${creds.server}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
                             fontFamily = FontFamily.Monospace,
                         )
                     }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Forget device") },
+                                onClick = {
+                                    menuOpen = false
+                                    onForget()
+                                },
+                            )
+                        }
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp),
+        ) {
+            when (val s = state) {
+                ScreenState.Loading -> {
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 32.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(strokeWidth = 2.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Loading harnesses…")
+                    }
                 }
-            }
-            is ScreenState.Ready -> {
-                Text(
-                    "${s.harnesses.size} ${if (s.harnesses.size == 1) "harness" else "harnesses"}",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(s.harnesses) { harness ->
-                        HarnessRow(harness)
+                is ScreenState.Failed -> {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(
+                                "Couldn't load harnesses",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                s.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
+                    }
+                }
+                is ScreenState.Ready -> {
+                    Text(
+                        "${s.harnesses.size} ${if (s.harnesses.size == 1) "harness" else "harnesses"}",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(s.harnesses) { harness ->
+                            HarnessRow(harness)
+                        }
                     }
                 }
             }
@@ -143,15 +178,9 @@ private fun HarnessRow(harness: Harness) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    harness.slug,
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                Text(harness.slug, style = MaterialTheme.typography.titleMedium)
                 harness.status?.let { status ->
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(status) },
-                    )
+                    AssistChip(onClick = {}, label = { Text(status) })
                 }
             }
             harness.path.takeIf { it.isNotBlank() }?.let {

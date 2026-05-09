@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//
-// Phase 1 surface: HTTP client + harness list.
-//   - `version()` for diagnostics (Phase 0 carry-over)
-//   - `Harness` plain record (re-shaped from core::types::HarnessLite for FFI)
-//   - `OperatorClient` object with constructor + suspend `listHarnesses()`
-//   - `ApiError` for propagation
-//
-// Subsequent phases extend this file as papercup-core grows.
 
 namespace papercup {
     /// Returns the version of `papercup-core` baked into this build.
     string version();
+
+    /// Parse the JSON payload encoded in the desktop's QR code (or pasted
+    /// manually). Validates the three required fields and returns them.
+    [Throws=PairError]
+    QrPayload parse_qr_payload(string text);
 };
 
 [Error]
@@ -19,6 +16,14 @@ enum ApiError {
     "Server",
     "Decode",
     "Unauthorized",
+};
+
+[Error]
+enum PairError {
+    "InvalidQr",
+    "Network",
+    "Server",
+    "Decode",
 };
 
 dictionary Harness {
@@ -31,16 +36,28 @@ dictionary Harness {
     string? status;
 };
 
+dictionary QrPayload {
+    string server;
+    string pair_token;
+    string workspace_id;
+};
+
+dictionary PairOutcome {
+    string device_token;
+    string device_id;
+    string workspace_id;
+    string desktop_host;
+};
+
 interface OperatorClient {
-    /// `base_url` should not include a trailing slash. e.g.
-    /// "https://api.papercupai.com" or "http://10.10.0.2:3070".
-    /// `device_token` is the JWT from `pair()`; pass null when calling
-    /// the pair endpoint itself.
     constructor(string base_url, string? device_token);
 
-    /// `GET /api/mobile/harnesses` — returns the user's harnesses.
-    /// Throws `ApiError::Unauthorized` if `device_token` was null or
-    /// rejected.
     [Throws=ApiError, Async]
     sequence<Harness> list_harnesses();
+
+    /// `POST /api/mobile/pair` — exchanges a one-time pair token for a
+    /// long-lived device JWT. The client's `device_token` is ignored
+    /// for this call.
+    [Throws=PairError, Async]
+    PairOutcome pair(string pair_token);
 };
