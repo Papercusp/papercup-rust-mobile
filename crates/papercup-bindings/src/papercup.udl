@@ -8,6 +8,15 @@ namespace papercup {
     /// manually). Validates the three required fields and returns them.
     [Throws=PairError]
     QrPayload parse_qr_payload(string text);
+
+    /// Generate a fresh X25519 keypair, base64-encoded for WireGuard.
+    /// The phone retains `private_key_b64` (Keystore/Keychain) and
+    /// submits `public_key_b64` to the desktop during pair.
+    WgKeyPair generate_wg_keypair();
+
+    /// Render a wg-quick INI from the device's stored private key plus
+    /// the broker-assigned mesh config.
+    string mesh_to_wg_quick(string private_key_b64, MeshConfig config);
 };
 
 [Error]
@@ -73,6 +82,11 @@ dictionary MeshConfig {
     u32 mtu;
 };
 
+dictionary WgKeyPair {
+    string private_key_b64;
+    string public_key_b64;
+};
+
 dictionary SyncEvent {
     string id;
     string name;
@@ -105,7 +119,9 @@ interface OperatorClient {
 
     /// `POST /api/mobile/pair` — exchanges a one-time pair token for a
     /// long-lived device JWT. The client's `device_token` is ignored
-    /// for this call.
+    /// for this call. `wireguard_pubkey_b64` is optional but should be
+    /// supplied by Phase 6+ clients so the broker can register the
+    /// device's public key.
     [Throws=PairError, Async]
-    PairOutcome pair(string pair_token);
+    PairOutcome pair(string pair_token, string? wireguard_pubkey_b64);
 };

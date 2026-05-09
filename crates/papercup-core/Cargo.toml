@@ -19,3 +19,6 @@ tracing = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "stream"] }
 reqwest-eventsource = "0.6"
 futures-util = { version = "0.3", default-features = false }
+x25519-dalek = { version = "2", features = ["static_secrets", "getrandom"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+base64 = "0.22"

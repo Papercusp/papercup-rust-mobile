@@ -15,6 +15,13 @@ data class DeviceCredentials(
     /// mesh config. Display only for now; Phase 6b will use it to bring up
     /// the WireGuard tunnel.
     val meshAssignedIp: String? = null,
+    /// Phase 6b: full wg-quick INI ready for `Config.parse()` once the
+    /// WireGuardVpnService is wired in. Generated locally on pair from
+    /// the device's private key + the broker-assigned MeshConfig.
+    val wgQuickConfig: String? = null,
+    /// Phase 6b: device's WireGuard private key, base64. Persisted in
+    /// the same Keystore-backed prefs as the JWT.
+    val wgPrivateKey: String? = null,
 )
 
 /// Keystore-backed credential store. Persists the JWT + paired desktop URL
@@ -43,6 +50,8 @@ class CredentialStore(context: Context) {
             deviceId = deviceId,
             workspaceId = workspaceId,
             meshAssignedIp = prefs.getString(KEY_MESH_IP, null),
+            wgQuickConfig = prefs.getString(KEY_WG_QUICK, null),
+            wgPrivateKey = prefs.getString(KEY_WG_PRIV, null),
         )
     }
 
@@ -53,6 +62,8 @@ class CredentialStore(context: Context) {
             .putString(KEY_DEVICE_ID, creds.deviceId)
             .putString(KEY_WORKSPACE_ID, creds.workspaceId)
             .putString(KEY_MESH_IP, creds.meshAssignedIp)
+            .putString(KEY_WG_QUICK, creds.wgQuickConfig)
+            .putString(KEY_WG_PRIV, creds.wgPrivateKey)
             .apply()
     }
 
@@ -66,5 +77,7 @@ class CredentialStore(context: Context) {
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_WORKSPACE_ID = "workspace_id"
         const val KEY_MESH_IP = "mesh_assigned_ip"
+        const val KEY_WG_QUICK = "wg_quick_config"
+        const val KEY_WG_PRIV = "wg_private_key"
     }
 }

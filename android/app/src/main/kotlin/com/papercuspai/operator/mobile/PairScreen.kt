@@ -35,6 +35,8 @@ import uniffi.papercup.OperatorClient
 import uniffi.papercup.PairException
 import uniffi.papercup.PairOutcome
 import uniffi.papercup.QrPayload
+import uniffi.papercup.generateWgKeypair
+import uniffi.papercup.meshToWgQuick
 import uniffi.papercup.parseQrPayload
 
 /// One-shot pair flow. Either the QR scanner finds a payload, or the user
@@ -54,15 +56,20 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
         error = null
         scope.launch {
             try {
+                val keys = generateWgKeypair()
                 val client = OperatorClient(payload.server, null)
-                val outcome: PairOutcome = client.pair(payload.pairToken)
+                val outcome: PairOutcome = client.pair(payload.pairToken, keys.publicKeyB64)
+                val mesh = outcome.mesh
+                val wgQuick = mesh?.let { meshToWgQuick(keys.privateKeyB64, it) }
                 onPaired(
                     DeviceCredentials(
                         server = payload.server,
                         deviceToken = outcome.deviceToken,
                         deviceId = outcome.deviceId,
                         workspaceId = outcome.workspaceId,
-                        meshAssignedIp = outcome.mesh?.assignedIp,
+                        meshAssignedIp = mesh?.assignedIp,
+                        wgQuickConfig = wgQuick,
+                        wgPrivateKey = if (mesh != null) keys.privateKeyB64 else null,
                     ),
                 )
             } catch (e: PairException) {

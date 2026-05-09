@@ -13,6 +13,7 @@
 // brings voice WS + sync/sse + workspaces), swap to progenitor.
 
 pub mod client;
+pub mod mesh;
 pub mod sync;
 pub mod types;
 

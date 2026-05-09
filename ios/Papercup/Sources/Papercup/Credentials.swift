@@ -10,6 +10,10 @@ struct DeviceCredentials: Equatable {
     /// Phase 6a: present when the desktop's pair response carried a Defguard
     /// mesh config. Display only for now.
     var meshAssignedIp: String? = nil
+    /// Phase 6b: full wg-quick INI ready for WireGuardKit's tunnelConfiguration.
+    var wgQuickConfig: String? = nil
+    /// Phase 6b: device's WireGuard private key, base64.
+    var wgPrivateKey: String? = nil
 }
 
 /// Keychain-backed credential store. Mirrors Android's EncryptedSharedPreferences
@@ -44,7 +48,9 @@ enum CredentialStore {
             deviceToken: token,
             deviceId: deviceId,
             workspaceId: workspaceId,
-            meshAssignedIp: dict["meshAssignedIp"]
+            meshAssignedIp: dict["meshAssignedIp"],
+            wgQuickConfig: dict["wgQuickConfig"],
+            wgPrivateKey: dict["wgPrivateKey"]
         )
     }
 
@@ -56,6 +62,8 @@ enum CredentialStore {
             "workspaceId": creds.workspaceId,
         ]
         if let ip = creds.meshAssignedIp { dict["meshAssignedIp"] = ip }
+        if let q = creds.wgQuickConfig { dict["wgQuickConfig"] = q }
+        if let p = creds.wgPrivateKey { dict["wgPrivateKey"] = p }
         let data = try! JSONSerialization.data(withJSONObject: dict)
         clear()
         let query: [String: Any] = [

@@ -3,6 +3,9 @@
 // UniFFI bindings layer. Re-exports `papercup-core` to Kotlin + Swift.
 
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
+use papercup_core::mesh::{
+    generate_wg_keypair as core_keygen, to_wg_quick as core_wgq, MeshSpec, WgKeyPair as CoreKp,
+};
 use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
 use papercup_core::types::{HarnessLite, HarnessStatusFull, PairBody};
 
@@ -12,6 +15,25 @@ uniffi::include_scaffolding!("papercup");
 
 fn version() -> String {
     papercup_core::version()
+}
+
+fn generate_wg_keypair() -> WgKeyPair {
+    let kp: CoreKp = core_keygen();
+    WgKeyPair {
+        private_key_b64: kp.private_key_b64,
+        public_key_b64: kp.public_key_b64,
+    }
+}
+
+fn mesh_to_wg_quick(private_key_b64: String, config: MeshConfig) -> String {
+    let spec = MeshSpec {
+        peer_public_key_b64: config.peer_public_key,
+        peer_endpoint: config.peer_endpoint,
+        allowed_ips: config.allowed_ips,
+        assigned_ip: config.assigned_ip,
+        mtu: config.mtu,
+    };
+    core_wgq(&private_key_b64, &spec)
 }
 
 fn parse_qr_payload(text: String) -> Result<QrPayload, PairError> {
@@ -148,6 +170,11 @@ pub struct MeshConfig {
     pub mtu: u32,
 }
 
+pub struct WgKeyPair {
+    pub private_key_b64: String,
+    pub public_key_b64: String,
+}
+
 fn parse_mesh(value: &serde_json::Value) -> Option<MeshConfig> {
     #[derive(serde::Deserialize)]
     struct Raw {
@@ -258,13 +285,17 @@ impl OperatorClient {
         Ok(resp.into())
     }
 
-    pub async fn pair(&self, pair_token: String) -> Result<PairOutcome, PairError> {
+    pub async fn pair(
+        &self,
+        pair_token: String,
+        wireguard_pubkey_b64: Option<String>,
+    ) -> Result<PairOutcome, PairError> {
         let core = self.inner.clone();
         let resp = rt()
             .spawn(async move {
                 core.pair(PairBody {
                     pair_token,
-                    wireguard_pubkey: None,
+                    wireguard_pubkey: wireguard_pubkey_b64,
                 })
                 .await
             })
