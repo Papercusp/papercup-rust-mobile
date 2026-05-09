@@ -219,15 +219,25 @@ fun HarnessListScreen(
                             "${s.harnesses.size} ${if (s.harnesses.size == 1) "harness" else "harnesses"}",
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        AssistChip(
-                            onClick = {},
-                            label = {
-                                Text(
-                                    lastInvalidate?.let { "live · $it" } ?: "live",
-                                    style = MaterialTheme.typography.labelSmall,
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            creds.meshAssignedIp?.let { ip ->
+                                AssistChip(
+                                    onClick = {},
+                                    label = {
+                                        Text("mesh · $ip", style = MaterialTheme.typography.labelSmall)
+                                    },
                                 )
-                            },
-                        )
+                            }
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        lastInvalidate?.let { "live · $it" } ?: "live",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                },
+                            )
+                        }
                     }
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(s.harnesses) { harness ->

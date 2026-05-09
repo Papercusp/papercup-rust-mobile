@@ -95,7 +95,8 @@ struct PairView: View {
                     server: payload.server,
                     deviceToken: outcome.deviceToken,
                     deviceId: outcome.deviceId,
-                    workspaceId: outcome.workspaceId
+                    workspaceId: outcome.workspaceId,
+                    meshAssignedIp: outcome.mesh?.assignedIp
                 ))
             } catch let err as PairError {
                 if case .InvalidQr(_) = err {

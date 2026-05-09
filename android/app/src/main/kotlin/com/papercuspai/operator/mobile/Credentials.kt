@@ -11,6 +11,10 @@ data class DeviceCredentials(
     val deviceToken: String,
     val deviceId: String,
     val workspaceId: String,
+    /// Phase 6a: present when the desktop's pair response carried a Defguard
+    /// mesh config. Display only for now; Phase 6b will use it to bring up
+    /// the WireGuard tunnel.
+    val meshAssignedIp: String? = null,
 )
 
 /// Keystore-backed credential store. Persists the JWT + paired desktop URL
@@ -33,7 +37,13 @@ class CredentialStore(context: Context) {
         val token = prefs.getString(KEY_TOKEN, null) ?: return null
         val deviceId = prefs.getString(KEY_DEVICE_ID, null) ?: return null
         val workspaceId = prefs.getString(KEY_WORKSPACE_ID, null) ?: return null
-        return DeviceCredentials(server, token, deviceId, workspaceId)
+        return DeviceCredentials(
+            server = server,
+            deviceToken = token,
+            deviceId = deviceId,
+            workspaceId = workspaceId,
+            meshAssignedIp = prefs.getString(KEY_MESH_IP, null),
+        )
     }
 
     fun save(creds: DeviceCredentials) {
@@ -42,6 +52,7 @@ class CredentialStore(context: Context) {
             .putString(KEY_TOKEN, creds.deviceToken)
             .putString(KEY_DEVICE_ID, creds.deviceId)
             .putString(KEY_WORKSPACE_ID, creds.workspaceId)
+            .putString(KEY_MESH_IP, creds.meshAssignedIp)
             .apply()
     }
 
@@ -54,5 +65,6 @@ class CredentialStore(context: Context) {
         const val KEY_TOKEN = "device_token"
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_WORKSPACE_ID = "workspace_id"
+        const val KEY_MESH_IP = "mesh_assigned_ip"
     }
 }

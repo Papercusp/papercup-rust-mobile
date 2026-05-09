@@ -59,6 +59,18 @@ dictionary PairOutcome {
     string device_id;
     string workspace_id;
     string desktop_host;
+    /// Defguard mesh config returned by the broker, when configured.
+    /// Phase 6a: surfaced for display + persistence; Phase 6b will use
+    /// it to bring up the actual WireGuard tunnel.
+    MeshConfig? mesh;
+};
+
+dictionary MeshConfig {
+    string peer_public_key;
+    string peer_endpoint;
+    sequence<string> allowed_ips;
+    string assigned_ip;
+    u32 mtu;
 };
 
 dictionary SyncEvent {

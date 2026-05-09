@@ -137,6 +137,33 @@ pub struct PairOutcome {
     pub device_id: String,
     pub workspace_id: String,
     pub desktop_host: String,
+    pub mesh: Option<MeshConfig>,
+}
+
+pub struct MeshConfig {
+    pub peer_public_key: String,
+    pub peer_endpoint: String,
+    pub allowed_ips: Vec<String>,
+    pub assigned_ip: String,
+    pub mtu: u32,
+}
+
+fn parse_mesh(value: &serde_json::Value) -> Option<MeshConfig> {
+    #[derive(serde::Deserialize)]
+    struct Raw {
+        peer_public_key: String,
+        peer_endpoint: String,
+        allowed_ips: Vec<String>,
+        assigned_ip: String,
+        mtu: u32,
+    }
+    serde_json::from_value::<Raw>(value.clone()).ok().map(|r| MeshConfig {
+        peer_public_key: r.peer_public_key,
+        peer_endpoint: r.peer_endpoint,
+        allowed_ips: r.allowed_ips,
+        assigned_ip: r.assigned_ip,
+        mtu: r.mtu,
+    })
 }
 
 pub struct SyncEvent {
@@ -243,11 +270,13 @@ impl OperatorClient {
             })
             .await
             .map_err(|_| PairError::Network)??;
+        let mesh = resp.wg_config.as_ref().and_then(parse_mesh);
         Ok(PairOutcome {
             device_token: resp.device_token,
             device_id: resp.device_id,
             workspace_id: resp.workspace_id,
             desktop_host: resp.desktop_host,
+            mesh,
         })
     }
 }

@@ -54,6 +54,13 @@ struct HarnessListView: View {
                              (harnesses.count == 1 ? "harness" : "harnesses"))
                         .font(.headline)
                         Spacer()
+                        if let ip = creds.meshAssignedIp {
+                            Text("mesh · \(ip)")
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.gray.opacity(0.2), in: Capsule())
+                        }
                         Text(lastInvalidate.map { "live · \($0)" } ?? "live")
                             .font(.caption)
                             .padding(.horizontal, 8)

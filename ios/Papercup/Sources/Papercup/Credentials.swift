@@ -7,6 +7,9 @@ struct DeviceCredentials: Equatable {
     let deviceToken: String
     let deviceId: String
     let workspaceId: String
+    /// Phase 6a: present when the desktop's pair response carried a Defguard
+    /// mesh config. Display only for now.
+    var meshAssignedIp: String? = nil
 }
 
 /// Keychain-backed credential store. Mirrors Android's EncryptedSharedPreferences
@@ -40,17 +43,19 @@ enum CredentialStore {
             server: server,
             deviceToken: token,
             deviceId: deviceId,
-            workspaceId: workspaceId
+            workspaceId: workspaceId,
+            meshAssignedIp: dict["meshAssignedIp"]
         )
     }
 
     static func save(_ creds: DeviceCredentials) {
-        let dict = [
+        var dict: [String: String] = [
             "server": creds.server,
             "deviceToken": creds.deviceToken,
             "deviceId": creds.deviceId,
             "workspaceId": creds.workspaceId,
         ]
+        if let ip = creds.meshAssignedIp { dict["meshAssignedIp"] = ip }
         let data = try! JSONSerialization.data(withJSONObject: dict)
         clear()
         let query: [String: Any] = [

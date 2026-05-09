@@ -62,6 +62,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                         deviceToken = outcome.deviceToken,
                         deviceId = outcome.deviceId,
                         workspaceId = outcome.workspaceId,
+                        meshAssignedIp = outcome.mesh?.assignedIp,
                     ),
                 )
             } catch (e: PairException) {
