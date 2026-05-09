@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+import SwiftUI
+import AVFoundation
+import PapercupCore
+
+struct PairView: View {
+    let onPaired: (DeviceCredentials) -> Void
+
+    enum Mode: Equatable {
+        case choose
+        case scan
+        case paste
+    }
+
+    @State private var mode: Mode = .choose
+    @State private var redeeming = false
+    @State private var error: String? = nil
+    @State private var pasteText: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Pair this device").font(.title2.bold())
+                    Text(
+                        "Open the desktop operator at /settings/mobile, mint a pair token, " +
+                        "and either scan the QR or paste the payload below."
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                }
+
+                if let error {
+                    Section {
+                        Text(error)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                switch mode {
+                case .choose:
+                    Section {
+                        Button("Scan QR code") { mode = .scan }
+                            .buttonStyle(.borderedProminent)
+                        Button("Paste payload") { mode = .paste }
+                            .buttonStyle(.bordered)
+                    }
+                case .scan:
+                    Section {
+                        QRScannerView(disabled: redeeming) { raw in redeem(raw: raw) }
+                            .frame(height: 360)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        Button("Back") { mode = .choose }
+                    }
+                case .paste:
+                    Section {
+                        TextEditor(text: $pasteText)
+                            .frame(minHeight: 120)
+                            .font(.footnote.monospaced())
+                            .disabled(redeeming)
+                        HStack {
+                            Button("Back") { mode = .choose }
+                            Spacer()
+                            Button("Pair") { redeem(raw: pasteText) }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(redeeming || pasteText.isEmpty)
+                        }
+                    }
+                }
+
+                if redeeming {
+                    Section {
+                        HStack {
+                            ProgressView().controlSize(.small)
+                            Text("Redeeming…").font(.footnote)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func redeem(raw: String) {
+        guard !redeeming else { return }
+        redeeming = true
+        error = nil
+        Task {
+            defer { redeeming = false }
+            do {
+                let payload = try parseQrPayload(text: raw)
+                let client = OperatorClient(baseUrl: payload.server, deviceToken: nil)
+                let outcome = try await client.pair(pairToken: payload.pairToken)
+                onPaired(DeviceCredentials(
+                    server: payload.server,
+                    deviceToken: outcome.deviceToken,
+                    deviceId: outcome.deviceId,
+                    workspaceId: outcome.workspaceId
+                ))
+            } catch let err as PairError {
+                if case .InvalidQr(_) = err {
+                    error = "That payload doesn't look right — expected JSON with " +
+                        "server, pairToken, workspaceId."
+                } else {
+                    error = "Pair failed: \(err)"
+                }
+            } catch {
+                error = "Pair failed: \(error)"
+            }
+        }
+    }
+}
+
+// MARK: - QR scanner (AVFoundation)
+
+private struct QRScannerView: UIViewControllerRepresentable {
+    let disabled: Bool
+    let onPayload: (String) -> Void
+
+    func makeUIViewController(context: Context) -> ScannerViewController {
+        let vc = ScannerViewController()
+        vc.onPayload = onPayload
+        return vc
+    }
+
+    func updateUIViewController(_ vc: ScannerViewController, context: Context) {
+        vc.disabled = disabled
+    }
+}
+
+private final class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+    var onPayload: ((String) -> Void)?
+    var disabled: Bool = false
+    private var session: AVCaptureSession?
+    private var consumed = false
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        setupSession()
+    }
+
+    private func setupSession() {
+        guard
+            let device = AVCaptureDevice.default(for: .video),
+            let input = try? AVCaptureDeviceInput(device: device)
+        else { return }
+        let session = AVCaptureSession()
+        session.addInput(input)
+        let output = AVCaptureMetadataOutput()
+        session.addOutput(output)
+        output.setMetadataObjectsDelegate(self, queue: .main)
+        output.metadataObjectTypes = [.qr]
+        let preview = AVCaptureVideoPreviewLayer(session: session)
+        preview.videoGravity = .resizeAspectFill
+        preview.frame = view.layer.bounds
+        view.layer.addSublayer(preview)
+        DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
+        self.session = session
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        view.layer.sublayers?.compactMap { $0 as? AVCaptureVideoPreviewLayer }.forEach {
+            $0.frame = view.layer.bounds
+        }
+    }
+
+    func metadataOutput(
+        _ output: AVCaptureMetadataOutput,
+        didOutput metadataObjects: [AVMetadataObject],
+        from connection: AVCaptureConnection
+    ) {
+        guard !consumed, !disabled else { return }
+        guard
+            let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+            let raw = obj.stringValue
+        else { return }
+        consumed = true
+        onPayload?(raw)
+    }
+}

@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XcodeGen spec for the Papercup iOS app.
+#
+# Run order:
+#   1. `make build-ios` from workspace root  (creates PapercupCore.xcframework
+#      + ios/PapercupCore/papercup.swift)
+#   2. `xcodegen` from this dir              (creates Papercup.xcodeproj)
+#   3. `open Papercup.xcodeproj`             (build + run)
+#
+# The app target compiles the generated `papercup.swift` directly and
+# links the xcframework that carries libpapercup.a + the `papercupFFI`
+# Clang module the bindings import.
+
+name: Papercup
+options:
+  bundleIdPrefix: com.papercuspai
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_NSCameraUsageDescription: "Papercup uses the camera to scan the pair-code QR shown by your desktop."
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+
+targets:
+  Papercup:
+    type: application
+    platform: iOS
+    sources:
+      - path: Papercup/Sources
+      - path: PapercupCore/papercup.swift
+        compilerFlags:
+          - -suppress-warnings
+    dependencies:
+      - framework: PapercupCore.xcframework
+        embed: false
+        codeSign: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.papercuspai.operator.mobile
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/Frameworks"
+
+schemes:
+  Papercup:
+    build:
+      targets:
+        Papercup: all
+    run:
+      config: Debug
+    archive:
+      config: Release
