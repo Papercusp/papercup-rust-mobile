@@ -14,7 +14,8 @@
 use crate::types::{
     AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
     ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, RunningHarnessPhase, RunningResp,
-    ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem, WorkspacesResp,
+    ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem, WorkspaceSwitchBody,
+    WorkspaceSwitchResp, WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -273,6 +274,39 @@ impl OperatorClient {
         resp.json::<R>()
             .await
             .map(|r| r.paused)
+            .map_err(|e| ApiError::Decode(e.to_string()))
+    }
+
+    /// `POST /api/mobile/workspace/switch` — re-issues a deviceToken
+    /// scoped to the new workspace. The phone must persist the new
+    /// token in place of the old one immediately.
+    pub async fn workspace_switch(
+        &self,
+        workspace_id: &str,
+    ) -> Result<WorkspaceSwitchResp, ApiError> {
+        let url = format!("{}/api/mobile/workspace/switch", self.base_url);
+        let mut req = self.http.post(&url).json(&WorkspaceSwitchBody {
+            workspace_id: workspace_id.to_string(),
+        });
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            let detail = resp
+                .json::<ErrorBody>()
+                .await
+                .map(|e| e.error)
+                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
+            return Err(ApiError::Server { status: status.as_u16(), detail });
+        }
+        resp.json::<WorkspaceSwitchResp>()
+            .await
             .map_err(|e| ApiError::Decode(e.to_string()))
     }
 

@@ -166,6 +166,22 @@ pub struct PauseToggleResp {
     pub paused: bool,
 }
 
+// ── /api/mobile/workspace/switch ───────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceSwitchBody {
+    #[serde(rename = "workspaceId")]
+    pub workspace_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceSwitchResp {
+    #[serde(rename = "deviceToken")]
+    pub device_token: String,
+    #[serde(rename = "workspaceId")]
+    pub workspace_id: String,
+}
+
 // ── /api/mobile/workspaces ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

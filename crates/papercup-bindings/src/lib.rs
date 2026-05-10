@@ -15,6 +15,7 @@ use papercup_core::types::{
     AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
     PauseInfo as CorePauseInfo, PushRegisterBody, RunningHarnessPhase as CoreRunning,
     ToastRow as CoreToast, VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
+    WorkspaceSwitchResp as CoreWorkspaceSwitch,
 };
 
 uniffi::include_scaffolding!("papercup");
@@ -326,6 +327,20 @@ impl From<CoreWorkspace> for Workspace {
             name: w.name,
             current: w.current,
             last_activity_at: w.last_activity_at,
+        }
+    }
+}
+
+pub struct WorkspaceSwitchResult {
+    pub device_token: String,
+    pub workspace_id: String,
+}
+
+impl From<CoreWorkspaceSwitch> for WorkspaceSwitchResult {
+    fn from(r: CoreWorkspaceSwitch) -> Self {
+        Self {
+            device_token: r.device_token,
+            workspace_id: r.workspace_id,
         }
     }
 }
@@ -665,6 +680,15 @@ impl OperatorClient {
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(result.into_iter().map(Workspace::from).collect())
+    }
+
+    pub async fn workspace_switch(&self, workspace_id: String) -> Result<WorkspaceSwitchResult, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.workspace_switch(&workspace_id).await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(result.into())
     }
 
     pub async fn list_desktop_devices(&self) -> Result<Vec<Device>, ApiError> {

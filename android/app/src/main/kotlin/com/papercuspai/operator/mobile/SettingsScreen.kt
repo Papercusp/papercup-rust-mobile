@@ -2,6 +2,7 @@
 package com.papercuspai.operator.mobile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +34,7 @@ import uniffi.papercup.Workspace
 fun SettingsScreen(
     creds: DeviceCredentials,
     onForget: () -> Unit,
+    onWorkspaceSwitched: (DeviceCredentials) -> Unit,
 ) {
     var workspaces by remember { mutableStateOf<List<Workspace>?>(null) }
     var devices by remember { mutableStateOf<List<Device>?>(null) }
@@ -101,7 +103,35 @@ fun SettingsScreen(
             if (ws == null) {
                 item { PapercupMetaText("Loading…") }
             } else {
-                items(ws) { w -> WorkspaceRow(w) }
+                items(ws) { w ->
+                    WorkspaceRow(
+                        w = w,
+                        switching = revoking == "switch:${w.id}",
+                        onSwitch = if (w.current) {
+                            null
+                        } else {
+                            {
+                                scope.launch {
+                                    revoking = "switch:${w.id}"
+                                    try {
+                                        val res = OperatorClient(creds.server, creds.deviceToken)
+                                            .workspaceSwitch(w.id)
+                                        onWorkspaceSwitched(
+                                            creds.copy(
+                                                deviceToken = res.deviceToken,
+                                                workspaceId = res.workspaceId,
+                                            ),
+                                        )
+                                    } catch (t: Throwable) {
+                                        error = "Switch failed: ${t.message}"
+                                    } finally {
+                                        revoking = null
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
             }
 
             item {
@@ -163,8 +193,17 @@ private fun IdentityCard(creds: DeviceCredentials) {
 }
 
 @Composable
-private fun WorkspaceRow(w: Workspace) {
-    PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
+private fun WorkspaceRow(
+    w: Workspace,
+    switching: Boolean,
+    onSwitch: (() -> Unit)?,
+) {
+    PapercupPanel(
+        modifier = Modifier.fillMaxWidth().let { m ->
+            onSwitch?.let { m.clickable(enabled = !switching, onClick = it) } ?: m
+        },
+        contentPadding = PaddingValues(12.dp),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -174,8 +213,10 @@ private fun WorkspaceRow(w: Workspace) {
                 Text(w.name, style = MaterialTheme.typography.titleSmall)
                 Text(w.id, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
             }
-            if (w.current) {
-                PapercupStatusChip(text = "current", containerColor = PapercupColors.SuccessSoft, contentColor = PapercupColors.Success)
+            when {
+                w.current -> PapercupStatusChip(text = "current", containerColor = PapercupColors.SuccessSoft, contentColor = PapercupColors.Success)
+                switching -> Text("switching…", style = MaterialTheme.typography.labelSmall)
+                onSwitch != null -> Text("tap to switch", style = MaterialTheme.typography.labelSmall)
             }
         }
     }

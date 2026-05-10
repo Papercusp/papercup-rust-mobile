@@ -164,6 +164,12 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             creds = null
         }
     }
+    val onWorkspaceSwitched: (DeviceCredentials) -> Unit = remember(store) {
+        { fresh ->
+            store.save(fresh)
+            creds = fresh
+        }
+    }
     when (val r = route) {
         is Route.Detail -> HarnessDetailScreen(
             creds = current,
@@ -185,6 +191,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             onRouteChange = { route = it },
             onSelectHarness = { slug -> route = Route.Detail(slug) },
             onForget = onForget,
+            onWorkspaceSwitched = onWorkspaceSwitched,
         )
     }
 }
@@ -200,6 +207,7 @@ private fun PairedShell(
     onRouteChange: (Route) -> Unit,
     onSelectHarness: (String) -> Unit,
     onForget: () -> Unit,
+    onWorkspaceSwitched: (DeviceCredentials) -> Unit,
 ) {
     Scaffold(
         bottomBar = {
@@ -244,6 +252,7 @@ private fun PairedShell(
                 Route.Settings -> SettingsScreen(
                     creds = current,
                     onForget = onForget,
+                    onWorkspaceSwitched = onWorkspaceSwitched,
                 )
                 else -> {}
             }

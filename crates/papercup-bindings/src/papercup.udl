@@ -199,6 +199,11 @@ dictionary Workspace {
     i64? last_activity_at;
 };
 
+dictionary WorkspaceSwitchResult {
+    string device_token;
+    string workspace_id;
+};
+
 dictionary Device {
     string device_id;
     string workspace_id;
@@ -283,6 +288,11 @@ interface OperatorClient {
     /// `GET /api/mobile/workspaces`.
     [Throws=ApiError, Async]
     sequence<Workspace> list_workspaces();
+
+    /// `POST /api/mobile/workspace/switch` — issues a new deviceToken
+    /// scoped to the target workspace.
+    [Throws=ApiError, Async]
+    WorkspaceSwitchResult workspace_switch(string workspace_id);
 
     /// `GET /api/mobile/desktop/devices`.
     [Throws=ApiError, Async]
