@@ -6,7 +6,7 @@ struct HarnessListView: View {
     let liveTick: Int
     let lastInvalidate: String?
     let onSelect: (String) -> Void
-    let onForget: () -> Void
+
 
     enum LoadState {
         case loading
@@ -23,15 +23,6 @@ struct HarnessListView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(PapercupTheme.inkRaised, for: .navigationBar)
                 .toolbarColorScheme(.dark, for: .navigationBar)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button("Forget device", role: .destructive, action: onForget)
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                        }
-                    }
-                }
                 .task(id: "\(creds.deviceToken)|\(liveTick)") { await refetch() }
                 .tint(PapercupTheme.accent)
         }
