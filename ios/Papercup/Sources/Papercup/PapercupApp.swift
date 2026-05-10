@@ -6,6 +6,7 @@ struct PapercupApp: App {
     var body: some Scene {
         WindowGroup {
             AppRoot()
+                .tint(PapercupTheme.accent)
         }
     }
 }

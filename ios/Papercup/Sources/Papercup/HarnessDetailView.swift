@@ -20,6 +20,8 @@ struct HarnessDetailView: View {
             content
                 .navigationTitle(slug)
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(PapercupTheme.inkRaised, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(action: onBack) {
@@ -28,6 +30,7 @@ struct HarnessDetailView: View {
                     }
                 }
                 .task(id: "\(slug)|\(invalidationTick)") { await refetch() }
+                .tint(PapercupTheme.accent)
         }
     }
 
@@ -36,11 +39,19 @@ struct HarnessDetailView: View {
         switch state {
         case .loading:
             ProgressView("Loading status…")
+                .tint(PapercupTheme.accent)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(PapercupTheme.screenGradient.ignoresSafeArea())
         case .failed(let msg):
             VStack(alignment: .leading, spacing: 8) {
-                Text(msg).font(.footnote.monospaced()).foregroundStyle(.red)
+                Text("Couldn't load status").font(.headline).foregroundStyle(PapercupTheme.error)
+                Text(msg).font(.footnote.monospaced()).foregroundStyle(PapercupTheme.error)
             }
             .padding()
+            .background(PapercupTheme.cardBackground(accent: PapercupTheme.error.opacity(0.14)))
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(PapercupTheme.screenGradient.ignoresSafeArea())
         case .ready(let s):
             List {
                 headerSection(s)
@@ -48,6 +59,7 @@ struct HarnessDetailView: View {
                 if !s.counts.isEmpty { featuresSection(s) }
                 if let d = s.lastDecision, !d.isEmpty { lastDecisionSection(d) }
             }
+            .papercupScreenChrome()
         }
     }
 
@@ -68,22 +80,19 @@ struct HarnessDetailView: View {
                 KeyValueRow(key: "active competitions", value: "\(s.activeCompetitions)")
             }
         }
+            .papercupCardRow()
     }
 
     private func statusChips(_ s: HarnessStatus) -> some View {
         HStack(spacing: 4) {
-            chip(s.alive ? "alive" : "idle", warn: false)
-            if s.escalated { chip("escalated", warn: true) }
-            if s.smokeFail { chip("smoke fail", warn: true) }
+            chip(s.alive ? "alive" : "idle", role: s.alive ? .success : .info)
+            if s.escalated { chip("escalated", role: .error) }
+            if s.smokeFail { chip("smoke fail", role: .error) }
         }
     }
 
-    private func chip(_ text: String, warn: Bool) -> some View {
-        Text(text)
-            .font(.caption)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(warn ? Color.red.opacity(0.2) : Color.gray.opacity(0.2), in: Capsule())
+    private func chip(_ text: String, role: PapercupChipRole) -> some View {
+        PapercupChip(text: text, role: role)
     }
 
     private func missionSection(_ s: HarnessStatus) -> some View {
@@ -92,6 +101,7 @@ struct HarnessDetailView: View {
             KeyValueRow(key: "input tokens", value: formatNum(s.missionInputTokens))
             KeyValueRow(key: "output tokens", value: formatNum(s.missionOutputTokens))
         }
+            .papercupCardRow(accent: PapercupTheme.accent.opacity(0.08))
     }
 
     private func featuresSection(_ s: HarnessStatus) -> some View {
@@ -100,12 +110,14 @@ struct HarnessDetailView: View {
                 KeyValueRow(key: k, value: "\(v)")
             }
         }
+            .papercupCardRow(accent: PapercupTheme.info.opacity(0.08))
     }
 
     private func lastDecisionSection(_ text: String) -> some View {
         Section("Last decision") {
             Text(text).font(.callout)
         }
+            .papercupCardRow(accent: PapercupTheme.warning.opacity(0.08))
     }
 
     private func formatNum(_ n: Int64) -> String {
@@ -133,9 +145,9 @@ private struct KeyValueRow: View {
     let value: String
     var body: some View {
         HStack {
-            Text(key).font(.footnote).foregroundStyle(.secondary)
+            Text(key).font(.footnote).foregroundStyle(PapercupTheme.textMuted)
             Spacer()
-            Text(value).font(.footnote.monospaced())
+            Text(value).font(.footnote.monospaced()).foregroundStyle(PapercupTheme.text)
         }
     }
 }

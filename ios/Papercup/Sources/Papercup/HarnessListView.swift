@@ -21,6 +21,8 @@ struct HarnessListView: View {
             content
                 .navigationTitle("Papercup")
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(PapercupTheme.inkRaised, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
@@ -31,6 +33,7 @@ struct HarnessListView: View {
                     }
                 }
                 .task(id: "\(creds.deviceToken)|\(liveTick)") { await refetch() }
+                .tint(PapercupTheme.accent)
         }
     }
 
@@ -39,12 +42,19 @@ struct HarnessListView: View {
         switch state {
         case .loading:
             ProgressView("Loading harnesses…")
+                .tint(PapercupTheme.accent)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(PapercupTheme.screenGradient.ignoresSafeArea())
         case .failed(let msg):
             VStack(alignment: .leading, spacing: 8) {
-                Text("Couldn't load harnesses").font(.headline)
-                Text(msg).font(.footnote.monospaced())
+                Text("Couldn't load harnesses").font(.headline).foregroundStyle(PapercupTheme.error)
+                Text(msg).font(.footnote.monospaced()).foregroundStyle(PapercupTheme.error)
             }
             .padding()
+            .background(PapercupTheme.cardBackground(accent: PapercupTheme.error.opacity(0.14)))
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(PapercupTheme.screenGradient.ignoresSafeArea())
         case .ready(let harnesses):
             List {
                 Section {
@@ -54,31 +64,26 @@ struct HarnessListView: View {
                         .font(.headline)
                         Spacer()
                         if let ip = creds.meshAssignedIp {
-                            Text("mesh · \(ip)")
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(.gray.opacity(0.2), in: Capsule())
+                            PapercupChip(text: "mesh · \(ip)", role: .accent)
                         }
-                        Text(lastInvalidate.map { "live · \($0)" } ?? "live")
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.gray.opacity(0.2), in: Capsule())
+                        PapercupChip(text: lastInvalidate.map { "live · \($0)" } ?? "live", role: .info)
                     }
                 }
+                    .papercupCardRow()
                 Section {
                     ForEach(harnesses, id: \.slug) { h in
                         Button { onSelect(h.slug) } label: { HarnessRow(harness: h) }
                             .buttonStyle(.plain)
                     }
                 }
+                    .papercupCardRow()
                 Section {
                     Text("core \(version()) · \(creds.server)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
+                        .papercupMonoMeta()
                 }
+                    .papercupCardRow(accent: PapercupTheme.info.opacity(0.08))
             }
+            .papercupScreenChrome()
         }
     }
 
@@ -105,15 +110,11 @@ private struct HarnessRow: View {
                 Text(harness.slug).font(.headline)
                 Spacer()
                 if let status = harness.status {
-                    Text(status)
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.gray.opacity(0.2), in: Capsule())
+                    PapercupChip(text: status, role: .accent)
                 }
             }
             if !harness.path.isEmpty {
-                Text(harness.path).font(.caption.monospaced())
+                Text(harness.path).papercupMonoMeta()
             }
             let meta: [String] = {
                 var bits: [String] = []
@@ -123,7 +124,7 @@ private struct HarnessRow: View {
                 return bits
             }()
             if !meta.isEmpty {
-                Text(meta.joined(separator: " · ")).font(.caption2)
+                Text(meta.joined(separator: " · ")).font(.caption2).foregroundStyle(PapercupTheme.textMuted)
             }
         }
         .padding(.vertical, 2)
