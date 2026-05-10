@@ -127,8 +127,8 @@ struct ActivityView: View {
             error = nil
         } catch let err as ApiError {
             error = "API: \(err)"
-        } catch {
-            error = "Unexpected: \(error)"
+        } catch let e {
+            error = "Unexpected: \(e)"
         }
     }
 }

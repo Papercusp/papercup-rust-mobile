@@ -4,9 +4,9 @@ import Security
 
 struct DeviceCredentials: Equatable {
     let server: String
-    let deviceToken: String
+    var deviceToken: String
     let deviceId: String
-    let workspaceId: String
+    var workspaceId: String
     /// Phase 6a: present when the desktop's pair response carried a Defguard
     /// mesh config. Display only for now.
     var meshAssignedIp: String? = nil

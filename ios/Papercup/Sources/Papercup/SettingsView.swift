@@ -127,8 +127,8 @@ struct SettingsView: View {
             error = nil
         } catch let err as ApiError {
             error = "API: \(err)"
-        } catch {
-            error = "Unexpected: \(error)"
+        } catch let e {
+            error = "Unexpected: \(e)"
         }
     }
 
@@ -142,8 +142,8 @@ struct SettingsView: View {
             fresh.deviceToken = res.deviceToken
             fresh.workspaceId = res.workspaceId
             onWorkspaceSwitched(fresh)
-        } catch {
-            self.error = "Switch failed: \(error)"
+        } catch let e {
+            self.error = "Switch failed: \(e)"
         }
     }
 
@@ -154,8 +154,8 @@ struct SettingsView: View {
             try await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
                 .revokeDevice(deviceId: d.deviceId)
             await load()
-        } catch {
-            self.error = "Revoke failed: \(error)"
+        } catch let e {
+            self.error = "Revoke failed: \(e)"
         }
     }
 }
