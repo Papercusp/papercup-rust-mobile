@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
     let creds: DeviceCredentials
+    let monitor: ConnectionMonitor
     let onForget: () -> Void
     let onWorkspaceSwitched: (DeviceCredentials) -> Void
 
@@ -20,6 +21,17 @@ struct SettingsView: View {
                 identitySection
                 workspacesSection
                 devicesSection
+                Section {
+                    NavigationLink("Standing approvals") {
+                        StandingApprovalsView(creds: creds)
+                    }
+                    NavigationLink("Voice") {
+                        VoiceSettingsView()
+                    }
+                    NavigationLink("Diagnostics") {
+                        DiagnosticsView(creds: creds, monitor: monitor)
+                    }
+                }
                 Section {
                     Button(role: .destructive, action: onForget) {
                         Text("Forget this device")
