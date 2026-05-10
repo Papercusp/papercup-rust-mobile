@@ -26,10 +26,8 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     INFOPLIST_KEY_CFBundleVersion: "1"
     INFOPLIST_KEY_CFBundleShortVersionString: "0.1.0"
-    GENERATE_INFOPLIST_FILE: YES
-    INFOPLIST_KEY_NSCameraUsageDescription: "Papercup uses the camera to scan the pair-code QR shown by your desktop."
-    INFOPLIST_KEY_UILaunchScreen_Generation: YES
-    INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    GENERATE_INFOPLIST_FILE: NO
+    INFOPLIST_FILE: Papercup/Info.plist
 
 targets:
   Papercup:
