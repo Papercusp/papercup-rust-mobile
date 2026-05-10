@@ -21,6 +21,8 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -82,6 +84,7 @@ fun PapercupCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(PapercupCardShape)
                 .background(accent)
                 .padding(contentPadding),
         ) {
@@ -116,6 +119,24 @@ fun PapercupSectionLabel(text: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.labelSmall,
         color = PapercupColors.TextMuted,
     )
+}
+
+@Composable
+fun PapercupCardHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    meta: String? = null,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PapercupStatusChip(text = title, containerColor = PapercupColors.AccentSoft, contentColor = PapercupColors.AccentStrong)
+        meta?.let {
+            PapercupStatusChip(text = it, containerColor = PapercupColors.WarningSoft, contentColor = PapercupColors.Warning)
+        }
+    }
 }
 
 @Composable

@@ -13,6 +13,7 @@ import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
 import com.papercuspai.operator.mobile.theme.PapercupPanel
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
+import com.papercuspai.operator.mobile.theme.PapercupCardHeader
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,11 +85,17 @@ fun ActivityScreen(
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize().background(PapercupColors.ScreenGradient)) {
             when (val s = state) {
-                ActivityState.Loading -> Row(
-                    Modifier.fillMaxWidth().padding(top = 32.dp),
-                    horizontalArrangement = Arrangement.Center,
+                ActivityState.Loading -> Box(
+                    Modifier.fillMaxWidth().padding(top = 32.dp).padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(strokeWidth = 2.dp)
+                    PapercupCard(contentPadding = PaddingValues(18.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Loading activity…")
+                        }
+                    }
                 }
                 is ActivityState.Failed -> Box(
                     Modifier.fillMaxSize().padding(16.dp),
@@ -117,41 +124,50 @@ private fun ToastList(toasts: List<ToastEntry>, onSelectHarness: (String) -> Uni
         EmptyState("No recent notifications")
         return
     }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(toasts) { t -> ToastCard(t, onSelectHarness) }
+    PapercupCard(contentPadding = PaddingValues(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PapercupCardHeader("Notifications", meta = toasts.size.toString())
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 640.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(toasts) { t -> ToastCard(t, onSelectHarness) }
+            }
+        }
     }
 }
 
 @Composable
 private fun ToastCard(t: ToastEntry, onSelectHarness: (String) -> Unit) {
     val accent = when (t.level.lowercase()) {
-        "error" -> MaterialTheme.colorScheme.errorContainer
-        "warning", "warn" -> MaterialTheme.colorScheme.tertiaryContainer
-        "success" -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
+        "error" -> PapercupColors.ErrorSoft
+        "warning", "warn" -> PapercupColors.WarningSoft
+        "success" -> PapercupColors.SuccessSoft
+        else -> PapercupColors.InfoSoft
+    }
+    val tone = when (t.level.lowercase()) {
+        "error" -> PapercupColors.Error
+        "warning", "warn" -> PapercupColors.Warning
+        "success" -> PapercupColors.Success
+        else -> PapercupColors.Info
     }
     PapercupCard(
         modifier = Modifier.fillMaxWidth(),
         accent = accent,
+        contentPadding = PaddingValues(12.dp),
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top,
             ) {
                 Text(t.message, style = MaterialTheme.typography.titleSmall)
-                PapercupStatusChip(text = t.level, containerColor = accent, contentColor = PapercupColors.Text)
+                PapercupStatusChip(text = t.level, containerColor = accent, contentColor = tone)
             }
             t.description?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(4.dp))
                 Text(it, style = MaterialTheme.typography.bodySmall)
             }
-            Spacer(Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -172,19 +188,23 @@ private fun AuditList(entries: List<AuditEntry>, onSelectHarness: (String) -> Un
         EmptyState("No recent actions")
         return
     }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        items(entries) { e -> AuditCard(e, onSelectHarness) }
+    PapercupPanel(contentPadding = PaddingValues(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PapercupCardHeader("Actions", meta = entries.size.toString())
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 640.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(entries) { e -> AuditCard(e, onSelectHarness) }
+            }
+        }
     }
 }
 
 @Composable
 private fun AuditCard(e: AuditEntry, onSelectHarness: (String) -> Unit) {
-    PapercupPanel(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
+    PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -204,7 +224,6 @@ private fun AuditCard(e: AuditEntry, onSelectHarness: (String) -> Unit) {
                     monospace = true,
                     modifier = Modifier.weight(1f),
                 )
-                // Subjects often look like "harness:<slug>" or "harness:<slug>:..."
                 val slug = e.subject
                     .removePrefix("harness:")
                     .substringBefore(':')
@@ -219,8 +238,10 @@ private fun AuditCard(e: AuditEntry, onSelectHarness: (String) -> Unit) {
 
 @Composable
 private fun EmptyState(text: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        PapercupMetaText(text)
+    Box(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+        PapercupCard(contentPadding = PaddingValues(18.dp)) {
+            PapercupMetaText(text)
+        }
     }
 }
 

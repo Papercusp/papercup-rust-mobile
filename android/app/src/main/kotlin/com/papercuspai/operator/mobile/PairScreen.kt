@@ -19,6 +19,7 @@ import com.papercuspai.operator.mobile.theme.PapercupCameraShape
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupCardHeader
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,12 +89,14 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
 
     Column(
         modifier = Modifier.fillMaxSize().background(PapercupColors.ScreenGradient).padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Pair this device", style = MaterialTheme.typography.headlineMedium, color = PapercupColors.Text)
         PapercupMetaText(
             "Open the desktop operator at /settings/mobile, mint a pair token, " +
                 "and either scan the QR or paste the payload below.",
+            modifier = Modifier.fillMaxWidth(),
         )
         error?.let {
             PapercupCard(accent = PapercupColors.ErrorSoft) {
@@ -108,15 +111,20 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
 
         when (val m = mode) {
             PairMode.Choose -> {
-                Button(
-                    onClick = { mode = PairMode.Scan },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = PapercupColors.Accent),
-                ) { Text("Scan QR code") }
-                OutlinedButton(
-                    onClick = { mode = PairMode.Paste },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Paste payload") }
+                PapercupCard {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PapercupCardHeader("Desktop pair", meta = "QR or code")
+                        Button(
+                            onClick = { mode = PairMode.Scan },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = PapercupColors.Accent),
+                        ) { Text("Scan QR code") }
+                        OutlinedButton(
+                            onClick = { mode = PairMode.Paste },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Paste payload") }
+                    }
+                }
             }
 
             PairMode.Scan -> ScanPanel(
@@ -132,7 +140,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                 onSubmit = { text ->
                     try {
                         redeem(parseQrPayload(text))
-                    } catch (e: PairException.InvalidQr) {
+                    } catch (_: PairException.InvalidQr) {
                         error = "That payload doesn't look right — expected JSON with " +
                             "server, pairToken, workspaceId."
                     }
@@ -177,32 +185,35 @@ private fun ScanPanel(
         if (!hasPermission) launcher.launch(Manifest.permission.CAMERA)
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (!hasPermission) {
-            Text(
-                "Camera permission is required to scan the QR. Grant it from system settings, " +
-                    "or use Paste payload instead.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            OutlinedButton(onClick = onCancel) { Text("Back") }
-            return@Column
-        }
+    PapercupCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            PapercupCardHeader("Camera scan", meta = if (disabled) "pairing" else "live")
+            if (!hasPermission) {
+                Text(
+                    "Camera permission is required to scan the QR. Grant it from system settings, " +
+                        "or use Paste payload instead.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(onClick = onCancel) { Text("Back") }
+                return@Column
+            }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(360.dp)
-                .clip(PapercupCameraShape)
-                .border(1.dp, PapercupColors.Accent.copy(alpha = 0.45f), PapercupCameraShape)
-                .background(Color.Black),
-        ) {
-            CameraPreview(
-                enabled = !disabled,
-                onPayload = onPayload,
-                onError = onError,
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(360.dp)
+                    .clip(PapercupCameraShape)
+                    .border(1.dp, PapercupColors.Accent.copy(alpha = 0.45f), PapercupCameraShape)
+                    .background(Color.Black),
+            ) {
+                CameraPreview(
+                    enabled = !disabled,
+                    onPayload = onPayload,
+                    onError = onError,
+                )
+            }
+            OutlinedButton(onClick = onCancel) { Text("Back") }
         }
-        OutlinedButton(onClick = onCancel) { Text("Back") }
     }
 }
 
@@ -243,7 +254,7 @@ private fun CameraPreview(
                 consumed = true
                 try {
                     onPayload(parseQrPayload(raw))
-                } catch (e: PairException.InvalidQr) {
+                } catch (_: PairException.InvalidQr) {
                     consumed = false
                     onError("Scanned QR isn't a Papercup pair payload.")
                 }
@@ -273,22 +284,25 @@ private fun PastePanel(
     onSubmit: (String) -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            label = { Text("QR payload (JSON)") },
-            placeholder = { Text("""{"server":"…","pairToken":"…","workspaceId":"…"}""") },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 4,
-            enabled = !disabled,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onCancel, enabled = !disabled) { Text("Back") }
-            Button(
-                onClick = { onSubmit(text) },
-                enabled = !disabled && text.isNotBlank(),
-            ) { Text("Pair") }
+    PapercupCard {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PapercupCardHeader("Manual pair code", meta = "JSON")
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("QR payload (JSON)") },
+                placeholder = { Text("""{"server":"…","pairToken":"…","workspaceId":"…"}""") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 4,
+                enabled = !disabled,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onCancel, enabled = !disabled) { Text("Back") }
+                Button(
+                    onClick = { onSubmit(text) },
+                    enabled = !disabled && text.isNotBlank(),
+                ) { Text("Pair") }
+            }
         }
     }
 }

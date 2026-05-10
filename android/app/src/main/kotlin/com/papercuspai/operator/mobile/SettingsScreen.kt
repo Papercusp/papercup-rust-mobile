@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import com.papercuspai.operator.mobile.theme.PapercupCardHeader
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
@@ -100,7 +101,7 @@ fun SettingsScreen(
             }
 
             item {
-                Text("Workspaces", style = MaterialTheme.typography.titleSmall, color = PapercupColors.Text)
+                PapercupCardHeader("Workspaces", meta = workspaces?.size?.toString())
             }
             val ws = workspaces
             if (ws == null) {
@@ -111,7 +112,7 @@ fun SettingsScreen(
 
             item {
                 Spacer(Modifier.height(4.dp))
-                Text("Paired devices", style = MaterialTheme.typography.titleSmall, color = PapercupColors.Text)
+                PapercupCardHeader("Paired devices", meta = devices?.size?.toString())
             }
             val dv = devices
             if (dv == null) {
@@ -156,10 +157,9 @@ fun SettingsScreen(
 
 @Composable
 private fun IdentityCard(creds: DeviceCredentials) {
-    PapercupCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text("This device", style = MaterialTheme.typography.titleSmall)
-            Spacer(Modifier.height(8.dp))
+    PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PapercupCardHeader("This device", meta = creds.workspaceId)
             Kv("server", creds.server)
             Kv("device id", creds.deviceId)
             Kv("workspace id", creds.workspaceId)
@@ -170,13 +170,13 @@ private fun IdentityCard(creds: DeviceCredentials) {
 
 @Composable
 private fun WorkspaceRow(w: Workspace) {
-    PapercupPanel(modifier = Modifier.fillMaxWidth()) {
+    PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
         Row(
-            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(w.name, style = MaterialTheme.typography.titleSmall)
                 Text(w.id, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
             }
@@ -189,8 +189,8 @@ private fun WorkspaceRow(w: Workspace) {
 
 @Composable
 private fun DeviceRowCard(device: Device, isSelf: Boolean, revoking: Boolean, onRevoke: () -> Unit) {
-    PapercupPanel(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
+    PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -205,7 +205,6 @@ private fun DeviceRowCard(device: Device, isSelf: Boolean, revoking: Boolean, on
             device.lastSeen?.let { Kv("last seen", it) }
             device.pairedAt?.let { Kv("paired at", it) }
             Kv("workspace", device.workspaceId)
-            Spacer(Modifier.height(4.dp))
             if (!isSelf) {
                 TextButton(onClick = onRevoke, enabled = !revoking) {
                     Text(if (revoking) "Revoking…" else "Revoke")
