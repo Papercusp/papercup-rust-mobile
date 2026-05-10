@@ -53,6 +53,7 @@ private struct PairedShell: View {
 
     @StateObject private var monitor: ConnectionMonitor
     @StateObject private var voice: VoiceManager
+    private let wakeWord: WakeWordEngine
 
     init(current: DeviceCredentials,
          tab: Binding<AppRoot.Tab>,
@@ -68,8 +69,13 @@ private struct PairedShell: View {
         self._pushedDetailSlug = pushedDetailSlug
         self.onForget = onForget
         self.onWorkspaceSwitched = onWorkspaceSwitched
+        let voiceState = StateObject(wrappedValue: VoiceManager(creds: current))
         self._monitor = StateObject(wrappedValue: ConnectionMonitor(creds: current))
-        self._voice = StateObject(wrappedValue: VoiceManager(creds: current))
+        self._voice = voiceState
+        let voiceRef = voiceState
+        self.wakeWord = WakeWordEngine { [voiceRef] in
+            Task { @MainActor in voiceRef.wrappedValue.start() }
+        }
     }
 
     var body: some View {
@@ -134,7 +140,11 @@ private struct PairedShell: View {
             }
         }
         .task(id: current.deviceToken) { monitor.start(); await runSync() }
-        .onDisappear { monitor.stop(); voice.stop() }
+        .onChange(of: voice.state) { _, new in
+            if new == .idle { wakeWord.start() } else { wakeWord.stop() }
+        }
+        .onAppear { if voice.state == .idle { wakeWord.start() } }
+        .onDisappear { monitor.stop(); voice.stop(); wakeWord.stop() }
     }
 
     private func runSync() async {
