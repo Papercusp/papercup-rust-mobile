@@ -32,7 +32,6 @@ import uniffi.papercup.Workspace
 @Composable
 fun SettingsScreen(
     creds: DeviceCredentials,
-    onBack: () -> Unit,
     onForget: () -> Unit,
 ) {
     var workspaces by remember { mutableStateOf<List<Workspace>?>(null) }
@@ -60,11 +59,6 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Settings") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = PapercupColors.InkRaised,
                     titleContentColor = PapercupColors.Text,

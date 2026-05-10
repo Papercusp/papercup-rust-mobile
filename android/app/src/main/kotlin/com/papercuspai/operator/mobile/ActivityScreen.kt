@@ -38,7 +38,6 @@ private sealed interface ActivityState {
 fun ActivityScreen(
     creds: DeviceCredentials,
     invalidationTick: Int,
-    onBack: () -> Unit,
     onSelectHarness: (String) -> Unit,
 ) {
     var state by remember { mutableStateOf<ActivityState>(ActivityState.Loading) }
@@ -64,11 +63,6 @@ fun ActivityScreen(
             Column {
                 TopAppBar(
                     title = { Text("Activity") },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                        }
-                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = PapercupColors.InkRaised,
                         titleContentColor = PapercupColors.Text,

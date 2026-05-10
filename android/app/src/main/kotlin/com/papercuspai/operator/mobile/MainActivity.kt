@@ -28,6 +28,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -69,7 +73,7 @@ class MainActivity : ComponentActivity() {
 private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runtime.MutableState<String?>) {
     val context = LocalContext.current
     var creds by remember { mutableStateOf(store.load()) }
-    var route by remember { mutableStateOf<Route>(Route.List) }
+    var route by remember { mutableStateOf<Route>(Route.Operator) }
     var liveTick by remember { mutableStateOf(0) }
     var lastInvalidate by remember { mutableStateOf<String?>(null) }
 
@@ -97,7 +101,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         PairScreen(onPaired = { fresh ->
             store.save(fresh)
             creds = fresh
-            route = Route.List
+            route = Route.Operator
         })
         return
     }
@@ -154,48 +158,108 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
     val voice = remember(current.deviceToken) { VoiceManager(context, current) }
     DisposableEffect(current.deviceToken) { onDispose { voice.stop() } }
 
+    val onForget = remember<() -> Unit>(store) {
+        {
+            store.clear()
+            creds = null
+        }
+    }
     when (val r = route) {
-        Route.List -> HarnessListScreen(
-            creds = current,
-            liveTick = liveTick,
-            lastInvalidate = lastInvalidate,
-            voice = voice,
-            onSelect = { slug -> route = Route.Detail(slug) },
-            onSettings = { route = Route.Settings },
-            onActivity = { route = Route.Activity },
-            onForget = {
-                store.clear()
-                creds = null
-            },
-        )
         is Route.Detail -> HarnessDetailScreen(
             creds = current,
             slug = r.slug,
             invalidationTick = liveTick,
             onBack = { route = Route.List },
         )
-        Route.Settings -> SettingsScreen(
+        is Route.RunLog -> RunLogScreen(
             creds = current,
-            onBack = { route = Route.List },
-            onForget = {
-                store.clear()
-                creds = null
-            },
+            slug = r.slug,
+            onBack = { route = Route.Detail(r.slug) },
         )
-        Route.Activity -> ActivityScreen(
-            creds = current,
-            invalidationTick = liveTick,
-            onBack = { route = Route.List },
+        Route.Operator, Route.List, Route.Activity, Route.Settings -> PairedShell(
+            current = current,
+            voice = voice,
+            liveTick = liveTick,
+            lastInvalidate = lastInvalidate,
+            route = r,
+            onRouteChange = { route = it },
             onSelectHarness = { slug -> route = Route.Detail(slug) },
+            onForget = onForget,
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PairedShell(
+    current: DeviceCredentials,
+    voice: VoiceManager,
+    liveTick: Int,
+    lastInvalidate: String?,
+    route: Route,
+    onRouteChange: (Route) -> Unit,
+    onSelectHarness: (String) -> Unit,
+    onForget: () -> Unit,
+) {
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                val items = listOf(
+                    Triple(Route.Operator, Icons.Default.Dashboard, "Operator"),
+                    Triple(Route.List, Icons.Default.Apps, "Harnesses"),
+                    Triple(Route.Activity, Icons.Default.Notifications, "Activity"),
+                    Triple(Route.Settings, Icons.Default.Settings, "Settings"),
+                )
+                items.forEach { (r, icon, label) ->
+                    NavigationBarItem(
+                        selected = route == r,
+                        onClick = { onRouteChange(r) },
+                        icon = { Icon(icon, contentDescription = label) },
+                        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                    )
+                }
+            }
+        },
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            when (route) {
+                Route.Operator -> OperatorScreen(
+                    creds = current,
+                    voice = voice,
+                    liveTick = liveTick,
+                )
+                Route.List -> HarnessListScreen(
+                    creds = current,
+                    liveTick = liveTick,
+                    lastInvalidate = lastInvalidate,
+                    voice = voice,
+                    onSelect = onSelectHarness,
+                )
+                Route.Activity -> ActivityScreen(
+                    creds = current,
+                    invalidationTick = liveTick,
+                    onSelectHarness = onSelectHarness,
+                )
+                Route.Settings -> SettingsScreen(
+                    creds = current,
+                    onForget = onForget,
+                )
+                else -> {}
+            }
+        }
+    }
+}
+
 private sealed interface Route {
+    /// Bottom-nav primary destinations.
+    data object Operator : Route
     data object List : Route
-    data object Settings : Route
     data object Activity : Route
+    data object Settings : Route
+
+    /// Pushed routes (not in bottom nav).
     data class Detail(val slug: String) : Route
+    data class RunLog(val slug: String) : Route
 }
 
 private sealed interface ScreenState {
@@ -212,12 +276,8 @@ fun HarnessListScreen(
     lastInvalidate: String?,
     voice: VoiceManager,
     onSelect: (String) -> Unit,
-    onSettings: () -> Unit,
-    onActivity: () -> Unit,
-    onForget: () -> Unit,
 ) {
     var state by remember { mutableStateOf<ScreenState>(ScreenState.Loading) }
-    var menuOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(creds.deviceToken, liveTick) {
         state = ScreenState.Loading
@@ -243,36 +303,6 @@ fun HarnessListScreen(
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = FontFamily.Monospace,
                         )
-                    }
-                },
-                actions = {
-                    Box {
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Menu")
-                        }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Activity") },
-                                onClick = {
-                                    menuOpen = false
-                                    onActivity()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Settings") },
-                                onClick = {
-                                    menuOpen = false
-                                    onSettings()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Forget device") },
-                                onClick = {
-                                    menuOpen = false
-                                    onForget()
-                                },
-                            )
-                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
