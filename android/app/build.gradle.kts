@@ -16,6 +16,18 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        // Phase 10g: Picovoice AccessKey. Empty when nobody's configured
+        // it locally — WakeWordEngine treats that as "wake word disabled".
+        // Set via android/local.properties:
+        //   PICOVOICE_ACCESS_KEY=<key from picovoice console>
+        val key = providers
+            .gradleProperty("PICOVOICE_ACCESS_KEY")
+            .getOrElse(System.getenv("PICOVOICE_ACCESS_KEY") ?: "")
+        buildConfigField("String", "PICOVOICE_ACCESS_KEY", "\"$key\"")
+    }
+    buildFeatures {
+        buildConfig = true
+        compose = true
     }
 
     buildTypes {
@@ -37,9 +49,6 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
-    }
-    buildFeatures {
-        compose = true
     }
     sourceSets["main"].kotlin {
         srcDirs("src/main/kotlin")
@@ -81,6 +90,12 @@ dependencies {
 
     // Phase 6b.2: WireGuard tunnel binding (zx2c4 official Android lib).
     implementation("com.wireguard.android:tunnel:1.0.20230706")
+
+    // Phase 10g: Picovoice Porcupine for "hey papercup" wake word.
+    // Engine is dormant unless PICOVOICE_ACCESS_KEY is set in
+    // android/local.properties (or BuildConfig.PICOVOICE_ACCESS_KEY at
+    // build time); WakeWordEngine.kt early-returns otherwise.
+    implementation("ai.picovoice:porcupine-android:3.0.1")
 
     // Phase 5a: Firebase Cloud Messaging for push notifications.
     implementation(platform("com.google.firebase:firebase-bom:33.6.0"))

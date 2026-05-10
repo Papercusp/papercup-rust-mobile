@@ -162,6 +162,16 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
     val voice = remember(current.deviceToken) { VoiceManager(context, current) }
     DisposableEffect(current.deviceToken) { onDispose { voice.stop() } }
 
+    // Phase 10g: wake-word engine. No-op without PICOVOICE_ACCESS_KEY.
+    // Runs only while voice is idle so SpeechRecognizer doesn't fight
+    // Porcupine over the mic.
+    val voiceState by voice.state.collectAsState()
+    val wakeWord = remember(current.deviceToken) { WakeWordEngine(context) { voice.start() } }
+    DisposableEffect(current.deviceToken) { onDispose { wakeWord.stop() } }
+    LaunchedEffect(voiceState, current.deviceToken) {
+        if (voiceState is VoiceManager.State.Idle) wakeWord.start() else wakeWord.stop()
+    }
+
     val onForget = remember<() -> Unit>(store) {
         {
             store.clear()
