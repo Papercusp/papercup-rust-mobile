@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.tasks.await
 import androidx.compose.foundation.layout.*
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,6 +60,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runtime.MutableState<String?>) {
+    val context = LocalContext.current
     var creds by remember { mutableStateOf(store.load()) }
     var route by remember { mutableStateOf<Route>(Route.List) }
     var liveTick by remember { mutableStateOf(0) }
@@ -141,11 +144,15 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         }
     }
 
+    val voice = remember(current.deviceToken) { VoiceManager(context, current) }
+    DisposableEffect(current.deviceToken) { onDispose { voice.stop() } }
+
     when (val r = route) {
         Route.List -> HarnessListScreen(
             creds = current,
             liveTick = liveTick,
             lastInvalidate = lastInvalidate,
+            voice = voice,
             onSelect = { slug -> route = Route.Detail(slug) },
             onSettings = { route = Route.Settings },
             onActivity = { route = Route.Activity },
@@ -196,6 +203,7 @@ fun HarnessListScreen(
     creds: DeviceCredentials,
     liveTick: Int,
     lastInvalidate: String?,
+    voice: VoiceManager,
     onSelect: (String) -> Unit,
     onSettings: () -> Unit,
     onActivity: () -> Unit,
@@ -217,6 +225,7 @@ fun HarnessListScreen(
     }
 
     Scaffold(
+        floatingActionButton = { VoiceFab(voice) },
         topBar = {
             TopAppBar(
                 title = {
@@ -338,6 +347,51 @@ fun HarnessListScreen(
             }
         }
     }
+}
+
+@Composable
+private fun VoiceFab(voice: VoiceManager) {
+    val state by voice.state.collectAsState()
+    val context = LocalContext.current
+    var pendingStart by remember { mutableStateOf(false) }
+
+    val micLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted && pendingStart) voice.start()
+        pendingStart = false
+    }
+
+    val (label, container) = when (state) {
+        is VoiceManager.State.Idle -> "Voice" to MaterialTheme.colorScheme.primaryContainer
+        is VoiceManager.State.Connecting -> "Connecting" to MaterialTheme.colorScheme.surfaceVariant
+        is VoiceManager.State.Listening -> "Listening" to MaterialTheme.colorScheme.tertiaryContainer
+        is VoiceManager.State.Speaking -> {
+            val s = state as VoiceManager.State.Speaking
+            "Speaking · ${s.source}" to MaterialTheme.colorScheme.secondaryContainer
+        }
+        is VoiceManager.State.Failed -> "Voice (failed)" to MaterialTheme.colorScheme.errorContainer
+    }
+
+    ExtendedFloatingActionButton(
+        onClick = {
+            if (state is VoiceManager.State.Idle || state is VoiceManager.State.Failed) {
+                if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    voice.start()
+                } else {
+                    pendingStart = true
+                    micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                }
+            } else {
+                voice.stop()
+            }
+        },
+        icon = { Icon(Icons.Default.Mic, contentDescription = "Voice") },
+        text = { Text(label) },
+        containerColor = container,
+    )
 }
 
 @Composable

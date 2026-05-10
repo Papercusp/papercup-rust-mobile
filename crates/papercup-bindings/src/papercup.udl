@@ -40,6 +40,48 @@ enum SyncError {
     "Closed",
 };
 
+[Error]
+enum VoiceError {
+    "Connect",
+    "Closed",
+};
+
+enum VoiceStatus {
+    "Idle",
+    "Connecting",
+    "Listening",
+    "Speaking",
+    "Paused",
+};
+
+[Enum]
+interface VoiceEvent {
+    Connected();
+    Speak(string text, string source, string? agent_id, string? format);
+    Closed(u16 code, string reason);
+};
+
+interface VoiceClient {
+    /// Open a WebSocket to `<base_url>/api/mobile/voice` with bearer
+    /// subprotocol auth + auto-reconnect with exp backoff. Phone does
+    /// STT + TTS locally; this client only carries protocol frames.
+    constructor(string base_url, string device_token, string? wake_word);
+
+    [Throws=VoiceError, Async]
+    VoiceEvent next_event();
+
+    [Async]
+    void send_status(VoiceStatus status);
+
+    [Async]
+    void send_transcript(string text);
+
+    [Async]
+    void send_hello(string wake_word);
+
+    void disconnect();
+};
+
 dictionary Harness {
     string slug;
     string path;
@@ -190,6 +232,16 @@ interface OperatorClient {
     /// Set or clear the global pause flag; returns the new value.
     [Throws=ApiError, Async]
     boolean pause_set(boolean paused);
+
+    /// Voice lease (Stage 2.13). Phone always pre-empts on claim.
+    [Throws=ApiError, Async]
+    void voice_lease_claim();
+
+    [Throws=ApiError, Async]
+    void voice_lease_heartbeat();
+
+    [Throws=ApiError, Async]
+    void voice_lease_release();
 
     /// `GET /api/mobile/notifications/recent`.
     [Throws=ApiError, Async]

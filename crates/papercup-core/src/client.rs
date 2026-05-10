@@ -120,6 +120,68 @@ impl OperatorClient {
             .map_err(|e| ApiError::Decode(e.to_string()))
     }
 
+    /// `POST /api/mobile/voice-lease/claim` — phone always pre-empts.
+    /// 12-second TTL server-side; refresh via `voice_lease_heartbeat`.
+    pub async fn voice_lease_claim(&self) -> Result<(), ApiError> {
+        self.bearer_post_empty("/api/mobile/voice-lease/claim").await
+    }
+
+    /// `POST /api/mobile/voice-lease/heartbeat` — refresh-if-mine; the
+    /// server returns 409 if another owner holds the lease (the phone
+    /// then surfaces "you've been preempted" and stops listening).
+    pub async fn voice_lease_heartbeat(&self) -> Result<(), ApiError> {
+        self.bearer_post_empty("/api/mobile/voice-lease/heartbeat")
+            .await
+    }
+
+    /// `DELETE /api/mobile/voice-lease` — release-if-mine; idempotent.
+    pub async fn voice_lease_release(&self) -> Result<(), ApiError> {
+        let url = format!("{}/api/mobile/voice-lease", self.base_url);
+        self.bearer_delete_empty(&url).await
+    }
+
+    /// Helper for POST endpoints that take no body and return only `{ok:true}`.
+    async fn bearer_post_empty(&self, path: &str) -> Result<(), ApiError> {
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = self.http.post(&url);
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail: status.canonical_reason().unwrap_or("").to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    async fn bearer_delete_empty(&self, url: &str) -> Result<(), ApiError> {
+        let mut req = self.http.delete(url);
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail: status.canonical_reason().unwrap_or("").to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// `POST /api/mobile/heartbeat` — bumps `last_seen` server-side so
     /// the desktop's "is the phone connected" badge stays fresh. Cheap;
     /// safe to call every minute while foregrounded.

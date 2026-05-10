@@ -16,6 +16,7 @@ pub mod client;
 pub mod mesh;
 pub mod sync;
 pub mod types;
+pub mod voice;
 
 /// The crate version, as compiled in. Returned to the platform UI as
 /// the world's smallest "is the bridge wired?" check. Still useful in

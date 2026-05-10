@@ -7,6 +7,10 @@ use papercup_core::mesh::{
     generate_wg_keypair as core_keygen, to_wg_quick as core_wgq, MeshSpec, WgKeyPair as CoreKp,
 };
 use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
+use papercup_core::voice::{
+    VoiceClient as CoreVoice, VoiceError as CoreVoiceError, VoiceEvent as CoreVoiceEvent,
+    VoiceStatus as CoreVoiceStatus,
+};
 use papercup_core::types::{
     AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
     PauseInfo as CorePauseInfo, PushRegisterBody, ToastRow as CoreToast,
@@ -364,6 +368,105 @@ impl SyncStream {
     }
 }
 
+// ── voice ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, thiserror::Error)]
+pub enum VoiceError {
+    #[error("connect failed")]
+    Connect,
+    #[error("stream closed")]
+    Closed,
+}
+
+impl From<CoreVoiceError> for VoiceError {
+    fn from(e: CoreVoiceError) -> Self {
+        match e {
+            CoreVoiceError::Connect(_) => VoiceError::Connect,
+            CoreVoiceError::Closed => VoiceError::Closed,
+        }
+    }
+}
+
+pub enum VoiceStatus {
+    Idle,
+    Connecting,
+    Listening,
+    Speaking,
+    Paused,
+}
+
+impl From<VoiceStatus> for CoreVoiceStatus {
+    fn from(s: VoiceStatus) -> Self {
+        match s {
+            VoiceStatus::Idle => CoreVoiceStatus::Idle,
+            VoiceStatus::Connecting => CoreVoiceStatus::Connecting,
+            VoiceStatus::Listening => CoreVoiceStatus::Listening,
+            VoiceStatus::Speaking => CoreVoiceStatus::Speaking,
+            VoiceStatus::Paused => CoreVoiceStatus::Paused,
+        }
+    }
+}
+
+pub enum VoiceEvent {
+    Connected,
+    Speak {
+        text: String,
+        source: String,
+        agent_id: Option<String>,
+        format: Option<String>,
+    },
+    Closed {
+        code: u16,
+        reason: String,
+    },
+}
+
+impl From<CoreVoiceEvent> for VoiceEvent {
+    fn from(e: CoreVoiceEvent) -> Self {
+        match e {
+            CoreVoiceEvent::Connected => VoiceEvent::Connected,
+            CoreVoiceEvent::Speak { text, source, agent_id, format } => {
+                VoiceEvent::Speak { text, source, agent_id, format }
+            }
+            CoreVoiceEvent::Closed { code, reason } => VoiceEvent::Closed { code, reason },
+        }
+    }
+}
+
+pub struct VoiceClient {
+    inner: CoreVoice,
+}
+
+impl VoiceClient {
+    pub fn new(base_url: String, device_token: String, wake_word: Option<String>) -> Self {
+        let _g = rt().enter();
+        Self {
+            inner: CoreVoice::connect(&base_url, &device_token, wake_word.as_deref()),
+        }
+    }
+
+    pub async fn next_event(&self) -> Result<VoiceEvent, VoiceError> {
+        let ev = self.inner.next_event().await?;
+        Ok(ev.into())
+    }
+
+    pub async fn send_status(&self, status: VoiceStatus) {
+        self.inner.send_status(status.into()).await;
+    }
+
+    pub async fn send_transcript(&self, text: String) {
+        self.inner.send_transcript(text).await;
+    }
+
+    pub async fn send_hello(&self, wake_word: String) {
+        self.inner.send_hello(wake_word).await;
+    }
+
+    pub fn disconnect(&self) {
+        self.inner.close();
+    }
+}
+
 // ── OperatorClient ──────────────────────────────────────────────────────
 
 fn rt() -> &'static tokio::runtime::Runtime {
@@ -442,6 +545,33 @@ impl OperatorClient {
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(p)
+    }
+
+    pub async fn voice_lease_claim(&self) -> Result<(), ApiError> {
+        let core = self.inner.clone();
+        rt()
+            .spawn(async move { core.voice_lease_claim().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(())
+    }
+
+    pub async fn voice_lease_heartbeat(&self) -> Result<(), ApiError> {
+        let core = self.inner.clone();
+        rt()
+            .spawn(async move { core.voice_lease_heartbeat().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(())
+    }
+
+    pub async fn voice_lease_release(&self) -> Result<(), ApiError> {
+        let core = self.inner.clone();
+        rt()
+            .spawn(async move { core.voice_lease_release().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(())
     }
 
     pub async fn recent_notifications(&self) -> Result<Vec<Toast>, ApiError> {
