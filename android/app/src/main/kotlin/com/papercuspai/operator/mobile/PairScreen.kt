@@ -30,6 +30,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
+import java.util.concurrent.Executors
 import kotlinx.coroutines.launch
 import uniffi.papercup.OperatorClient
 import uniffi.papercup.PairException
@@ -228,11 +229,16 @@ private fun CameraPreview(
 
     DisposableEffect(lifecycleOwner) {
         controller.bindToLifecycle(lifecycleOwner)
-        val executor = ContextCompat.getMainExecutor(context)
+        // Background executor — running ML Kit analysis on the main
+        // thread freezes the UI and trips ANR ("Activity top resumed
+        // state loss timeout"). Single thread is fine; one frame at a
+        // time is plenty for QR.
+        val analysisExecutor = Executors.newSingleThreadExecutor()
+        val mainExecutor = ContextCompat.getMainExecutor(context)
         controller.setImageAnalysisAnalyzer(
-            executor,
+            analysisExecutor,
             // 0 = original (sensor) coordinates; we don't need view-mapped boxes for QR detect.
-            MlKitAnalyzer(listOf(scanner), 0, executor) { result ->
+            MlKitAnalyzer(listOf(scanner), 0, mainExecutor) { result ->
                 if (consumed || !enabled) return@MlKitAnalyzer
                 val barcode = result.getValue(scanner)?.firstOrNull() ?: return@MlKitAnalyzer
                 val raw = barcode.rawValue ?: return@MlKitAnalyzer
@@ -247,6 +253,7 @@ private fun CameraPreview(
         )
         onDispose {
             controller.unbind()
+            analysisExecutor.shutdown()
             scanner.close()
         }
     }
