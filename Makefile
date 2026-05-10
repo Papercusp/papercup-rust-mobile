@@ -38,9 +38,12 @@ bindings-swift:
 
 build-android: bindings-kotlin
 	tools/build-scripts/build-android.sh
+	tools/build-scripts/install-and-launch.sh
 
 install-android: build-android
-	cd android && ./gradlew installDebug
+	# build-android already installs + launches on every adb device
+	# (physical + emulator) via install-and-launch.sh. Kept as an alias.
+	@true
 
 build-ios: bindings-swift
 	tools/build-scripts/build-ios.sh
