@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 import AVFoundation
-import PapercupCore
 
 struct PairView: View {
     let onPaired: (DeviceCredentials) -> Void

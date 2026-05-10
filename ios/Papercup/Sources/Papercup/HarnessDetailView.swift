@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
-import PapercupCore
 
 struct HarnessDetailView: View {
     let creds: DeviceCredentials

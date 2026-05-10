@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
-import PapercupCore
 
 /// Mirrors Android's `AppRoot`: routes between Pair / List / Detail and
 /// owns the long-lived SSE subscription so it survives navigation.
