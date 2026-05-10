@@ -50,6 +50,12 @@ class VoiceManager(
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
 
+    /// Microphone amplitude reported by SpeechRecognizer.onRmsChanged
+    /// while listening. Range observed in practice: ~-2.0 (silence) to
+    /// ~10 (loud); UI normalises to 0..1. Reset to 0 when not listening.
+    private val _micLevel = MutableStateFlow(0f)
+    val micLevel: StateFlow<Float> = _micLevel.asStateFlow()
+
     private var scope: CoroutineScope? = null
     private var voice: VoiceClient? = null
     private var recognizer: SpeechRecognizer? = null
@@ -103,6 +109,7 @@ class VoiceManager(
         try { voice?.disconnect() } catch (_: Throwable) {}
         try { voice?.close() } catch (_: Throwable) {}
         voice = null
+        _micLevel.value = 0f
         s.cancel()
         pumpJob = null
         heartbeatJob = null
@@ -181,7 +188,12 @@ class VoiceManager(
     private inner class SttListener : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {}
         override fun onBeginningOfSpeech() {}
-        override fun onRmsChanged(rmsdB: Float) {}
+        override fun onRmsChanged(rmsdB: Float) {
+            // Normalise to 0..1. SpeechRecognizer's rms is in dB and ranges
+            // roughly -2..10 across silence-to-loud on the Fold5; clamp.
+            val normalised = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
+            _micLevel.value = normalised
+        }
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
         override fun onPartialResults(partialResults: Bundle?) {}

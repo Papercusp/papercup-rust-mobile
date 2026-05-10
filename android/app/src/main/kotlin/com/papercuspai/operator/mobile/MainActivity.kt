@@ -32,6 +32,10 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -404,6 +408,7 @@ fun HarnessListScreen(
 @Composable
 private fun VoiceFab(voice: VoiceManager) {
     val state by voice.state.collectAsState()
+    val micLevel by voice.micLevel.collectAsState()
     val context = LocalContext.current
     var pendingStart by remember { mutableStateOf(false) }
 
@@ -423,28 +428,52 @@ private fun VoiceFab(voice: VoiceManager) {
         is VoiceManager.State.Failed -> Triple("Voice (failed)", PapercupColors.Error, PapercupColors.Ink)
     }
 
-    ExtendedFloatingActionButton(
-        onClick = {
-            if (current is VoiceManager.State.Idle || current is VoiceManager.State.Failed) {
-                if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)
-                    == android.content.pm.PackageManager.PERMISSION_GRANTED
-                ) {
-                    voice.start()
-                } else {
-                    pendingStart = true
-                    micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                }
-            } else {
-                voice.stop()
-            }
-        },
-        modifier = Modifier.border(1.dp, content.copy(alpha = 0.48f), RoundedCornerShape(999.dp)),
-        icon = { Icon(Icons.Default.Mic, contentDescription = "Voice") },
-        text = { Text(label) },
-        containerColor = container,
-        contentColor = content,
-        shape = RoundedCornerShape(999.dp),
+    val isListening = current is VoiceManager.State.Listening
+    val animatedLevel by animateFloatAsState(
+        targetValue = if (isListening) micLevel else 0f,
+        animationSpec = tween(durationMillis = 120),
+        label = "mic-level",
     )
+
+    val onTap: () -> Unit = {
+        if (current is VoiceManager.State.Idle || current is VoiceManager.State.Failed) {
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                voice.start()
+            } else {
+                pendingStart = true
+                micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+            }
+        } else {
+            voice.stop()
+        }
+    }
+
+    Box(contentAlignment = Alignment.Center) {
+        // Mic-amplitude halo behind the FAB. Radius + alpha scale with
+        // the normalised rms reported by SpeechRecognizer.onRmsChanged.
+        // Invisible at idle/silent.
+        if (animatedLevel > 0.01f) {
+            Box(
+                modifier = Modifier
+                    .size((72 + (animatedLevel * 56)).dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        content.copy(alpha = 0.10f + 0.20f * animatedLevel),
+                    ),
+            )
+        }
+        ExtendedFloatingActionButton(
+            onClick = onTap,
+            modifier = Modifier.border(1.dp, content.copy(alpha = 0.48f), RoundedCornerShape(999.dp)),
+            icon = { Icon(Icons.Default.Mic, contentDescription = "Voice") },
+            text = { Text(label) },
+            containerColor = container,
+            contentColor = content,
+            shape = RoundedCornerShape(999.dp),
+        )
+    }
 }
 
 @Composable
