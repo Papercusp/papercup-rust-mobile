@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# UniFFI bindings config. Tells the generator that our cdylib is named
+# `papercup` (not the `uniffi_papercup` default), matching
+# `[lib] name = "papercup"` in Cargo.toml. Without this, Kotlin emits
+# System.loadLibrary("uniffi_papercup") and crashes on launch with
+# UnsatisfiedLinkError.
+
+[bindings.kotlin]
+cdylib_name = "papercup"
+package_name = "uniffi.papercup"
+
+[bindings.swift]
+cdylib_name = "papercup"
