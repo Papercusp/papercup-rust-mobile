@@ -12,9 +12,13 @@ import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import com.papercuspai.operator.mobile.theme.PapercupCameraShape
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,21 +87,19 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(20.dp),
+        modifier = Modifier.fillMaxSize().background(PapercupColors.ScreenGradient).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Pair this device", style = MaterialTheme.typography.headlineMedium)
-        Text(
+        Text("Pair this device", style = MaterialTheme.typography.headlineMedium, color = PapercupColors.Text)
+        PapercupMetaText(
             "Open the desktop operator at /settings/mobile, mint a pair token, " +
                 "and either scan the QR or paste the payload below.",
-            style = MaterialTheme.typography.bodyMedium,
         )
         error?.let {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+            PapercupCard(accent = PapercupColors.ErrorSoft) {
                 Text(
                     it,
-                    modifier = Modifier.padding(12.dp),
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    color = PapercupColors.Error,
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -109,6 +111,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                 Button(
                     onClick = { mode = PairMode.Scan },
                     modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PapercupColors.Accent),
                 ) { Text("Scan QR code") }
                 OutlinedButton(
                     onClick = { mode = PairMode.Paste },
@@ -189,7 +192,8 @@ private fun ScanPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(360.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(PapercupCameraShape)
+                .border(1.dp, PapercupColors.Accent.copy(alpha = 0.45f), PapercupCameraShape)
                 .background(Color.Black),
         ) {
             CameraPreview(

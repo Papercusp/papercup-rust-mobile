@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Compose draws everything; the platform theme just needs to be a
-         no-action-bar variant so we don't get a chrome bar above the app. -->
-    <style name="Theme.Papercup" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Compose draws the app chrome; the platform theme provides the dark
+         launch window so startup matches the native Papercup surface. -->
+    <style name="Theme.Papercup" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#050812</item>
+        <item name="android:navigationBarColor">#050812</item>
+        <item name="android:statusBarColor">#050812</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="Theme.Papercup.Starting" parent="Theme.Papercup" />
 </resources>

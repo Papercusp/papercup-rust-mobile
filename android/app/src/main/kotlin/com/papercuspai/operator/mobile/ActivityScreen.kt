@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.papercuspai.operator.mobile
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupPanel
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
@@ -63,15 +68,21 @@ fun ActivityScreen(
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = PapercupColors.InkRaised,
+                        titleContentColor = PapercupColors.Text,
+                        navigationIconContentColor = PapercupColors.Text,
+                    ),
                 )
-                TabRow(selectedTabIndex = tab) {
+                TabRow(selectedTabIndex = tab, containerColor = PapercupColors.InkRaised, contentColor = PapercupColors.Accent) {
                     Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Notifications") })
                     Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Actions") })
                 }
             }
         },
+        containerColor = PapercupColors.Ink,
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+        Box(Modifier.padding(padding).fillMaxSize().background(PapercupColors.ScreenGradient)) {
             when (val s = state) {
                 ActivityState.Loading -> Row(
                     Modifier.fillMaxWidth().padding(top = 32.dp),
@@ -82,15 +93,10 @@ fun ActivityScreen(
                 is ActivityState.Failed -> Box(
                     Modifier.fillMaxSize().padding(16.dp),
                 ) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                        ),
-                    ) {
+                    PapercupCard(accent = PapercupColors.ErrorSoft) {
                         Text(
                             s.message,
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            color = PapercupColors.Error,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -128,9 +134,9 @@ private fun ToastCard(t: ToastEntry, onSelectHarness: (String) -> Unit) {
         "success" -> MaterialTheme.colorScheme.secondaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
-    Card(
+    PapercupCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = accent),
+        accent = accent,
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(
@@ -139,7 +145,7 @@ private fun ToastCard(t: ToastEntry, onSelectHarness: (String) -> Unit) {
                 verticalAlignment = Alignment.Top,
             ) {
                 Text(t.message, style = MaterialTheme.typography.titleSmall)
-                AssistChip(onClick = {}, label = { Text(t.level) })
+                PapercupStatusChip(text = t.level, containerColor = accent, contentColor = PapercupColors.Text)
             }
             t.description?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(4.dp))
@@ -151,11 +157,7 @@ private fun ToastCard(t: ToastEntry, onSelectHarness: (String) -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    formatTs(t.createdAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = FontFamily.Monospace,
-                )
+                PapercupMetaText(formatTs(t.createdAt), monospace = true)
                 t.harnessSlug?.let { slug ->
                     TextButton(onClick = { onSelectHarness(slug) }) { Text(slug) }
                 }
@@ -181,7 +183,7 @@ private fun AuditList(entries: List<AuditEntry>, onSelectHarness: (String) -> Un
 
 @Composable
 private fun AuditCard(e: AuditEntry, onSelectHarness: (String) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    PapercupPanel(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -189,11 +191,7 @@ private fun AuditCard(e: AuditEntry, onSelectHarness: (String) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(e.action, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    formatTs(e.ts),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = FontFamily.Monospace,
-                )
+                PapercupMetaText(formatTs(e.ts), monospace = true)
             }
             Text("by ${e.actor}", style = MaterialTheme.typography.bodySmall)
             Row(
@@ -201,11 +199,10 @@ private fun AuditCard(e: AuditEntry, onSelectHarness: (String) -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
+                PapercupMetaText(
                     e.subject,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = Color.Gray,
+                    monospace = true,
+                    modifier = Modifier.weight(1f),
                 )
                 // Subjects often look like "harness:<slug>" or "harness:<slug>:..."
                 val slug = e.subject
@@ -223,7 +220,7 @@ private fun AuditCard(e: AuditEntry, onSelectHarness: (String) -> Unit) {
 @Composable
 private fun EmptyState(text: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text, style = MaterialTheme.typography.bodyMedium)
+        PapercupMetaText(text)
     }
 }
 
