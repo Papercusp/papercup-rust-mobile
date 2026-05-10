@@ -124,9 +124,15 @@ private fun StatusCards(s: HarnessStatus) {
 
 @Composable
 private fun HeaderCard(s: HarnessStatus) {
+    val derivedStatus = when {
+        s.escalated -> "escalated"
+        s.smokeFail -> "smoke fail"
+        s.alive -> "alive"
+        else -> "idle"
+    }
     PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PapercupCardHeader("Harness status", meta = s.status.ifBlank { "idle" })
+            PapercupCardHeader("Harness status", meta = derivedStatus)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
