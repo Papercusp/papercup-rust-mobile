@@ -1,24 +1,63 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.papercuspai.operator.mobile
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.launch
+import uniffi.papercup.ApiException
+import uniffi.papercup.Harness
+import uniffi.papercup.OperatorClient
+import uniffi.papercup.Toast as ToastEntry
+import uniffi.papercup.VoiceLease
 
-/// Landing/home surface — Tauri parity stub. Iteration 1 just shows
-/// identity + pause status; real content (recent runs, voice status,
-/// quick actions) lands in subsequent commits.
+/// Tauri-parity landing surface. Aggregates the things you'd want at
+/// a glance — pause status, current voice lease holder, top recent
+/// harnesses, and the most recent operator notifications. Each card
+/// taps through to the appropriate full-tab view.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OperatorScreen(
     creds: DeviceCredentials,
     voice: VoiceManager,
     liveTick: Int,
+    onSelectHarness: (String) -> Unit,
 ) {
+    var paused by remember { mutableStateOf<Boolean?>(null) }
+    var lease by remember { mutableStateOf<VoiceLease?>(null) }
+    var leaseUnknown by remember { mutableStateOf(true) }
+    var harnesses by remember { mutableStateOf<List<Harness>>(emptyList()) }
+    var toasts by remember { mutableStateOf<List<ToastEntry>>(emptyList()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(creds.deviceToken, liveTick) {
+        try {
+            val client = OperatorClient(creds.server, creds.deviceToken)
+            paused = client.pauseGet().paused
+            lease = client.voiceLeaseGet()
+            leaseUnknown = false
+            harnesses = client.listHarnesses()
+                .sortedByDescending { it.lastActiveTs ?: Long.MIN_VALUE }
+            toasts = client.recentNotifications()
+            error = null
+        } catch (e: ApiException) {
+            error = "API: ${e::class.simpleName}: ${e.message ?: ""}"
+        } catch (t: Throwable) {
+            error = "Unexpected: ${t::class.simpleName}: ${t.message ?: ""}"
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -36,28 +75,188 @@ fun OperatorScreen(
         },
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Spacer(Modifier.height(12.dp))
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("This device", style = MaterialTheme.typography.titleSmall)
-                    KvLine("workspace", creds.workspaceId)
-                    KvLine("device", creds.deviceId.take(12) + "…")
-                    creds.meshAssignedIp?.let { KvLine("mesh", it) }
+            Spacer(Modifier.height(8.dp))
+            error?.let { ErrorCard(it) }
+
+            // Pause + voice-lease status row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PauseCard(
+                    paused = paused,
+                    onToggle = { target ->
+                        scope.launch {
+                            try {
+                                paused = OperatorClient(creds.server, creds.deviceToken).pauseSet(target)
+                            } catch (_: Throwable) {}
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                VoiceLeaseCard(
+                    lease = lease,
+                    leaseUnknown = leaseUnknown,
+                    selfDeviceId = creds.deviceId,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            RecentHarnessesCard(harnesses, onSelectHarness)
+            RecentNotificationsCard(toasts, onSelectHarness)
+            IdentityCard(creds)
+        }
+    }
+}
+
+@Composable
+private fun ErrorCard(message: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+        Text(
+            message,
+            modifier = Modifier.padding(12.dp),
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun PauseCard(
+    paused: Boolean?,
+    onToggle: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isPaused = paused == true
+    Card(
+        modifier = modifier.clickable(enabled = paused != null) { onToggle(!isPaused) },
+        colors = if (isPaused) {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+        } else {
+            CardDefaults.cardColors()
+        },
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Operator", style = MaterialTheme.typography.labelSmall)
+            Text(
+                when (paused) {
+                    true -> "PAUSED"
+                    false -> "RUNNING"
+                    null -> "…"
+                },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                "tap to ${if (isPaused) "resume" else "pause"}",
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun VoiceLeaseCard(
+    lease: VoiceLease?,
+    leaseUnknown: Boolean,
+    selfDeviceId: String,
+    modifier: Modifier = Modifier,
+) {
+    val (label, sub) = when {
+        leaseUnknown -> "…" to ""
+        lease == null -> "IDLE" to "no listener"
+        lease.ownerId == selfDeviceId -> "THIS PHONE" to "active listener"
+        lease.ownerKind == "mobile" -> "OTHER PHONE" to lease.ownerId.take(8) + "…"
+        else -> "DESKTOP" to lease.ownerId.take(8) + "…"
+    }
+    Card(modifier = modifier) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Voice", style = MaterialTheme.typography.labelSmall)
+            Text(label, style = MaterialTheme.typography.titleMedium)
+            Text(sub, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun RecentHarnessesCard(harnesses: List<Harness>, onSelect: (String) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Recent harnesses", style = MaterialTheme.typography.titleSmall)
+            if (harnesses.isEmpty()) {
+                Text("No harnesses yet", style = MaterialTheme.typography.bodySmall)
+            } else {
+                harnesses.take(5).forEach { h ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(h.slug) }.padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                            Text(h.slug, style = MaterialTheme.typography.bodyMedium)
+                            val meta = buildList {
+                                h.harnessKind?.let { add("kind=$it") }
+                                h.iteration?.let { add("iter=$it") }
+                                if (!h.hasState) add("no-state")
+                            }.joinToString(" · ")
+                            if (meta.isNotEmpty()) {
+                                Text(meta, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        h.status?.let { AssistChip(onClick = {}, label = { Text(it) }) }
+                    }
                 }
             }
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Coming soon", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "Live run summary, voice lease state, quick actions, and " +
-                            "recent activity preview will land here.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+        }
+    }
+}
+
+@Composable
+private fun RecentNotificationsCard(toasts: List<ToastEntry>, onSelectHarness: (String) -> Unit) {
+    if (toasts.isEmpty()) return
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Recent activity", style = MaterialTheme.typography.titleSmall)
+            toasts.take(3).forEach { t ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .let { mod ->
+                            t.harnessSlug?.let { slug -> mod.clickable { onSelectHarness(slug) } } ?: mod
+                        },
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(t.message, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            FMT.format(Date(t.createdAt * 1000)),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    t.harnessSlug?.let {
+                        Text(it, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun IdentityCard(creds: DeviceCredentials) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("This device", style = MaterialTheme.typography.titleSmall)
+            KvLine("workspace", creds.workspaceId)
+            KvLine("device", creds.deviceId.take(12) + "…")
+            creds.meshAssignedIp?.let { KvLine("mesh", it) }
         }
     }
 }
@@ -73,3 +272,5 @@ private fun KvLine(key: String, value: String) {
         Text(value, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
     }
 }
+
+private val FMT = SimpleDateFormat("MMM d HH:mm", Locale.US)

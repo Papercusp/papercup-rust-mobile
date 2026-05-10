@@ -227,6 +227,7 @@ private fun PairedShell(
                     creds = current,
                     voice = voice,
                     liveTick = liveTick,
+                    onSelectHarness = onSelectHarness,
                 )
                 Route.List -> HarnessListScreen(
                     creds = current,

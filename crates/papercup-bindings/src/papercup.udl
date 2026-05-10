@@ -150,6 +150,14 @@ dictionary PauseInfo {
     string? by;
 };
 
+dictionary VoiceLease {
+    string workspace_id;
+    string owner_id;
+    /// "desktop" | "mobile"
+    string owner_kind;
+    i64 expires_at_ms;
+};
+
 dictionary Toast {
     i64 id;
     string level;
@@ -242,6 +250,10 @@ interface OperatorClient {
 
     [Throws=ApiError, Async]
     void voice_lease_release();
+
+    /// Returns the current lease holder, or null if nobody.
+    [Throws=ApiError, Async]
+    VoiceLease? voice_lease_get();
 
     /// `GET /api/mobile/notifications/recent`.
     [Throws=ApiError, Async]

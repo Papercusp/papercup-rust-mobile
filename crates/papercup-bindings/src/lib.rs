@@ -14,7 +14,7 @@ use papercup_core::voice::{
 use papercup_core::types::{
     AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
     PauseInfo as CorePauseInfo, PushRegisterBody, ToastRow as CoreToast,
-    WorkspaceItem as CoreWorkspace,
+    VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
 };
 
 uniffi::include_scaffolding!("papercup");
@@ -256,6 +256,24 @@ pub struct PauseInfo {
     pub paused: bool,
     pub at: Option<String>,
     pub by: Option<String>,
+}
+
+pub struct VoiceLease {
+    pub workspace_id: String,
+    pub owner_id: String,
+    pub owner_kind: String,
+    pub expires_at_ms: i64,
+}
+
+impl From<CoreVoiceLease> for VoiceLease {
+    fn from(v: CoreVoiceLease) -> Self {
+        Self {
+            workspace_id: v.workspace_id,
+            owner_id: v.owner_id,
+            owner_kind: v.owner_kind,
+            expires_at_ms: v.expires_at_ms,
+        }
+    }
 }
 
 impl From<CorePauseInfo> for PauseInfo {
@@ -572,6 +590,15 @@ impl OperatorClient {
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(())
+    }
+
+    pub async fn voice_lease_get(&self) -> Result<Option<VoiceLease>, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.voice_lease_get().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(result.map(VoiceLease::from))
     }
 
     pub async fn recent_notifications(&self) -> Result<Vec<Toast>, ApiError> {

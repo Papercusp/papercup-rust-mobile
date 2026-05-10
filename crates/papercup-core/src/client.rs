@@ -13,8 +13,8 @@
 
 use crate::types::{
     AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
-    ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, ToastRow, ToastsResp, WorkspaceItem,
-    WorkspacesResp,
+    ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, ToastRow, ToastsResp,
+    VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem, WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -118,6 +118,13 @@ impl OperatorClient {
         resp.json::<HarnessStatusFull>()
             .await
             .map_err(|e| ApiError::Decode(e.to_string()))
+    }
+
+    /// `GET /api/mobile/voice-lease` — current lease holder (or `None`
+    /// if no one is listening).
+    pub async fn voice_lease_get(&self) -> Result<Option<VoiceLeaseShape>, ApiError> {
+        let url = format!("{}/api/mobile/voice-lease", self.base_url);
+        self.bearer_get_json::<VoiceLeaseRead>(&url).await.map(|r| r.lease)
     }
 
     /// `POST /api/mobile/voice-lease/claim` — phone always pre-empts.

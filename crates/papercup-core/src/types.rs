@@ -107,6 +107,24 @@ pub struct AuditRow {
     pub details: serde_json::Value,
 }
 
+// ── /api/mobile/voice-lease ────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceLeaseRead {
+    #[serde(default)]
+    pub lease: Option<VoiceLeaseShape>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceLeaseShape {
+    pub workspace_id: String,
+    pub owner_id: String,
+    /// "desktop" | "mobile"
+    pub owner_kind: String,
+    pub expires_at_ms: i64,
+}
+
 // ── /api/mobile/operator/pause ─────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
