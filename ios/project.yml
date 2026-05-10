@@ -35,6 +35,7 @@ targets:
     platform: iOS
     sources:
       - path: Papercup/Sources
+      - path: Papercup/Resources
       - path: PapercupCore/papercup.swift
         compilerFlags:
           - -suppress-warnings
@@ -47,6 +48,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.papercuspai.operator.mobile
         FRAMEWORK_SEARCH_PATHS: $(SRCROOT)
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/Frameworks"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
 schemes:
   Papercup:

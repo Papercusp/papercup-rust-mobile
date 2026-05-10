@@ -20,21 +20,25 @@ struct PairView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Pair this device").font(.title2.bold())
+                    Text("Pair this device")
+                        .font(.title2.bold())
+                        .foregroundStyle(PapercupTheme.text)
                     Text(
                         "Open the desktop operator at /settings/mobile, mint a pair token, " +
                         "and either scan the QR or paste the payload below."
                     )
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PapercupTheme.textMuted)
                 }
+                .papercupCardRow()
 
                 if let error {
                     Section {
                         Text(error)
                             .font(.footnote.monospaced())
-                            .foregroundStyle(.red)
+                            .foregroundStyle(PapercupTheme.error)
                     }
+                    .papercupCardRow(accent: PapercupTheme.error.opacity(0.14))
                 }
 
                 switch mode {
@@ -45,19 +49,25 @@ struct PairView: View {
                         Button("Paste payload") { mode = .paste }
                             .buttonStyle(.bordered)
                     }
+                    .papercupCardRow()
                 case .scan:
                     Section {
                         QRScannerView(disabled: redeeming) { raw in redeem(raw: raw) }
                             .frame(height: 360)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(PapercupTheme.accent.opacity(0.45), lineWidth: 1))
                         Button("Back") { mode = .choose }
                     }
+                    .papercupCardRow()
                 case .paste:
                     Section {
                         TextEditor(text: $pasteText)
                             .frame(minHeight: 120)
                             .font(.footnote.monospaced())
                             .disabled(redeeming)
+                            .scrollContentBackground(.hidden)
+                            .padding(8)
+                            .background(PapercupTheme.inkRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         HStack {
                             Button("Back") { mode = .choose }
                             Spacer()
@@ -66,6 +76,7 @@ struct PairView: View {
                                 .disabled(redeeming || pasteText.isEmpty)
                         }
                     }
+                    .papercupCardRow()
                 }
 
                 if redeeming {
@@ -75,8 +86,11 @@ struct PairView: View {
                             Text("Redeeming…").font(.footnote)
                         }
                     }
+                    .papercupCardRow(accent: PapercupTheme.info.opacity(0.10))
                 }
             }
+            .papercupScreenChrome()
+            .navigationTitle("Mobile access")
         }
     }
 
