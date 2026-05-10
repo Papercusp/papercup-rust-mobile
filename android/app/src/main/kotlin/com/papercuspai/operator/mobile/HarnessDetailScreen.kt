@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.papercuspai.operator.mobile
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupPanel
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,12 +59,19 @@ fun HarnessDetailScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = PapercupColors.InkRaised,
+                    titleContentColor = PapercupColors.Text,
+                    navigationIconContentColor = PapercupColors.Text,
+                ),
             )
         },
+        containerColor = PapercupColors.Ink,
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(PapercupColors.ScreenGradient)
                 .padding(padding)
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
@@ -73,15 +86,10 @@ fun HarnessDetailScreen(
                     }
                 }
                 is DetailState.Failed -> {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                        ),
-                    ) {
+                    PapercupCard(accent = PapercupColors.ErrorSoft) {
                         Text(
                             s.message,
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            color = PapercupColors.Error,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -103,7 +111,7 @@ private fun StatusCards(s: HarnessStatus) {
 
 @Composable
 private fun HeaderCard(s: HarnessStatus) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    PapercupCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -115,11 +123,7 @@ private fun HeaderCard(s: HarnessStatus) {
             }
             if (s.path.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    s.path,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
+                PapercupMetaText(s.path, monospace = true)
             }
             Spacer(Modifier.height(8.dp))
             KeyValue("iteration", s.iteration.toString())
@@ -135,23 +139,23 @@ private fun HeaderCard(s: HarnessStatus) {
 @Composable
 private fun StatusChips(s: HarnessStatus) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        AssistChip(onClick = {}, label = { Text(if (s.alive) "alive" else "idle") })
+        PapercupStatusChip(
+            text = if (s.alive) "alive" else "idle",
+            containerColor = if (s.alive) PapercupColors.SuccessSoft else PapercupColors.InfoSoft,
+            contentColor = if (s.alive) PapercupColors.Success else PapercupColors.Info,
+        )
         if (s.escalated) {
-            AssistChip(
-                onClick = {},
-                label = { Text("escalated") },
-                colors = AssistChipDefaults.assistChipColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                ),
+            PapercupStatusChip(
+                text = "escalated",
+                containerColor = PapercupColors.ErrorSoft,
+                contentColor = PapercupColors.Error,
             )
         }
         if (s.smokeFail) {
-            AssistChip(
-                onClick = {},
-                label = { Text("smoke fail") },
-                colors = AssistChipDefaults.assistChipColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                ),
+            PapercupStatusChip(
+                text = "smoke fail",
+                containerColor = PapercupColors.ErrorSoft,
+                contentColor = PapercupColors.Error,
             )
         }
     }
@@ -159,7 +163,7 @@ private fun StatusChips(s: HarnessStatus) {
 
 @Composable
 private fun MissionCard(s: HarnessStatus) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    PapercupPanel(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("Mission", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
@@ -172,7 +176,7 @@ private fun MissionCard(s: HarnessStatus) {
 
 @Composable
 private fun FeaturesCard(s: HarnessStatus) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    PapercupPanel(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("Features by status", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
@@ -185,7 +189,7 @@ private fun FeaturesCard(s: HarnessStatus) {
 
 @Composable
 private fun LastDecisionCard(text: String) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    PapercupPanel(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("Last decision", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
@@ -200,11 +204,7 @@ private fun KeyValue(key: String, value: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(key, style = MaterialTheme.typography.bodySmall)
-        Text(
-            value,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-        )
+        PapercupMetaText(key)
+        PapercupMetaText(value, monospace = true)
     }
 }

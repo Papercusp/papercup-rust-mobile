@@ -13,6 +13,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.tasks.await
+import com.papercuspai.operator.mobile.theme.PapercupTheme
+import androidx.compose.foundation.background
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,10 +50,8 @@ class MainActivity : ComponentActivity() {
         ensureNotificationChannel(applicationContext)
         deepLinkSlug.value = intent?.getStringExtra(EXTRA_DEEPLINK_SLUG)
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    AppRoot(store, deepLinkSlug)
-                }
+            PapercupTheme {
+                AppRoot(store, deepLinkSlug)
             }
         }
     }
@@ -268,12 +272,19 @@ fun HarnessListScreen(
                         }
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = PapercupColors.InkRaised,
+                    titleContentColor = PapercupColors.Text,
+                    actionIconContentColor = PapercupColors.Text,
+                ),
             )
         },
+        containerColor = PapercupColors.Ink,
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(PapercupColors.ScreenGradient)
                 .padding(padding)
                 .padding(horizontal = 16.dp),
         ) {
@@ -290,23 +301,18 @@ fun HarnessListScreen(
                     }
                 }
                 is ScreenState.Failed -> {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
+                    PapercupCard(accent = PapercupColors.ErrorSoft) {
+                        Column {
                             Text(
                                 "Couldn't load harnesses",
                                 style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                color = PapercupColors.Error,
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 s.message,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                color = PapercupColors.Error,
                                 fontFamily = FontFamily.Monospace,
                             )
                         }
@@ -327,14 +333,10 @@ fun HarnessListScreen(
                             creds.meshAssignedIp?.let { ip ->
                                 MeshButton(creds = creds, ip = ip)
                             }
-                            AssistChip(
-                                onClick = {},
-                                label = {
-                                    Text(
-                                        lastInvalidate?.let { "live · $it" } ?: "live",
-                                        style = MaterialTheme.typography.labelSmall,
-                                    )
-                                },
+                            PapercupStatusChip(
+                                text = lastInvalidate?.let { "live · $it" } ?: "live",
+                                containerColor = PapercupColors.InfoSoft,
+                                contentColor = PapercupColors.Info,
                             )
                         }
                     }
@@ -362,20 +364,18 @@ private fun VoiceFab(voice: VoiceManager) {
         pendingStart = false
     }
 
-    val (label, container) = when (state) {
-        is VoiceManager.State.Idle -> "Voice" to MaterialTheme.colorScheme.primaryContainer
-        is VoiceManager.State.Connecting -> "Connecting" to MaterialTheme.colorScheme.surfaceVariant
-        is VoiceManager.State.Listening -> "Listening" to MaterialTheme.colorScheme.tertiaryContainer
-        is VoiceManager.State.Speaking -> {
-            val s = state as VoiceManager.State.Speaking
-            "Speaking · ${s.source}" to MaterialTheme.colorScheme.secondaryContainer
-        }
-        is VoiceManager.State.Failed -> "Voice (failed)" to MaterialTheme.colorScheme.errorContainer
+    val current = state
+    val (label, container, content) = when (current) {
+        is VoiceManager.State.Idle -> Triple("Voice", PapercupColors.Accent, PapercupColors.Ink)
+        is VoiceManager.State.Connecting -> Triple("Connecting", PapercupColors.InfoSoft, PapercupColors.Info)
+        is VoiceManager.State.Listening -> Triple("Listening", PapercupColors.Warning, PapercupColors.Ink)
+        is VoiceManager.State.Speaking -> Triple("Speaking · ${current.source}", PapercupColors.Success, PapercupColors.Ink)
+        is VoiceManager.State.Failed -> Triple("Voice (failed)", PapercupColors.Error, PapercupColors.Ink)
     }
 
     ExtendedFloatingActionButton(
         onClick = {
-            if (state is VoiceManager.State.Idle || state is VoiceManager.State.Failed) {
+            if (current is VoiceManager.State.Idle || current is VoiceManager.State.Failed) {
                 if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)
                     == android.content.pm.PackageManager.PERMISSION_GRANTED
                 ) {
@@ -391,6 +391,7 @@ private fun VoiceFab(voice: VoiceManager) {
         icon = { Icon(Icons.Default.Mic, contentDescription = "Voice") },
         text = { Text(label) },
         containerColor = container,
+        contentColor = content,
     )
 }
 
@@ -406,9 +407,19 @@ private fun PauseButton(creds: DeviceCredentials, liveTick: Int) {
         } catch (_: Throwable) { /* keep last-known state */ }
     }
 
-    AssistChip(
+    val (containerColor, contentColor) = if (paused == true) {
+        PapercupColors.WarningSoft to PapercupColors.Warning
+    } else {
+        PapercupColors.SuccessSoft to PapercupColors.Success
+    }
+    PapercupStatusChip(
+        text = when (paused) {
+            true -> "paused"
+            false -> "running"
+            null -> "…"
+        },
         onClick = {
-            if (inflight) return@AssistChip
+            if (inflight) return@PapercupStatusChip
             val target = !(paused ?: false)
             inflight = true
             scope.launch {
@@ -420,21 +431,8 @@ private fun PauseButton(creds: DeviceCredentials, liveTick: Int) {
                 }
             }
         },
-        label = {
-            val label = when (paused) {
-                true -> "paused"
-                false -> "running"
-                null -> "…"
-            }
-            Text(label, style = MaterialTheme.typography.labelSmall)
-        },
-        colors = if (paused == true) {
-            AssistChipDefaults.assistChipColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-            )
-        } else {
-            AssistChipDefaults.assistChipColors()
-        },
+        containerColor = containerColor,
+        contentColor = contentColor,
     )
 }
 
@@ -456,9 +454,15 @@ private fun MeshButton(creds: DeviceCredentials, ip: String) {
     val isUp = tunnelState == com.wireguard.android.backend.Tunnel.State.UP
     val isToggling = tunnelState == com.wireguard.android.backend.Tunnel.State.TOGGLE
 
-    AssistChip(
+    val (label, containerColor, contentColor) = when {
+        isUp -> Triple("mesh ✓ $ip", PapercupColors.SuccessSoft, PapercupColors.Success)
+        isToggling -> Triple("mesh ⟳ $ip", PapercupColors.WarningSoft, PapercupColors.Warning)
+        else -> Triple("mesh · $ip", PapercupColors.AccentSoft, PapercupColors.AccentStrong)
+    }
+    PapercupStatusChip(
+        text = label,
         onClick = {
-            val cfg = creds.wgQuickConfig ?: return@AssistChip
+            val cfg = creds.wgQuickConfig ?: return@PapercupStatusChip
             if (isUp) {
                 MeshController.deactivate(context)
             } else {
@@ -471,20 +475,14 @@ private fun MeshButton(creds: DeviceCredentials, ip: String) {
                 }
             }
         },
-        label = {
-            val prefix = when {
-                isUp -> "mesh ✓"
-                isToggling -> "mesh ⟳"
-                else -> "mesh ·"
-            }
-            Text("$prefix $ip", style = MaterialTheme.typography.labelSmall)
-        },
+        containerColor = containerColor,
+        contentColor = contentColor,
     )
 }
 
 @Composable
 private fun HarnessRow(harness: Harness, onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    PapercupCard(modifier = Modifier.clickable(onClick = onClick)) {
         Column(Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -493,15 +491,11 @@ private fun HarnessRow(harness: Harness, onClick: () -> Unit) {
             ) {
                 Text(harness.slug, style = MaterialTheme.typography.titleMedium)
                 harness.status?.let { status ->
-                    AssistChip(onClick = {}, label = { Text(status) })
+                    PapercupStatusChip(text = status)
                 }
             }
             harness.path.takeIf { it.isNotBlank() }?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                )
+                PapercupMetaText(it, monospace = true)
             }
             val meta = buildList {
                 harness.harnessKind?.let { add("kind=$it") }
@@ -509,7 +503,7 @@ private fun HarnessRow(harness: Harness, onClick: () -> Unit) {
                 if (!harness.hasState) add("no-state")
             }.joinToString(" · ")
             if (meta.isNotEmpty()) {
-                Text(meta, style = MaterialTheme.typography.labelSmall)
+                PapercupMetaText(meta)
             }
         }
     }

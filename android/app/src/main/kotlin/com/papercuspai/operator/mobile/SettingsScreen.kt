@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.papercuspai.operator.mobile
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupPanel
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,12 +64,19 @@ fun SettingsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = PapercupColors.InkRaised,
+                    titleContentColor = PapercupColors.Text,
+                    navigationIconContentColor = PapercupColors.Text,
+                ),
             )
         },
+        containerColor = PapercupColors.Ink,
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .background(PapercupColors.ScreenGradient)
                 .padding(padding)
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -71,15 +84,10 @@ fun SettingsScreen(
         ) {
             error?.let {
                 item {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                        ),
-                    ) {
+                    PapercupCard(accent = PapercupColors.ErrorSoft) {
                         Text(
                             it,
-                            modifier = Modifier.padding(12.dp),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            color = PapercupColors.Error,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -92,22 +100,22 @@ fun SettingsScreen(
             }
 
             item {
-                Text("Workspaces", style = MaterialTheme.typography.titleSmall)
+                Text("Workspaces", style = MaterialTheme.typography.titleSmall, color = PapercupColors.Text)
             }
             val ws = workspaces
             if (ws == null) {
-                item { Text("Loading…", style = MaterialTheme.typography.bodySmall) }
+                item { PapercupMetaText("Loading…") }
             } else {
                 items(ws) { w -> WorkspaceRow(w) }
             }
 
             item {
                 Spacer(Modifier.height(4.dp))
-                Text("Paired devices", style = MaterialTheme.typography.titleSmall)
+                Text("Paired devices", style = MaterialTheme.typography.titleSmall, color = PapercupColors.Text)
             }
             val dv = devices
             if (dv == null) {
-                item { Text("Loading…", style = MaterialTheme.typography.bodySmall) }
+                item { PapercupMetaText("Loading…") }
             } else {
                 items(dv) { d ->
                     DeviceRowCard(
@@ -148,7 +156,7 @@ fun SettingsScreen(
 
 @Composable
 private fun IdentityCard(creds: DeviceCredentials) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    PapercupCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text("This device", style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
@@ -162,7 +170,7 @@ private fun IdentityCard(creds: DeviceCredentials) {
 
 @Composable
 private fun WorkspaceRow(w: Workspace) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    PapercupPanel(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(12.dp).fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -173,7 +181,7 @@ private fun WorkspaceRow(w: Workspace) {
                 Text(w.id, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
             }
             if (w.current) {
-                AssistChip(onClick = {}, label = { Text("current") })
+                PapercupStatusChip(text = "current", containerColor = PapercupColors.SuccessSoft, contentColor = PapercupColors.Success)
             }
         }
     }
@@ -181,7 +189,7 @@ private fun WorkspaceRow(w: Workspace) {
 
 @Composable
 private fun DeviceRowCard(device: Device, isSelf: Boolean, revoking: Boolean, onRevoke: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    PapercupPanel(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -192,7 +200,7 @@ private fun DeviceRowCard(device: Device, isSelf: Boolean, revoking: Boolean, on
                     device.deviceLabel ?: device.deviceId.take(12),
                     style = MaterialTheme.typography.titleSmall,
                 )
-                if (isSelf) AssistChip(onClick = {}, label = { Text("this phone") })
+                if (isSelf) PapercupStatusChip(text = "this phone", containerColor = PapercupColors.InfoSoft, contentColor = PapercupColors.Info)
             }
             device.lastSeen?.let { Kv("last seen", it) }
             device.pairedAt?.let { Kv("paired at", it) }
@@ -213,7 +221,7 @@ private fun Kv(key: String, value: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(key, style = MaterialTheme.typography.bodySmall)
-        Text(value, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        PapercupMetaText(key)
+        PapercupMetaText(value, monospace = true)
     }
 }
