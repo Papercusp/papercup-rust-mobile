@@ -112,8 +112,8 @@ struct PairView: View {
                 } else {
                     error = "Pair failed: \(err)"
                 }
-            } catch {
-                error = "Pair failed: \(error)"
+            } catch let e {
+                error = "Pair failed: \(e)"
             }
         }
     }
