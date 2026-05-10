@@ -97,6 +97,11 @@ dependencies {
     // build time); WakeWordEngine.kt early-returns otherwise.
     implementation("ai.picovoice:porcupine-android:3.0.1")
 
+    // Phase 11: OkHttp + okhttp-sse for the RunLog SSE tail of
+    // /api/harness/{slug}/log/stream.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
+
     // Phase 5a: Firebase Cloud Messaging for push notifications.
     implementation(platform("com.google.firebase:firebase-bom:33.6.0"))
     implementation("com.google.firebase:firebase-messaging-ktx")

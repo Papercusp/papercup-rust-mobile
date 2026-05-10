@@ -269,6 +269,33 @@ pub struct PairResp {
     pub wg_error: Option<String>,
 }
 
+// ── standing approvals ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StandingCandidatesResp {
+    pub candidates: Vec<StandingCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StandingCandidate {
+    pub capability: String,
+    #[serde(rename = "targetHarness")]
+    pub target_harness: String,
+    pub count: i64,
+    #[serde(rename = "lastSeenAt")]
+    pub last_seen_at: String,
+    #[serde(rename = "firstShownAt", default)]
+    pub first_shown_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StandingDecisionBody {
+    pub capability: String,
+    #[serde(rename = "targetHarness")]
+    pub target_harness: String,
+    pub decision: String,
+}
+
 // ── error envelope (every 4xx/5xx body) ────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

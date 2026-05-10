@@ -212,6 +212,14 @@ dictionary Device {
     string? paired_at;
 };
 
+dictionary StandingCandidate {
+    string capability;
+    string target_harness;
+    i64 count;
+    string last_seen_at;
+    string? first_shown_at;
+};
+
 dictionary SyncEvent {
     string id;
     string name;
@@ -301,6 +309,15 @@ interface OperatorClient {
     /// `DELETE /api/mobile/desktop/devices/{id}`.
     [Throws=ApiError, Async]
     void revoke_device(string device_id);
+
+    /// `GET /api/mobile/operator/standing-candidates`.
+    [Throws=ApiError, Async]
+    sequence<StandingCandidate> standing_candidates();
+
+    /// `POST /api/mobile/operator/standing-candidates/decide`.
+    /// `approve = true` → "approve", false → "dismiss".
+    [Throws=ApiError, Async]
+    void standing_candidate_decide(string capability, string target_harness, boolean approve);
 
     /// `POST /api/mobile/pair` — exchanges a one-time pair token for a
     /// long-lived device JWT. The client's `device_token` is ignored

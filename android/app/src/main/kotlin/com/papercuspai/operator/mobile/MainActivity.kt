@@ -184,6 +184,13 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             creds = fresh
         }
     }
+    val scope = rememberCoroutineScope()
+    val monitor = remember(current.deviceToken) { ConnectionMonitor(scope, current) }
+    DisposableEffect(current.deviceToken) {
+        monitor.start()
+        onDispose { monitor.stop() }
+    }
+
     when (val r = route) {
         is Route.Detail -> HarnessDetailScreen(
             creds = current,
@@ -196,14 +203,21 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             slug = r.slug,
             onBack = { route = Route.Detail(r.slug) },
         )
+        Route.StandingApprovals -> StandingApprovalsScreen(creds = current, onBack = { route = Route.Settings })
+        Route.VoiceSettings -> VoiceSettingsScreen(onBack = { route = Route.Settings })
+        Route.Diagnostics -> DiagnosticsScreen(creds = current, monitor = monitor, onBack = { route = Route.Settings })
         Route.Operator, Route.List, Route.Activity, Route.Settings -> PairedShell(
             current = current,
             voice = voice,
             liveTick = liveTick,
             lastInvalidate = lastInvalidate,
+            monitor = monitor,
             route = r,
             onRouteChange = { route = it },
             onSelectHarness = { slug -> route = Route.Detail(slug) },
+            onOpenStandingApprovals = { route = Route.StandingApprovals },
+            onOpenVoiceSettings = { route = Route.VoiceSettings },
+            onOpenDiagnostics = { route = Route.Diagnostics },
             onForget = onForget,
             onWorkspaceSwitched = onWorkspaceSwitched,
         )
@@ -217,13 +231,33 @@ private fun PairedShell(
     voice: VoiceManager,
     liveTick: Int,
     lastInvalidate: String?,
+    monitor: ConnectionMonitor,
     route: Route,
     onRouteChange: (Route) -> Unit,
     onSelectHarness: (String) -> Unit,
+    onOpenStandingApprovals: () -> Unit,
+    onOpenVoiceSettings: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
     onForget: () -> Unit,
     onWorkspaceSwitched: (DeviceCredentials) -> Unit,
 ) {
+    val connState by monitor.state.collectAsState()
     Scaffold(
+        topBar = {
+            if (connState.status == ConnStatus.Offline) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        "Lost desktop connection",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+            }
+        },
         bottomBar = {
             NavigationBar {
                 val items = listOf(
@@ -267,6 +301,9 @@ private fun PairedShell(
                     creds = current,
                     onForget = onForget,
                     onWorkspaceSwitched = onWorkspaceSwitched,
+                    onOpenStandingApprovals = onOpenStandingApprovals,
+                    onOpenVoiceSettings = onOpenVoiceSettings,
+                    onOpenDiagnostics = onOpenDiagnostics,
                 )
                 else -> {}
             }
@@ -284,6 +321,9 @@ private sealed interface Route {
     /// Pushed routes (not in bottom nav).
     data class Detail(val slug: String) : Route
     data class RunLog(val slug: String) : Route
+    data object StandingApprovals : Route
+    data object VoiceSettings : Route
+    data object Diagnostics : Route
 }
 
 private sealed interface ScreenState {

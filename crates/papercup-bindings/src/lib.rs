@@ -14,7 +14,8 @@ use papercup_core::voice::{
 use papercup_core::types::{
     AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
     PauseInfo as CorePauseInfo, PushRegisterBody, RunningHarnessPhase as CoreRunning,
-    ToastRow as CoreToast, VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
+    StandingCandidate as CoreStandingCandidate, ToastRow as CoreToast,
+    VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
     WorkspaceSwitchResp as CoreWorkspaceSwitch,
 };
 
@@ -365,6 +366,26 @@ impl From<CoreDevice> for Device {
     }
 }
 
+pub struct StandingCandidate {
+    pub capability: String,
+    pub target_harness: String,
+    pub count: i64,
+    pub last_seen_at: String,
+    pub first_shown_at: Option<String>,
+}
+
+impl From<CoreStandingCandidate> for StandingCandidate {
+    fn from(c: CoreStandingCandidate) -> Self {
+        Self {
+            capability: c.capability,
+            target_harness: c.target_harness,
+            count: c.count,
+            last_seen_at: c.last_seen_at,
+            first_shown_at: c.first_shown_at,
+        }
+    }
+}
+
 fn parse_mesh(value: &serde_json::Value) -> Option<MeshConfig> {
     #[derive(serde::Deserialize)]
     struct Raw {
@@ -704,6 +725,32 @@ impl OperatorClient {
         let core = self.inner.clone();
         rt()
             .spawn(async move { core.revoke_device(&device_id).await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(())
+    }
+
+    pub async fn standing_candidates(&self) -> Result<Vec<StandingCandidate>, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.standing_candidates().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(result.into_iter().map(StandingCandidate::from).collect())
+    }
+
+    pub async fn standing_candidate_decide(
+        &self,
+        capability: String,
+        target_harness: String,
+        approve: bool,
+    ) -> Result<(), ApiError> {
+        let core = self.inner.clone();
+        let decision = if approve { "approve" } else { "dismiss" }.to_string();
+        rt()
+            .spawn(async move {
+                core.standing_candidate_decide(&capability, &target_harness, &decision).await
+            })
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(())

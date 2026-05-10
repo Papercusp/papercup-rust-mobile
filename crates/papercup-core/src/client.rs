@@ -14,8 +14,9 @@
 use crate::types::{
     AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
     ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, RunningHarnessPhase, RunningResp,
-    ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem, WorkspaceSwitchBody,
-    WorkspaceSwitchResp, WorkspacesResp,
+    StandingCandidate, StandingCandidatesResp, StandingDecisionBody, ToastRow, ToastsResp,
+    VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem, WorkspaceSwitchBody, WorkspaceSwitchResp,
+    WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -322,6 +323,48 @@ impl OperatorClient {
     pub async fn list_desktop_devices(&self) -> Result<Vec<DeviceRow>, ApiError> {
         let url = format!("{}/api/mobile/desktop/devices", self.base_url);
         self.bearer_get_json::<DesktopDevicesResp>(&url).await.map(|r| r.devices)
+    }
+
+    /// `GET /api/mobile/operator/standing-candidates`
+    pub async fn standing_candidates(&self) -> Result<Vec<StandingCandidate>, ApiError> {
+        let url = format!("{}/api/mobile/operator/standing-candidates", self.base_url);
+        self.bearer_get_json::<StandingCandidatesResp>(&url)
+            .await
+            .map(|r| r.candidates)
+    }
+
+    /// `POST /api/mobile/operator/standing-candidates/decide`
+    pub async fn standing_candidate_decide(
+        &self,
+        capability: &str,
+        target_harness: &str,
+        decision: &str,
+    ) -> Result<(), ApiError> {
+        let url = format!(
+            "{}/api/mobile/operator/standing-candidates/decide",
+            self.base_url
+        );
+        let mut req = self.http.post(&url).json(&StandingDecisionBody {
+            capability: capability.to_string(),
+            target_harness: target_harness.to_string(),
+            decision: decision.to_string(),
+        });
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail: status.canonical_reason().unwrap_or("").to_string(),
+            });
+        }
+        Ok(())
     }
 
     /// `DELETE /api/mobile/desktop/devices/{id}` — unpair the given device.

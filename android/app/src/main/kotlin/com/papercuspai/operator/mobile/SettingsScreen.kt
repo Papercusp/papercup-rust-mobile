@@ -35,6 +35,9 @@ fun SettingsScreen(
     creds: DeviceCredentials,
     onForget: () -> Unit,
     onWorkspaceSwitched: (DeviceCredentials) -> Unit,
+    onOpenStandingApprovals: () -> Unit = {},
+    onOpenVoiceSettings: () -> Unit = {},
+    onOpenDiagnostics: () -> Unit = {},
 ) {
     var workspaces by remember { mutableStateOf<List<Workspace>?>(null) }
     var devices by remember { mutableStateOf<List<Device>?>(null) }
@@ -167,6 +170,19 @@ fun SettingsScreen(
 
             item {
                 Spacer(Modifier.height(8.dp))
+                PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(0.dp)) {
+                    Column {
+                        NavRow("Standing approvals", "Auto-dispatched patterns waiting for review", onOpenStandingApprovals)
+                        HorizontalDivider()
+                        NavRow("Voice", "Wake word, speech rate, voices", onOpenVoiceSettings)
+                        HorizontalDivider()
+                        NavRow("Diagnostics", "Connection, mesh, build info", onOpenDiagnostics)
+                    }
+                }
+            }
+
+            item {
+                Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = onForget,
                     modifier = Modifier.fillMaxWidth(),
@@ -246,6 +262,23 @@ private fun DeviceRowCard(device: Device, isSelf: Boolean, revoking: Boolean, on
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text("›", style = MaterialTheme.typography.titleLarge)
     }
 }
 
