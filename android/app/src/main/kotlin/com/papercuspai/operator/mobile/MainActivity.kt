@@ -15,9 +15,11 @@ import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.tasks.await
 import com.papercuspai.operator.mobile.theme.PapercupTheme
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupCardHeader
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -319,28 +322,35 @@ fun HarnessListScreen(
                     }
                 }
                 is ScreenState.Ready -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "${s.harnesses.size} ${if (s.harnesses.size == 1) "harness" else "harnesses"}",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            PauseButton(creds = creds, liveTick = liveTick)
-                            creds.meshAssignedIp?.let { ip ->
-                                MeshButton(creds = creds, ip = ip)
+                    PapercupCard(contentPadding = PaddingValues(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                PapercupCardHeader(
+                                    title = "${s.harnesses.size} ${if (s.harnesses.size == 1) "harness" else "harnesses"}",
+                                    meta = "core ${version()}",
+                                )
                             }
-                            PapercupStatusChip(
-                                text = lastInvalidate?.let { "live · $it" } ?: "live",
-                                containerColor = PapercupColors.InfoSoft,
-                                contentColor = PapercupColors.Info,
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                PauseButton(creds = creds, liveTick = liveTick)
+                                creds.meshAssignedIp?.let { ip ->
+                                    MeshButton(creds = creds, ip = ip)
+                                }
+                                PapercupStatusChip(
+                                    text = lastInvalidate?.let { "live · $it" } ?: "live",
+                                    containerColor = PapercupColors.InfoSoft,
+                                    contentColor = PapercupColors.Info,
+                                )
+                            }
                         }
                     }
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyColumn(
+                        contentPadding = PaddingValues(bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         items(s.harnesses) { harness ->
                             HarnessRow(harness, onClick = { onSelect(harness.slug) })
                         }
@@ -366,7 +376,7 @@ private fun VoiceFab(voice: VoiceManager) {
 
     val current = state
     val (label, container, content) = when (current) {
-        is VoiceManager.State.Idle -> Triple("Voice", PapercupColors.Accent, PapercupColors.Ink)
+        is VoiceManager.State.Idle -> Triple("Listen", PapercupColors.Accent, PapercupColors.Ink)
         is VoiceManager.State.Connecting -> Triple("Connecting", PapercupColors.InfoSoft, PapercupColors.Info)
         is VoiceManager.State.Listening -> Triple("Listening", PapercupColors.Warning, PapercupColors.Ink)
         is VoiceManager.State.Speaking -> Triple("Speaking · ${current.source}", PapercupColors.Success, PapercupColors.Ink)
@@ -388,10 +398,12 @@ private fun VoiceFab(voice: VoiceManager) {
                 voice.stop()
             }
         },
+        modifier = Modifier.border(1.dp, content.copy(alpha = 0.48f), RoundedCornerShape(999.dp)),
         icon = { Icon(Icons.Default.Mic, contentDescription = "Voice") },
         text = { Text(label) },
         containerColor = container,
         contentColor = content,
+        shape = RoundedCornerShape(999.dp),
     )
 }
 
@@ -482,8 +494,8 @@ private fun MeshButton(creds: DeviceCredentials, ip: String) {
 
 @Composable
 private fun HarnessRow(harness: Harness, onClick: () -> Unit) {
-    PapercupCard(modifier = Modifier.clickable(onClick = onClick)) {
-        Column(Modifier.padding(12.dp)) {
+    PapercupCard(modifier = Modifier.clickable(onClick = onClick), contentPadding = PaddingValues(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
