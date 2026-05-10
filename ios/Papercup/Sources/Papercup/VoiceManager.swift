@@ -75,7 +75,7 @@ final class VoiceManager: ObservableObject {
         let prefs = VoicePrefsStore.load()
         let c = VoiceClient(baseUrl: creds.server, deviceToken: creds.deviceToken, wakeWord: prefs.wakeWord)
         client = c
-        do { try await c.sendHello(wakeWord: prefs.wakeWord) } catch { /* tolerate */ }
+        await c.sendHello(wakeWord: prefs.wakeWord)
         await requestSttPermissionAndStart()
         pumpTask = Task { [weak self] in
             guard let self else { return }
@@ -161,7 +161,7 @@ final class VoiceManager: ObservableObject {
             guard let self else { return }
             if let r = result, r.isFinal {
                 let text = r.bestTranscription.formattedString
-                Task { try? await self.client?.sendTranscript(text: text) }
+                Task { await self.client?.sendTranscript(text: text) }
             }
             if error != nil {
                 Task { @MainActor in self.startStt() }
