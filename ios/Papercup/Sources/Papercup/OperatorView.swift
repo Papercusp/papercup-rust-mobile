@@ -5,6 +5,7 @@ struct OperatorView: View {
     let creds: DeviceCredentials
     let invalidationTick: Int
     let onSelectHarness: (String) -> Void
+    @ObservedObject var voice: VoiceManager
 
     @State private var paused: Bool? = nil
     @State private var lease: VoiceLease? = nil
@@ -72,24 +73,52 @@ struct OperatorView: View {
     private var leaseCard: some View {
         let title: String
         let sub: String
-        switch (leaseUnknown, lease) {
-        case (true, _): title = "…"; sub = ""
-        case (false, nil): title = "IDLE"; sub = "no listener"
-        case (_, let l?) where l.ownerId == creds.deviceId:
-            title = "THIS PHONE"; sub = "active listener"
-        case (_, let l?) where l.ownerKind == "mobile":
+        let active = voice.state != .idle
+        switch (leaseUnknown, lease, active) {
+        case (_, _, true): title = "LISTENING"; sub = stateSub(voice.state)
+        case (true, _, _): title = "…"; sub = ""
+        case (false, nil, _): title = "IDLE"; sub = "tap to listen"
+        case (_, let l?, _) where l.ownerId == creds.deviceId:
+            title = "THIS PHONE"; sub = "tap to stop"
+        case (_, let l?, _) where l.ownerKind == "mobile":
             title = "OTHER PHONE"; sub = String(l.ownerId.prefix(8)) + "…"
-        case (_, let l?):
+        case (_, let l?, _):
             title = "DESKTOP"; sub = String(l.ownerId.prefix(8)) + "…"
         }
-        return VStack(alignment: .leading, spacing: 2) {
-            Text("Voice").font(.caption)
-            Text(title).font(.title3.bold())
-            Text(sub).font(.caption)
+        return Button {
+            if active { voice.stop() } else { voice.start() }
+        } label: {
+            ZStack {
+                if active {
+                    Circle()
+                        .fill(Color.cyan.opacity(0.25))
+                        .frame(width: 80 + CGFloat(voice.micLevel) * 80,
+                               height: 80 + CGFloat(voice.micLevel) * 80)
+                        .animation(.easeOut(duration: 0.08), value: voice.micLevel)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Voice").font(.caption)
+                    Text(title).font(.title3.bold())
+                    Text(sub).font(.caption)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+            }
+            .background(active ? Color.cyan.opacity(0.15) : Color.gray.opacity(0.1),
+                        in: RoundedRectangle(cornerRadius: 12))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.gray.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
+    }
+
+    private func stateSub(_ s: VoiceManager.State) -> String {
+        switch s {
+        case .idle: return ""
+        case .connecting: return "connecting…"
+        case .listening: return "listening"
+        case .speaking(_, let source): return "speaking · \(source)"
+        case .failed(let m): return m.prefix(40) + ""
+        }
     }
 
     private var runningCard: some View {

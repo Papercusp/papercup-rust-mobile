@@ -52,6 +52,7 @@ private struct PairedShell: View {
     let onWorkspaceSwitched: (DeviceCredentials) -> Void
 
     @StateObject private var monitor: ConnectionMonitor
+    @StateObject private var voice: VoiceManager
 
     init(current: DeviceCredentials,
          tab: Binding<AppRoot.Tab>,
@@ -68,6 +69,7 @@ private struct PairedShell: View {
         self.onForget = onForget
         self.onWorkspaceSwitched = onWorkspaceSwitched
         self._monitor = StateObject(wrappedValue: ConnectionMonitor(creds: current))
+        self._voice = StateObject(wrappedValue: VoiceManager(creds: current))
     }
 
     var body: some View {
@@ -87,7 +89,8 @@ private struct PairedShell: View {
                     OperatorView(
                         creds: current,
                         invalidationTick: liveTick,
-                        onSelectHarness: onSelectHarness
+                        onSelectHarness: onSelectHarness,
+                        voice: voice
                     )
                     .tabItem { Label("Operator", systemImage: "rectangle.grid.2x2.fill") }
                     .tag(AppRoot.Tab.operatorTab)
@@ -131,7 +134,7 @@ private struct PairedShell: View {
             }
         }
         .task(id: current.deviceToken) { monitor.start(); await runSync() }
-        .onDisappear { monitor.stop() }
+        .onDisappear { monitor.stop(); voice.stop() }
     }
 
     private func runSync() async {

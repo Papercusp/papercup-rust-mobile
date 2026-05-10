@@ -35,6 +35,10 @@
     </array>
     <key>NSCameraUsageDescription</key>
     <string>Papercup uses the camera to scan the pair-code QR shown by your desktop.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Papercup uses the microphone to listen for voice commands.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Papercup transcribes your voice commands on-device to send to the operator.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <!-- Dev convenience: allow plain HTTP so the simulator can hit
