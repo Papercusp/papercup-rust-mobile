@@ -7,31 +7,62 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 object PapercupColors {
-    val Ink = Color(0xFF050812)
-    val InkRaised = Color(0xFF0A111D)
-    val Surface = Color(0xFF0E1725)
-    val SurfaceStrong = Color(0xFF111D2D)
-    val Stroke = Color(0xFF243244)
-    val StrokeStrong = Color(0xFF36506A)
-    val Text = Color(0xFFE6F3FF)
-    val TextMuted = Color(0xFF8EA4B8)
+    val Ink = Color(0xFF04080F)
+    val InkRaised = Color(0xFF081421)
+    val Surface = Color(0xFF081421)
+    val SurfaceStrong = Color(0xFF0B1827)
+    val Popover = Color(0xFF0B1827)
+    val Stroke = Color(0x3867E8F9)
+    val StrokeStrong = Color(0x5767E8F9)
+    val StrokeSoft = Color(0x1F67E8F9)
+    val Text = Color(0xFFF3FBFF)
+    val TextMuted = Color(0xBDCBD5E1)
+    val TextFaint = Color(0xAD94A3B8)
     val Accent = Color(0xFF22D3EE)
     val AccentStrong = Color(0xFF67E8F9)
-    val AccentSoft = Color(0x3322D3EE)
-    val Success = Color(0xFF34D399)
-    val SuccessSoft = Color(0x3034D399)
-    val Warning = Color(0xFFFBBF24)
-    val WarningSoft = Color(0x33FBBF24)
+    val AccentCool = Color(0xFF8FF7FF)
+    val AccentSoft = Color(0x2422D3EE)
+    val Teal = Color(0xFF2DD4BF)
+    val TealSoft = Color(0x242DD4BF)
+    val Gold = Color(0xFFF6C453)
+    val GoldSoft = Color(0x24F6C453)
+    val ButtonInk = Color(0xFF031118)
+    val Success = Color(0xFF2DD4BF)
+    val SuccessSoft = Color(0x302DD4BF)
+    val Warning = Color(0xFFF6C453)
+    val WarningSoft = Color(0x33F6C453)
     val Error = Color(0xFFFB7185)
     val ErrorSoft = Color(0x33FB7185)
-    val Info = Color(0xFF60A5FA)
-    val InfoSoft = Color(0x2E60A5FA)
+    val Info = AccentStrong
+    val InfoSoft = Color(0x2E67E8F9)
 
     val ScreenGradient = Brush.verticalGradient(
         listOf(
-            Color(0xFF08111D),
-            Color(0xFF050812),
-            Color(0xFF02040A),
+            Color(0xFF07111D),
+            Ink,
+            Color(0xFF020409),
+        ),
+    )
+
+    val HeaderGradient = Brush.verticalGradient(
+        listOf(
+            SurfaceStrong.copy(alpha = 0.96f),
+            Color(0xF0050C16),
+        ),
+    )
+
+    val CardGradient = Brush.linearGradient(
+        listOf(
+            Color(0x2167E8F9),
+            Color(0x0BF6C453),
+            Color(0x0F2DD4BF),
+        ),
+    )
+
+    val PanelGradient = Brush.verticalGradient(
+        listOf(
+            Color(0x14FFFFFF),
+            Color(0x05000000),
         ),
     )
 }
