@@ -13,8 +13,8 @@ use papercup_core::voice::{
 };
 use papercup_core::types::{
     AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
-    PauseInfo as CorePauseInfo, PushRegisterBody, ToastRow as CoreToast,
-    VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
+    PauseInfo as CorePauseInfo, PushRegisterBody, RunningHarnessPhase as CoreRunning,
+    ToastRow as CoreToast, VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
 };
 
 uniffi::include_scaffolding!("papercup");
@@ -272,6 +272,36 @@ impl From<CoreVoiceLease> for VoiceLease {
             owner_id: v.owner_id,
             owner_kind: v.owner_kind,
             expires_at_ms: v.expires_at_ms,
+        }
+    }
+}
+
+pub struct Running {
+    pub harness_slug: String,
+    pub phase: String,
+    pub status: String,
+    pub iteration: i32,
+    pub total_features: i32,
+    pub passed_count: i32,
+    pub todo_count: i32,
+    pub blocked_count: i32,
+    pub active_roles: Vec<String>,
+    pub last_active_ts: Option<i64>,
+}
+
+impl From<CoreRunning> for Running {
+    fn from(r: CoreRunning) -> Self {
+        Self {
+            harness_slug: r.harness_slug,
+            phase: r.phase,
+            status: r.status,
+            iteration: r.iteration,
+            total_features: r.total_features,
+            passed_count: r.passed_count,
+            todo_count: r.todo_count,
+            blocked_count: r.blocked_count,
+            active_roles: r.active_roles,
+            last_active_ts: r.last_active_ts,
         }
     }
 }
@@ -599,6 +629,15 @@ impl OperatorClient {
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(result.map(VoiceLease::from))
+    }
+
+    pub async fn list_running(&self) -> Result<Vec<Running>, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.list_running().await })
+            .await
+            .map_err(|_| ApiError::Network)??;
+        Ok(result.into_iter().map(Running::from).collect())
     }
 
     pub async fn recent_notifications(&self) -> Result<Vec<Toast>, ApiError> {

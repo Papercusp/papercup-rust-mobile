@@ -13,8 +13,8 @@
 
 use crate::types::{
     AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
-    ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, ToastRow, ToastsResp,
-    VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem, WorkspacesResp,
+    ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, RunningHarnessPhase, RunningResp,
+    ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem, WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -118,6 +118,14 @@ impl OperatorClient {
         resp.json::<HarnessStatusFull>()
             .await
             .map_err(|e| ApiError::Decode(e.to_string()))
+    }
+
+    /// `GET /api/mobile/running` — per-phase status of every active
+    /// harness (passed/todo/blocked counts + active_roles). Tauri-parity
+    /// "Currently running" view.
+    pub async fn list_running(&self) -> Result<Vec<RunningHarnessPhase>, ApiError> {
+        let url = format!("{}/api/mobile/running", self.base_url);
+        self.bearer_get_json::<RunningResp>(&url).await.map(|r| r.harnesses)
     }
 
     /// `GET /api/mobile/voice-lease` — current lease holder (or `None`

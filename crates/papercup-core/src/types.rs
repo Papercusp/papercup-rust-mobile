@@ -107,6 +107,30 @@ pub struct AuditRow {
     pub details: serde_json::Value,
 }
 
+// ── /api/mobile/running ────────────────────────────────────────────────
+
+// `scan` field on the wire is elided here; mobile UI doesn't render the
+// operator scan summary yet.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningResp {
+    pub harnesses: Vec<RunningHarnessPhase>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningHarnessPhase {
+    pub harness_slug: String,
+    pub phase: String,
+    pub status: String,
+    pub iteration: i32,
+    pub total_features: i32,
+    pub passed_count: i32,
+    pub todo_count: i32,
+    pub blocked_count: i32,
+    pub active_roles: Vec<String>,
+    #[serde(default)]
+    pub last_active_ts: Option<i64>,
+}
+
 // ── /api/mobile/voice-lease ────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

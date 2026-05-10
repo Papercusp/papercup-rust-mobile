@@ -158,6 +158,19 @@ dictionary VoiceLease {
     i64 expires_at_ms;
 };
 
+dictionary Running {
+    string harness_slug;
+    string phase;
+    string status;
+    i32 iteration;
+    i32 total_features;
+    i32 passed_count;
+    i32 todo_count;
+    i32 blocked_count;
+    sequence<string> active_roles;
+    i64? last_active_ts;
+};
+
 dictionary Toast {
     i64 id;
     string level;
@@ -254,6 +267,10 @@ interface OperatorClient {
     /// Returns the current lease holder, or null if nobody.
     [Throws=ApiError, Async]
     VoiceLease? voice_lease_get();
+
+    /// `GET /api/mobile/running` — currently-running phases per harness.
+    [Throws=ApiError, Async]
+    sequence<Running> list_running();
 
     /// `GET /api/mobile/notifications/recent`.
     [Throws=ApiError, Async]

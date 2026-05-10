@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
 import uniffi.papercup.Harness
 import uniffi.papercup.OperatorClient
+import uniffi.papercup.Running
 import uniffi.papercup.Toast as ToastEntry
 import uniffi.papercup.VoiceLease
 
@@ -36,26 +37,35 @@ fun OperatorScreen(
     var paused by remember { mutableStateOf<Boolean?>(null) }
     var lease by remember { mutableStateOf<VoiceLease?>(null) }
     var leaseUnknown by remember { mutableStateOf(true) }
+    var running by remember { mutableStateOf<List<Running>>(emptyList()) }
     var harnesses by remember { mutableStateOf<List<Harness>>(emptyList()) }
     var toasts by remember { mutableStateOf<List<ToastEntry>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
+    // Each call is independent so a transient failure on one (e.g. operator
+    // mid-restart, route 404) doesn't blank the rest of the surface. The
+    // last successful values for each card persist; the error banner shows
+    // only when nothing succeeded.
     LaunchedEffect(creds.deviceToken, liveTick) {
-        try {
-            val client = OperatorClient(creds.server, creds.deviceToken)
-            paused = client.pauseGet().paused
-            lease = client.voiceLeaseGet()
-            leaseUnknown = false
-            harnesses = client.listHarnesses()
-                .sortedByDescending { it.lastActiveTs ?: Long.MIN_VALUE }
-            toasts = client.recentNotifications()
-            error = null
-        } catch (e: ApiException) {
-            error = "API: ${e::class.simpleName}: ${e.message ?: ""}"
-        } catch (t: Throwable) {
-            error = "Unexpected: ${t::class.simpleName}: ${t.message ?: ""}"
-        }
+        val client = OperatorClient(creds.server, creds.deviceToken)
+        var anyOk = false
+        var lastErr: String? = null
+        suspend fun <T> tryFetch(label: String, block: suspend () -> T): T? = try {
+            val v = block()
+            anyOk = true
+            v
+        } catch (e: ApiException) { lastErr = "$label: ${e::class.simpleName}"; null }
+          catch (t: Throwable)   { lastErr = "$label: ${t::class.simpleName}"; null }
+
+        tryFetch("pause") { client.pauseGet() }?.let { paused = it.paused }
+        tryFetch("lease") { client.voiceLeaseGet() }.also { leaseUnknown = !anyOk }?.let { lease = it }
+        tryFetch("running") { client.listRunning() }?.let { running = it }
+        tryFetch("harnesses") { client.listHarnesses() }
+            ?.sortedByDescending { it.lastActiveTs ?: Long.MIN_VALUE }
+            ?.let { harnesses = it }
+        tryFetch("notifs") { client.recentNotifications() }?.let { toasts = it }
+        error = if (anyOk) null else lastErr
     }
 
     Scaffold(
@@ -105,6 +115,7 @@ fun OperatorScreen(
                 )
             }
 
+            RunningCard(running, onSelectHarness)
             RecentHarnessesCard(harnesses, onSelectHarness)
             RecentNotificationsCard(toasts, onSelectHarness)
             IdentityCard(creds)
@@ -177,6 +188,58 @@ private fun VoiceLeaseCard(
             Text("Voice", style = MaterialTheme.typography.labelSmall)
             Text(label, style = MaterialTheme.typography.titleMedium)
             Text(sub, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun RunningCard(running: List<Running>, onSelect: (String) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Currently running", style = MaterialTheme.typography.titleSmall)
+                AssistChip(
+                    onClick = {},
+                    label = { Text("${running.size}", style = MaterialTheme.typography.labelSmall) },
+                )
+            }
+            if (running.isEmpty()) {
+                Text("No active runs", style = MaterialTheme.typography.bodySmall)
+            } else {
+                running.forEach { r ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(r.harnessSlug) }.padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(r.harnessSlug, style = MaterialTheme.typography.bodyMedium)
+                            AssistChip(onClick = {}, label = { Text("${r.phase} · ${r.status}") })
+                        }
+                        // passed/todo/blocked counts + active roles
+                        val counts = "✓${r.passedCount} · ☐${r.todoCount}" +
+                            (if (r.blockedCount > 0) " · ⚠${r.blockedCount}" else "")
+                        Text(
+                            "$counts · iter ${r.iteration}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        if (r.activeRoles.isNotEmpty()) {
+                            Text(
+                                "roles: ${r.activeRoles.joinToString(", ")}",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
