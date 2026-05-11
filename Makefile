@@ -5,7 +5,7 @@
 # one place.
 
 .PHONY: help build-rust build-android build-ios install-android \
-        bindings-kotlin bindings-swift test check fmt fmt-check \
+        bindings-kotlin bindings-swift test test-ios check fmt fmt-check \
         clippy lint-android install-hooks clean
 
 help:
@@ -18,6 +18,7 @@ help:
 	@echo "  make clippy             — cargo clippy --workspace --all-targets -- -D warnings"
 	@echo "  make build-rust         — cargo build the host (off-device) Rust core + cli"
 	@echo "  make test               — run all Rust tests"
+	@echo "  make test-ios           — run iOS XCTest suite (requires macOS + Xcode)"
 	@echo "  make bindings-kotlin    — regenerate Kotlin bindings into android/app/src/main/kotlin/uniffi"
 	@echo "  make bindings-swift     — regenerate Swift bindings into ios/PapercupCore"
 	@echo "  make build-android      — cross-compile Rust core for all Android ABIs + assemble debug APK"
@@ -57,6 +58,21 @@ build-rust:
 
 test:
 	cargo test --workspace
+
+# Run iOS XCTest. PAPERCUP_IOS_SIM_UDID overrides the default sim
+# (auto-picks the first available iPhone if unset). Splits build +
+# test to dodge the Xcode 16.2 destination-resolver race.
+test-ios:
+	@SIM=${PAPERCUP_IOS_SIM_UDID:-$(xcrun simctl list devices available | awk -F '[()]' '/iPhone 16 \(/{print $2; exit}')}; \
+	cd ios && xcodegen generate >/dev/null && \
+	for i in 1 2 3; do \
+	  xcodebuild build-for-testing -project Papercup.xcodeproj -scheme Papercup \
+	    -destination "platform=iOS Simulator,id=$SIM" -sdk iphonesimulator \
+	    -derivedDataPath build/dd 2>&1 | tail -2 | grep -q "TEST BUILD SUCCEEDED" && break || \
+	  echo "[retry $i: dest race]"; sleep 3; \
+	done; \
+	xcodebuild test-without-building -project Papercup.xcodeproj -scheme Papercup \
+	  -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath build/dd
 
 bindings-kotlin:
 	cargo run --quiet --bin uniffi-bindgen -- generate \
