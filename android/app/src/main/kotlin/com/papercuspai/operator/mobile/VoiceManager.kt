@@ -56,6 +56,7 @@ class VoiceManager(
         data class Navigate(val slug: String) : Intent
         data object Pause : Intent
         data object Resume : Intent
+        data object ClaimVoice : Intent
     }
 
     private val _state = MutableStateFlow<State>(State.Idle)
@@ -169,7 +170,10 @@ class VoiceManager(
                                 _intents.tryEmit(Intent.Resume)
                                 parsed.speak
                             }
-                            is uniffi.papercup.Intent.ClaimVoice -> parsed.speak
+                            is uniffi.papercup.Intent.ClaimVoice -> {
+                                _intents.tryEmit(Intent.ClaimVoice)
+                                parsed.speak
+                            }
                             is uniffi.papercup.Intent.Speak -> parsed.text
                         }
                         _state.value = State.Speaking(toSpeak, ev.source)

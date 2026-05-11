@@ -100,6 +100,7 @@ private struct PairedShell: View {
 
     @StateObject private var monitor: ConnectionMonitor
     @StateObject private var voice: VoiceManager
+    @StateObject private var cacheHost: CacheHost
     private let wakeWord: WakeWordEngine
 
     init(current: DeviceCredentials,
@@ -121,6 +122,7 @@ private struct PairedShell: View {
         let voiceState = StateObject(wrappedValue: VoiceManager(creds: current))
         self._monitor = StateObject(wrappedValue: ConnectionMonitor(creds: current))
         self._voice = voiceState
+        self._cacheHost = StateObject(wrappedValue: CacheHost(creds: current))
         let voiceRef = voiceState
         self.wakeWord = WakeWordEngine { [voiceRef] in
             Task { @MainActor in voiceRef.wrappedValue.start() }
@@ -203,6 +205,8 @@ private struct PairedShell: View {
                 Task { try? await current.client().pauseSet(paused: true) }
             case .resume:
                 Task { try? await current.client().pauseSet(paused: false) }
+            case .claimVoice:
+                Task { try? await current.client().voiceLeaseClaim() }
             }
             voice.pendingIntent = nil
         }
@@ -223,26 +227,15 @@ private struct PairedShell: View {
     }
 
     private func runSync() async {
-        // Phase 3 — register the queries the UI watches; pump
-        // SyncStream invalidations into the cache so refetches happen
-        // out-of-band rather than every screen doing its own.
-        let cache = SyncCache(client: current.client())
-        for name in [
-            "harnesses.list",
-            "running",
-            "toastLog.recent",
-            "auditLog.recent",
-        ] {
-            cache.registerQuery(name: name)
-        }
-
+        // Cache lives on cacheHost (@StateObject) so it survives SSE
+        // reconnects + lets the UI observe deltas via cacheHost.tick.
         let stream = SyncStream(baseUrl: current.server, deviceToken: current.deviceToken)
         defer { stream.disconnect() }
         while !Task.isCancelled {
             do {
                 let ev = try await stream.nextEvent()
                 lastInvalidate = ev.name
-                await cache.handleInvalidate(name: ev.name)
+                await cacheHost.handleInvalidate(ev.name)
                 if ev.name.hasPrefix("harness") {
                     liveTick += 1
                 }

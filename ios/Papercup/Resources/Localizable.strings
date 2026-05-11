@@ -31,3 +31,51 @@
 "error.meshUnreachable" = "Mesh tunnel unreachable — falling back to public URL.";
 "error.voiceWsFailed" = "Voice connection lost. Tap to reconnect.";
 "error.pushPermissionDenied" = "Notifications disabled. Enable in iOS Settings to get push alerts.";
+
+/* Operator screen */
+"operator.label" = "Operator";
+"operator.voice" = "Voice";
+"operator.currentlyRunning" = "Currently running";
+"operator.noActiveRuns" = "No active runs";
+"operator.recentHarnesses" = "Recent harnesses";
+"operator.noHarnessesYet" = "No harnesses yet";
+"operator.recentActivity" = "Recent activity";
+"operator.thisDevice" = "This device";
+
+/* Activity */
+"activity.notifications" = "Notifications";
+"activity.actions" = "Actions";
+
+/* Diagnostics */
+"diagnostics.title" = "Diagnostics";
+"diagnostics.status" = "Status";
+
+/* Pair */
+"pair.title" = "Pair this device";
+"pair.scanQr" = "Scan QR code";
+"pair.pastePayload" = "Paste payload";
+"pair.button" = "Pair";
+
+/* Standing approvals */
+"standing.title" = "Standing approvals";
+"standing.empty" = "No standing approvals waiting.";
+"standing.approve" = "Approve";
+"standing.dismiss" = "Dismiss";
+
+/* Voice settings */
+"voice.title" = "Voice";
+"voice.test" = "Test";
+"voice.reset" = "Reset";
+
+/* Settings */
+"settings.workspaces" = "Workspaces";
+"settings.pairedDevices" = "Paired devices";
+
+/* Loading + harness detail */
+"loading" = "Loading…";
+"harness.mission" = "Mission";
+"harness.featuresByStatus" = "Features by status";
+"harness.lastDecision" = "Last decision";
+
+/* App brand */
+"app.brand" = "Papercup";

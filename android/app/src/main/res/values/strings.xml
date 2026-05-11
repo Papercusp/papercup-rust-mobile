@@ -49,4 +49,83 @@
     <string name="error_mesh_unreachable">Mesh tunnel unreachable — falling back to public URL.</string>
     <string name="error_voice_ws_failed">Voice connection lost. Tap to reconnect.</string>
     <string name="error_push_permission_denied">Notifications disabled. Enable in Android Settings to get push alerts.</string>
+
+    <!-- Operator screen -->
+    <string name="operator_screen_title">Operator</string>
+    <string name="operator_label">Operator</string>
+    <string name="voice_label">Voice</string>
+    <string name="currently_running">Currently running</string>
+    <string name="no_active_runs">No active runs</string>
+    <string name="recent_harnesses">Recent harnesses</string>
+    <string name="no_harnesses_yet">No harnesses yet</string>
+    <string name="recent_activity">Recent activity</string>
+    <string name="this_device">This device</string>
+
+    <!-- Activity screen -->
+    <string name="activity_tab_notifications">Notifications</string>
+    <string name="activity_tab_actions">Actions</string>
+    <string name="activity_no_notifications">No recent notifications</string>
+    <string name="activity_no_actions">No recent actions</string>
+
+    <!-- Diagnostics screen -->
+    <string name="diagnostics_title">Diagnostics</string>
+    <string name="diagnostics_status">Status</string>
+    <string name="diagnostics_ping_button">Ping desktop</string>
+    <string name="diagnostics_pinging">Pinging…</string>
+
+    <!-- Pair screen -->
+    <string name="pair_title">Pair this device</string>
+    <string name="pair_subtitle">Open the desktop operator at /settings/mobile, mint a pair token, and either scan the QR or paste the payload below.</string>
+    <string name="pair_scan_qr">Scan QR code</string>
+    <string name="pair_paste_payload">Paste payload</string>
+    <string name="pair_back">Back</string>
+    <string name="pair_button">Pair</string>
+    <string name="pair_payload_label">QR payload (JSON)</string>
+    <string name="pair_redeeming">Redeeming…</string>
+    <string name="pair_desktop_pair_header">Desktop pair</string>
+    <string name="pair_manual_code_label">Manual pair code</string>
+
+    <!-- RunLog screen -->
+    <string name="run_log_title">Run log</string>
+
+    <!-- Voice settings screen -->
+    <string name="voice_settings_title">Voice</string>
+    <string name="voice_settings_wake_word_label">Wake word</string>
+    <string name="voice_settings_speech_rate">Speech rate</string>
+    <string name="voice_settings_pitch">Pitch</string>
+    <string name="voice_settings_voice_label">Voice</string>
+    <string name="voice_settings_test_button">Test</string>
+    <string name="voice_settings_reset_button">Reset</string>
+
+    <!-- Standing approvals -->
+    <string name="standing_approvals_title">Standing approvals</string>
+    <string name="standing_approvals_empty">No standing approvals waiting.</string>
+    <string name="standing_approvals_approve">Approve</string>
+    <string name="standing_approvals_dismiss">Dismiss</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_workspaces">Workspaces</string>
+    <string name="settings_paired_devices">Paired devices</string>
+    <string name="settings_revoke">Revoke</string>
+
+    <!-- Loading states -->
+    <string name="loading">Loading…</string>
+    <string name="loading_activity">Loading activity…</string>
+    <string name="loading_status">Loading status…</string>
+    <string name="loading_harnesses">Loading harnesses…</string>
+
+    <!-- Harness detail -->
+    <string name="harness_detail_mission">Mission</string>
+    <string name="harness_detail_features_by_status">Features by status</string>
+    <string name="harness_detail_last_decision">Last decision</string>
+
+    <!-- Voice settings (interpolated copy) -->
+    <string name="voice_settings_speech_rate_value">Speech rate: %1$.2f</string>
+    <string name="voice_settings_pitch_value">Pitch: %1$.2f</string>
+    <string name="voice_settings_no_voices">No system voices available.</string>
+    <string name="voice_settings_system_default">System default</string>
+
+    <!-- App brand (top-bar) -->
+    <string name="app_brand">Papercup</string>
 </resources>

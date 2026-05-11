@@ -11,7 +11,7 @@ struct DiagnosticsView: View {
         List {
             Section("Connection") {
                 HStack {
-                    Text("Status").foregroundStyle(.secondary)
+                    Text(NSLocalizedString("diagnostics.status", comment: "")).foregroundStyle(.secondary)
                     Spacer()
                     statusPill(monitor.state.status)
                 }

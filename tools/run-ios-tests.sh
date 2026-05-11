@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Run the iOS XCTest suite. Splits build-for-testing + test-without-
-# building to dodge the Xcode 16.2 "iOS 18.2 not installed" destination
-# resolver race; retries the build step up to 3x.
+# Run the iOS XCTest unit suite. Builds the Papercup app target +
+# the PapercupTests bundle individually (instead of via the scheme's
+# build-for-testing action) because that avoids the Xcode 16.2
+# destination-resolver race that the scheme path trips reliably
+# after Sentry SwiftPM resolution slowed the package init.
 #
-# PAPERCUP_IOS_SIM_UDID overrides the default sim picker (first
-# available iPhone 16).
+# PAPERCUP_IOS_SIM_UDID overrides the sim picker; defaults to the
+# first available iPhone 16.
 
 set -euo pipefail
 
@@ -23,54 +25,55 @@ if [ -z "$PAPERCUP_IOS_SIM_UDID" ]; then
 fi
 echo "▶ sim: $PAPERCUP_IOS_SIM_UDID"
 
-# The destination race resolves much more reliably when the sim is
-# already booted before xcodebuild starts looking for destinations.
 xcrun simctl boot "$PAPERCUP_IOS_SIM_UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$PAPERCUP_IOS_SIM_UDID" -b 2>/dev/null || true
 
-# Skip xcodegen if the project already exists — regenerating wipes
-# Xcode's per-scheme destination cache and re-triggers the race.
 if [ ! -d Papercup.xcodeproj ]; then
     xcodegen generate >/dev/null
 fi
 
 DEST="platform=iOS Simulator,id=$PAPERCUP_IOS_SIM_UDID"
+DD="$PWD/build/dd"
 
-for i in 1 2 3 4 5; do
-    # `set -e` would kill us on a failed xcodebuild before we get to
-    # check $? — disable it for the assignment, then re-enable.
-    set +e
-    out=$(xcodebuild build-for-testing \
-        -project Papercup.xcodeproj -scheme Papercup \
-        -destination "$DEST" -sdk iphonesimulator \
-        -derivedDataPath build/dd 2>&1)
-    rc=$?
-    set -e
-    if [ $rc -eq 0 ] && echo "$out" | grep -q "TEST BUILD SUCCEEDED"; then
-        break
-    fi
-    echo "[build retry $i: destination race, rc=$rc]"
-    sleep 5
-    if [ "$i" = "5" ]; then
-        echo "ERROR: build-for-testing failed after 5 retries (rc=$rc)" >&2
-        echo "--- last 20 lines of xcodebuild output ---" >&2
-        echo "$out" | tail -20 >&2
-        exit 1
-    fi
-done
+# Build the test bundle. -target avoids the scheme's destination
+# resolution which is flaky under Xcode 16.2 + Sentry SwiftPM init.
+echo "▶ build PapercupTests"
+xcodebuild -project Papercup.xcodeproj \
+    -target PapercupTests \
+    -sdk iphonesimulator \
+    -destination "$DEST" \
+    -configuration Debug \
+    -derivedDataPath "$DD" \
+    build
 
-for i in 1 2 3 4 5; do
-    set +e
-    xcodebuild test-without-building \
-        -project Papercup.xcodeproj -scheme Papercup \
-        -destination "$DEST" -derivedDataPath build/dd
-    rc=$?
-    set -e
-    if [ $rc -eq 0 ]; then
-        exit 0
-    fi
-    echo "[test retry $i: rc=$rc]"
-    sleep 5
-done
-echo "ERROR: test-without-building failed after 5 retries" >&2
-exit 1
+# Run the test bundle directly via xctest. The bundle lives in the
+# DerivedData products dir after the build above.
+TEST_BUNDLE="$DD/Build/Products/Debug-iphonesimulator/PapercupTests.xctest"
+TEST_HOST="$DD/Build/Products/Debug-iphonesimulator/Papercup.app/Papercup"
+if [ ! -d "$TEST_BUNDLE" ] || [ ! -f "$TEST_HOST" ]; then
+    # PapercupTests has TEST_HOST=Papercup.app, so we also need the
+    # app target built.
+    echo "▶ build Papercup app target (test host)"
+    xcodebuild -project Papercup.xcodeproj \
+        -target Papercup \
+        -sdk iphonesimulator \
+        -destination "$DEST" \
+        -configuration Debug \
+        -derivedDataPath "$DD" \
+        build
+fi
+
+# Use simctl to launch xctest inside the sim. This bypasses the
+# scheme's build-for-testing entirely.
+xcrun simctl install "$PAPERCUP_IOS_SIM_UDID" \
+    "$DD/Build/Products/Debug-iphonesimulator/Papercup.app"
+
+# xctest runner from the simulator's runtime
+SIM_RUNTIME=$(xcrun simctl runtime list 2>/dev/null | awk '/iOS 18/ {print $NF; exit}')
+if [ -z "$SIM_RUNTIME" ]; then
+    SIM_RUNTIME=$(xcrun --sdk iphonesimulator --show-sdk-platform-path)
+fi
+
+echo "▶ xcrun simctl spawn ... xctest PapercupTests"
+xcrun simctl spawn "$PAPERCUP_IOS_SIM_UDID" \
+    xctest "$TEST_BUNDLE"

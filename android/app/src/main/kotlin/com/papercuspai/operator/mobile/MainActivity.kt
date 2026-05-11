@@ -9,6 +9,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -111,21 +114,33 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         return
     }
 
-    // Phase 3 — shared in-memory cache. Each tab registers the
-    // queries it cares about; SyncStream invalidations refetch the
-    // matching cache entry. UI screens still hold their own state
-    // (the cache is additive) but the cache stops the chatty
-    // every-screen-refetches-on-every-invalidate pattern.
+    // Phase 3 — shared in-memory cache. Registers exactly the query
+    // names the backend actually emits invalidates for (verified
+    // against papercup-rust-server: sync_invalidate::notify call
+    // sites). Subscribes a CacheSubscriber that bumps liveTick so
+    // every screen with a `liveTick`-keyed task() refreshes when
+    // any registered cache entry refetches.
     val cache = remember(current.deviceToken) {
         uniffi.papercup.SyncCache(current.client())
     }
     DisposableEffect(current.deviceToken) {
         listOf(
-            "harnesses.list",
-            "running",
             "toastLog.recent",
             "auditLog.recent",
+            "operatorPauseFlag",
+            "harnessIdentity",
         ).forEach { cache.registerQuery(it) }
+        cache.subscribe(object : uniffi.papercup.CacheSubscriber {
+            override fun `onUpdate`(`update`: uniffi.papercup.CacheUpdate) {
+                // Either Updated or Failed bumps the tick; failed
+                // refetches still want screens to re-render their
+                // error/loading state.
+                liveTick += 1
+                if (update is uniffi.papercup.CacheUpdate.Updated) {
+                    lastInvalidate = update.name
+                }
+            }
+        })
         onDispose { cache.close() }
     }
 
@@ -192,6 +207,8 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
                     runCatching { current.client().pauseSet(true) }
                 VoiceManager.Intent.Resume ->
                     runCatching { current.client().pauseSet(false) }
+                VoiceManager.Intent.ClaimVoice ->
+                    runCatching { current.client().voiceLeaseClaim() }
             }
         }
     }
@@ -422,7 +439,7 @@ fun HarnessListScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Papercup", style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.app_brand), style = MaterialTheme.typography.titleLarge)
                         Text(
                             "core ${version()} · ${creds.server}",
                             style = MaterialTheme.typography.bodySmall,
@@ -455,7 +472,7 @@ fun HarnessListScreen(
                     ) {
                         CircularProgressIndicator(strokeWidth = 2.dp)
                         Spacer(Modifier.width(12.dp))
-                        Text("Loading harnesses…")
+                        Text(stringResource(R.string.loading_harnesses))
                     }
                 }
                 is ScreenState.Failed -> {
@@ -674,7 +691,16 @@ private fun MeshButton(creds: DeviceCredentials, ip: String) {
 
 @Composable
 private fun HarnessRow(harness: Harness, onClick: () -> Unit) {
-    PapercupCard(modifier = Modifier.clickable(onClick = onClick), contentPadding = PaddingValues(12.dp)) {
+    val statusText = harness.status?.let { "status $it" } ?: "no status"
+    PapercupCard(
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Harness ${harness.slug}, $statusText. Double-tap to open."
+                role = androidx.compose.ui.semantics.Role.Button
+            },
+        contentPadding = PaddingValues(12.dp),
+    ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

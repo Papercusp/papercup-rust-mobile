@@ -20,7 +20,7 @@ struct PairView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Pair this device")
+                    Text(NSLocalizedString("pair.title", comment: ""))
                         .font(.title2.bold())
                         .foregroundStyle(PapercupTheme.text)
                     Text(
@@ -83,7 +83,7 @@ struct PairView: View {
                     Section {
                         HStack {
                             ProgressView().controlSize(.small)
-                            Text("Redeeming…").font(.footnote)
+                            Text(NSLocalizedString("loading", comment: "")).font(.footnote)
                         }
                     }
                     .papercupCardRow(accent: PapercupTheme.info.opacity(0.10))

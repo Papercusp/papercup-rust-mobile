@@ -24,11 +24,12 @@ import androidx.core.app.NotificationCompat
 ///   - On detection, broadcasts ACTION_WAKE which MainActivity
 ///     receives + uses to start the VoiceManager
 ///
-/// The service is `specialUse` (not `microphone`-categorised) because
-/// Picovoice processes audio locally and never opens the system mic
-/// stream that VoiceManager uses; foregroundServiceType=specialUse
-/// just keeps the OS from killing the process while the app's
-/// backgrounded.
+/// foregroundServiceType=microphone — Porcupine opens a continuous
+/// AudioRecord stream internally; Play Store + Android 14+ runtime
+/// require `microphone` (not specialUse) for any FGS that captures
+/// audio. The matching FOREGROUND_SERVICE_MICROPHONE permission is
+/// declared in AndroidManifest.xml. Without it, startForeground()
+/// throws SecurityException on API 34+.
 class WakeWordService : Service() {
 
     private var engine: WakeWordEngine? = null
@@ -71,7 +72,7 @@ class WakeWordService : Service() {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
             startForeground(NOTIF_ID, notif)
         }

@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,7 +67,7 @@ fun StandingApprovalsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Standing approvals") },
+                title = { Text(stringResource(R.string.standing_approvals_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -127,7 +130,7 @@ fun StandingApprovalsScreen(
                                         onClick = { decide(c, false) },
                                         enabled = !busy,
                                         modifier = Modifier.weight(1f),
-                                    ) { Text("Dismiss") }
+                                    ) { Text(stringResource(R.string.standing_approvals_dismiss)) }
                                 }
                             }
                         }

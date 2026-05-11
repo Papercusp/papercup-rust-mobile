@@ -34,13 +34,13 @@ struct ActivityView: View {
                     switch tab {
                     case .notifications:
                         if toasts.isEmpty {
-                            Text("No recent notifications").font(.callout).foregroundStyle(.secondary)
+                            Text(NSLocalizedString("activity.noNotifications", comment: "")).font(.callout).foregroundStyle(.secondary)
                         } else {
                             ForEach(toasts, id: \.id) { toastRow($0) }
                         }
                     case .actions:
                         if actions.isEmpty {
-                            Text("No recent actions").font(.callout).foregroundStyle(.secondary)
+                            Text(NSLocalizedString("activity.noActions", comment: "")).font(.callout).foregroundStyle(.secondary)
                         } else {
                             ForEach(actions, id: \.id) { auditRow($0) }
                         }

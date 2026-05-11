@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.*
+import androidx.compose.ui.res.stringResource
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
@@ -94,7 +97,7 @@ fun HarnessDetailScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(12.dp))
-                            Text("Loading status…")
+                            Text(stringResource(R.string.loading_status))
                         }
                     }
                 }
@@ -185,7 +188,7 @@ private fun StatusChips(s: HarnessStatus) {
 private fun MissionCard(s: HarnessStatus) {
     PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Mission", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.harness_detail_mission), style = MaterialTheme.typography.titleSmall)
             KeyValue("cost", String.format("$%.4f", s.missionCostUsd))
             KeyValue("input tokens", "%,d".format(s.missionInputTokens))
             KeyValue("output tokens", "%,d".format(s.missionOutputTokens))
@@ -197,7 +200,7 @@ private fun MissionCard(s: HarnessStatus) {
 private fun FeaturesCard(s: HarnessStatus) {
     PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Features by status", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.harness_detail_features_by_status), style = MaterialTheme.typography.titleSmall)
             s.counts.entries.sortedByDescending { it.value }.forEach { (k, v) ->
                 KeyValue(k, v.toString())
             }
@@ -209,7 +212,7 @@ private fun FeaturesCard(s: HarnessStatus) {
 private fun LastDecisionCard(text: String) {
     PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Last decision", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.harness_detail_last_decision), style = MaterialTheme.typography.titleSmall)
             Text(text, style = MaterialTheme.typography.bodySmall)
         }
     }

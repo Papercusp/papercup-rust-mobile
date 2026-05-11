@@ -36,6 +36,7 @@ final class VoiceManager: ObservableObject {
         case navigate(slug: String)
         case pause
         case resume
+        case claimVoice
     }
 
     private let creds: DeviceCredentials
@@ -122,6 +123,7 @@ final class VoiceManager: ObservableObject {
                 pendingIntent = .resume
                 toSpeak = speak
             case .claimVoice(let speak):
+                pendingIntent = .claimVoice
                 toSpeak = speak
             case .speak(let t):
                 toSpeak = t

@@ -54,7 +54,7 @@ struct StandingApprovalsView: View {
                 .disabled(busy)
 
                 Button { decide(c, approve: false) } label: {
-                    Text("Dismiss").frame(maxWidth: .infinity)
+                    Text(NSLocalizedString("standing.dismiss", comment: "")).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .disabled(busy)

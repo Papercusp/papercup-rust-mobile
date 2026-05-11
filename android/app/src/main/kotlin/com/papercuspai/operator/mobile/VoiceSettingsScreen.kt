@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,7 +47,7 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Voice") },
+                title = { Text(stringResource(R.string.voice_settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -59,7 +62,7 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
         ) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Wake word", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.voice_settings_wake_word_label), style = MaterialTheme.typography.labelMedium)
                     OutlinedTextField(
                         value = prefs.wakeWord,
                         onValueChange = { update(prefs.copy(wakeWord = it)) },
@@ -75,13 +78,13 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
             }
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Speech rate: ${"%.2f".format(prefs.rate)}", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.voice_settings_speech_rate_value, prefs.rate), style = MaterialTheme.typography.labelMedium)
                     Slider(
                         value = prefs.rate,
                         onValueChange = { update(prefs.copy(rate = it)) },
                         valueRange = 0.5f..2.0f,
                     )
-                    Text("Pitch: ${"%.2f".format(prefs.pitch)}", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.voice_settings_pitch_value, prefs.pitch), style = MaterialTheme.typography.labelMedium)
                     Slider(
                         value = prefs.pitch,
                         onValueChange = { update(prefs.copy(pitch = it)) },
@@ -91,11 +94,11 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
             }
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Voice", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.voice_settings_voice_label), style = MaterialTheme.typography.labelMedium)
                     if (!ttsReady) {
-                        Text("Loading…", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodySmall)
                     } else if (voices.isEmpty()) {
-                        Text("No system voices available.", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.voice_settings_no_voices), style = MaterialTheme.typography.bodySmall)
                     } else {
                         var open by remember { mutableStateOf(false) }
                         ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = !open }) {
@@ -108,7 +111,7 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
                             )
                             ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("System default") },
+                                    text = { Text(stringResource(R.string.voice_settings_system_default)) },
                                     onClick = { update(prefs.copy(voiceName = null)); open = false },
                                 )
                                 voices.forEach { v ->
@@ -132,11 +135,11 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
                     },
                     modifier = Modifier.weight(1f),
                     enabled = ttsReady,
-                ) { Text("Test") }
+                ) { Text(stringResource(R.string.voice_settings_test_button)) }
                 OutlinedButton(
                     onClick = { update(VoicePrefs()) },
                     modifier = Modifier.weight(1f),
-                ) { Text("Reset") }
+                ) { Text(stringResource(R.string.voice_settings_reset_button)) }
             }
         }
     }

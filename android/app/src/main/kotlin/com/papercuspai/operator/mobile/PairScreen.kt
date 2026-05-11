@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.ui.res.stringResource
 import com.papercuspai.operator.mobile.theme.PapercupCameraShape
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
@@ -94,7 +95,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Pair this device", style = MaterialTheme.typography.headlineMedium, color = PapercupColors.Text)
+        Text(stringResource(R.string.pair_title), style = MaterialTheme.typography.headlineMedium, color = PapercupColors.Text)
         PapercupMetaText(
             "Open the desktop operator at /settings/mobile, mint a pair token, " +
                 "and either scan the QR or paste the payload below.",
@@ -120,11 +121,11 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                             onClick = { mode = PairMode.Scan },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = PapercupColors.Accent),
-                        ) { Text("Scan QR code") }
+                        ) { Text(stringResource(R.string.pair_scan_qr)) }
                         OutlinedButton(
                             onClick = { mode = PairMode.Paste },
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Paste payload") }
+                        ) { Text(stringResource(R.string.pair_paste_payload)) }
                     }
                 }
             }
@@ -154,7 +155,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Redeeming…", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.pair_redeeming), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -196,7 +197,7 @@ private fun ScanPanel(
                         "or use Paste payload instead.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                OutlinedButton(onClick = onCancel) { Text("Back") }
+                OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.pair_back)) }
                 return@Column
             }
 
@@ -214,7 +215,7 @@ private fun ScanPanel(
                     onError = onError,
                 )
             }
-            OutlinedButton(onClick = onCancel) { Text("Back") }
+            OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.pair_back)) }
         }
     }
 }
@@ -298,18 +299,18 @@ private fun PastePanel(
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                label = { Text("QR payload (JSON)") },
+                label = { Text(stringResource(R.string.pair_payload_label)) },
                 placeholder = { Text("""{"server":"…","pairToken":"…","workspaceId":"…"}""") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 4,
                 enabled = !disabled,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onCancel, enabled = !disabled) { Text("Back") }
+                OutlinedButton(onClick = onCancel, enabled = !disabled) { Text(stringResource(R.string.pair_back)) }
                 Button(
                     onClick = { onSubmit(text) },
                     enabled = !disabled && text.isNotBlank(),
-                ) { Text("Pair") }
+                ) { Text(stringResource(R.string.pair_button)) }
             }
         }
     }

@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -28,7 +31,7 @@ fun DiagnosticsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Diagnostics") },
+                title = { Text(stringResource(R.string.diagnostics_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -43,7 +46,7 @@ fun DiagnosticsScreen(
         ) {
             Section("Connection") {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text("Status", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.diagnostics_status), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                     StatusPill(state.status)
                 }
                 state.lastPingMs?.let { Kv("Last ping", "$it ms") }

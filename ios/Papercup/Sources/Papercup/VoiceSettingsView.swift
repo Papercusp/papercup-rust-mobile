@@ -33,7 +33,7 @@ struct VoiceSettingsView: View {
                         get: { prefs.voiceIdentifier ?? "" },
                         set: { prefs.voiceIdentifier = $0.isEmpty ? nil : $0 }
                     )) {
-                        Text("System default").tag("")
+                        Text(NSLocalizedString("voice_settings_system_default", value: "System default", comment: "")).tag("")
                         ForEach(voices, id: \.identifier) { v in
                             Text("\(v.name) (\(v.language))").tag(v.identifier)
                         }

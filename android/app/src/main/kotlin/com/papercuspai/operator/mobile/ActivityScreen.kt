@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.*
+import androidx.compose.ui.res.stringResource
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
@@ -62,7 +65,7 @@ fun ActivityScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text("Activity") },
+                    title = { Text(stringResource(R.string.tab_activity)) },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = PapercupColors.InkRaised,
                         titleContentColor = PapercupColors.Text,
@@ -70,8 +73,8 @@ fun ActivityScreen(
                     ),
                 )
                 TabRow(selectedTabIndex = tab, containerColor = PapercupColors.InkRaised, contentColor = PapercupColors.Accent) {
-                    Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Notifications") })
-                    Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Actions") })
+                    Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.activity_tab_notifications)) })
+                    Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.activity_tab_actions)) })
                 }
             }
         },
@@ -87,7 +90,7 @@ fun ActivityScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(strokeWidth = 2.dp)
                             Spacer(Modifier.width(12.dp))
-                            Text("Loading activity…")
+                            Text(stringResource(R.string.loading_activity))
                         }
                     }
                 }

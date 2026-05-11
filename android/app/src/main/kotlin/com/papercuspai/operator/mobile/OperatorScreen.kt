@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -77,7 +78,7 @@ fun OperatorScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Operator", style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.operator_screen_title), style = MaterialTheme.typography.titleLarge)
                         Text(
                             "core ${uniffi.papercup.version()} · ${creds.server}",
                             style = MaterialTheme.typography.bodySmall,
@@ -165,7 +166,7 @@ private fun PauseCard(
         },
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("Operator", style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.operator_label), style = MaterialTheme.typography.labelSmall)
             Text(
                 when (paused) {
                     true -> "PAUSED"
@@ -202,7 +203,7 @@ private fun VoiceLeaseCard(
         },
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("Voice", style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.voice_label), style = MaterialTheme.typography.labelSmall)
             Text(label, style = MaterialTheme.typography.titleMedium)
             Text(sub, style = MaterialTheme.typography.labelSmall)
         }
@@ -218,14 +219,14 @@ private fun RunningCard(running: List<Running>, onSelect: (String) -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Currently running", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.currently_running), style = MaterialTheme.typography.titleSmall)
                 AssistChip(
                     onClick = {},
                     label = { Text("${running.size}", style = MaterialTheme.typography.labelSmall) },
                 )
             }
             if (running.isEmpty()) {
-                Text("No active runs", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.no_active_runs), style = MaterialTheme.typography.bodySmall)
             } else {
                 running.forEach { r ->
                     Column(
@@ -265,9 +266,9 @@ private fun RunningCard(running: List<Running>, onSelect: (String) -> Unit) {
 private fun RecentHarnessesCard(harnesses: List<Harness>, onSelect: (String) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Recent harnesses", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.recent_harnesses), style = MaterialTheme.typography.titleSmall)
             if (harnesses.isEmpty()) {
-                Text("No harnesses yet", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.no_harnesses_yet), style = MaterialTheme.typography.bodySmall)
             } else {
                 harnesses.take(5).forEach { h ->
                     Row(
@@ -299,7 +300,7 @@ private fun RecentNotificationsCard(toasts: List<ToastEntry>, onSelectHarness: (
     if (toasts.isEmpty()) return
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Recent activity", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.recent_activity), style = MaterialTheme.typography.titleSmall)
             toasts.take(3).forEach { t ->
                 Column(
                     modifier = Modifier
@@ -333,7 +334,7 @@ private fun RecentNotificationsCard(toasts: List<ToastEntry>, onSelectHarness: (
 private fun IdentityCard(creds: DeviceCredentials) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text("This device", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.this_device), style = MaterialTheme.typography.titleSmall)
             KvLine("workspace", creds.workspaceId)
             KvLine("device", creds.deviceId.take(12) + "…")
             creds.meshAssignedIp?.let { KvLine("mesh", it) }

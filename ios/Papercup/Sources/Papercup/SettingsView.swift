@@ -48,7 +48,7 @@ struct SettingsView: View {
     }
 
     private var identitySection: some View {
-        Section("This device") {
+        Section(NSLocalizedString("operator.thisDevice", comment: "")) {
             kv("server", creds.server)
             kv("device id", creds.deviceId)
             kv("workspace id", creds.workspaceId)
@@ -58,22 +58,22 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var workspacesSection: some View {
-        Section("Workspaces") {
+        Section(NSLocalizedString("settings.workspaces", comment: "")) {
             if let ws = workspaces {
                 ForEach(ws, id: \.id) { w in workspaceRow(w) }
             } else {
-                Text("Loading…").font(.footnote).foregroundStyle(.secondary)
+                Text(NSLocalizedString("loading", comment: "")).font(.footnote).foregroundStyle(.secondary)
             }
         }
     }
 
     @ViewBuilder
     private var devicesSection: some View {
-        Section("Paired devices") {
+        Section(NSLocalizedString("settings.pairedDevices", comment: "")) {
             if let dv = devices {
                 ForEach(dv, id: \.deviceId) { d in deviceRow(d) }
             } else {
-                Text("Loading…").font(.footnote).foregroundStyle(.secondary)
+                Text(NSLocalizedString("loading", comment: "")).font(.footnote).foregroundStyle(.secondary)
             }
         }
     }

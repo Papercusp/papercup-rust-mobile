@@ -62,7 +62,7 @@ struct OperatorView: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Operator").font(.caption)
+                Text(NSLocalizedString("operator.label", comment: "")).font(.caption)
                 Text(label).font(.title3.bold())
                 Text("tap to \(isPaused ? "resume" : "pause")").font(.caption)
             }
@@ -101,7 +101,7 @@ struct OperatorView: View {
                         .animation(.easeOut(duration: 0.08), value: voice.micLevel)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Voice").font(.caption)
+                    Text(NSLocalizedString("operator.voice", comment: "")).font(.caption)
                     Text(title).font(.title3.bold())
                     Text(sub).font(.caption)
                 }
@@ -113,6 +113,10 @@ struct OperatorView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("Voice. \(title). \(sub)"))
+        .accessibilityHint(Text(active ? "Double-tap to stop listening." : "Double-tap to start listening."))
+        .accessibilityAddTraits(.isButton)
     }
 
     private func stateSub(_ s: VoiceManager.State) -> String {
@@ -128,7 +132,7 @@ struct OperatorView: View {
     private var runningCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Currently running").font(.headline)
+                Text(NSLocalizedString("operator.currentlyRunning", comment: "")).font(.headline)
                 Spacer()
                 Text("\(running.count)")
                     .font(.caption)
@@ -136,7 +140,7 @@ struct OperatorView: View {
                     .background(.gray.opacity(0.2), in: Capsule())
             }
             if running.isEmpty {
-                Text("No active runs").font(.callout).foregroundStyle(.secondary)
+                Text(NSLocalizedString("operator.noActiveRuns", comment: "")).font(.callout).foregroundStyle(.secondary)
             } else {
                 ForEach(running, id: \.harnessSlug) { r in runningRow(r) }
             }
@@ -171,7 +175,7 @@ struct OperatorView: View {
 
     private var recentHarnessesCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recent harnesses").font(.headline)
+            Text(NSLocalizedString("operator.recentHarnesses", comment: "")).font(.headline)
             ForEach(harnesses.prefix(5), id: \.slug) { h in
                 Button { onSelectHarness(h.slug) } label: {
                     HStack {
@@ -199,7 +203,7 @@ struct OperatorView: View {
 
     private var recentNotificationsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recent activity").font(.headline)
+            Text(NSLocalizedString("operator.recentActivity", comment: "")).font(.headline)
             ForEach(toasts.prefix(3), id: \.id) { t in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(t.message).font(.caption)
@@ -217,7 +221,7 @@ struct OperatorView: View {
 
     private var identityCard: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("This device").font(.headline)
+            Text(NSLocalizedString("operator.thisDevice", comment: "")).font(.headline)
             kv("workspace", creds.workspaceId)
             kv("device", String(creds.deviceId.prefix(12)) + "…")
             if let ip = creds.meshAssignedIp { kv("mesh", ip) }

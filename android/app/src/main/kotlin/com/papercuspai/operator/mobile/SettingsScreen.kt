@@ -82,7 +82,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = PapercupColors.InkRaised,
                     titleContentColor = PapercupColors.Text,
@@ -123,7 +123,7 @@ fun SettingsScreen(
             }
             val ws = workspaces
             if (ws == null) {
-                item { PapercupMetaText("Loading…") }
+                item { PapercupMetaText(stringResource(R.string.loading)) }
             } else {
                 items(ws) { w ->
                     WorkspaceRow(
@@ -161,7 +161,7 @@ fun SettingsScreen(
             }
             val dv = devices
             if (dv == null) {
-                item { PapercupMetaText("Loading…") }
+                item { PapercupMetaText(stringResource(R.string.loading)) }
             } else {
                 items(dv) { d ->
                     DeviceRowCard(

@@ -64,6 +64,10 @@ struct HarnessListView: View {
                 Section {
                     ForEach(harnesses, id: \.slug) { h in
                         Button { onSelect(h.slug) } label: { HarnessRow(harness: h) }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel(Text("Harness \(h.slug)\(h.status.map { ", status \($0)" } ?? ", no status")"))
+                            .accessibilityHint(Text("Double-tap to open."))
+                            .accessibilityAddTraits(.isButton)
                             .buttonStyle(.plain)
                     }
                 }
