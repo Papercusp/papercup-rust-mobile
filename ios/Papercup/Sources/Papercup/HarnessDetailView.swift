@@ -129,7 +129,7 @@ struct HarnessDetailView: View {
     private func refetch() async {
         state = .loading
         do {
-            let client = OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+            let client = creds.client()
             let s = try await client.getHarnessStatus(slug: slug)
             state = .ready(s)
         } catch let err as ApiError {

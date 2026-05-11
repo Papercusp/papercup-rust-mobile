@@ -76,7 +76,8 @@ struct AppRoot: View {
                 workspaceId: outcome.workspaceId,
                 meshAssignedIp: outcome.mesh?.assignedIp,
                 wgQuickConfig: wgQuick,
-                wgPrivateKey: outcome.mesh != nil ? keys.privateKeyB64 : nil
+                wgPrivateKey: outcome.mesh != nil ? keys.privateKeyB64 : nil,
+                meshUrl: outcome.desktopMeshUrl
             )
             CredentialStore.save(fresh)
             creds = fresh
@@ -131,7 +132,7 @@ private struct PairedShell: View {
 
         VStack(spacing: 0) {
             if monitor.state.status == .offline {
-                Text("Lost desktop connection")
+                Text(NSLocalizedString("connection.lost", comment: ""))
                     .font(.caption)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -146,7 +147,7 @@ private struct PairedShell: View {
                         onSelectHarness: onSelectHarness,
                         voice: voice
                     )
-                    .tabItem { Label("Operator", systemImage: "rectangle.grid.2x2.fill") }
+                    .tabItem { Label(NSLocalizedString("tab.operator", comment: ""), systemImage: "rectangle.grid.2x2.fill") }
                     .tag(AppRoot.Tab.operatorTab)
 
                     HarnessListView(
@@ -155,7 +156,7 @@ private struct PairedShell: View {
                         lastInvalidate: lastInvalidate,
                         onSelect: onSelectHarness
                     )
-                    .tabItem { Label("Harnesses", systemImage: "square.stack.3d.up.fill") }
+                    .tabItem { Label(NSLocalizedString("tab.harnesses", comment: ""), systemImage: "square.stack.3d.up.fill") }
                     .tag(AppRoot.Tab.harnesses)
 
                     ActivityView(
@@ -163,7 +164,7 @@ private struct PairedShell: View {
                         invalidationTick: liveTick,
                         onSelectHarness: onSelectHarness
                     )
-                    .tabItem { Label("Activity", systemImage: "bell.fill") }
+                    .tabItem { Label(NSLocalizedString("tab.activity", comment: ""), systemImage: "bell.fill") }
                     .tag(AppRoot.Tab.activity)
 
                     SettingsView(
@@ -172,7 +173,7 @@ private struct PairedShell: View {
                         onForget: onForget,
                         onWorkspaceSwitched: onWorkspaceSwitched
                     )
-                    .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+                    .tabItem { Label(NSLocalizedString("tab.settings", comment: ""), systemImage: "gearshape.fill") }
                     .tag(AppRoot.Tab.settings)
                 }
 
@@ -199,9 +200,9 @@ private struct PairedShell: View {
             case .navigate(let slug):
                 pushedDetailSlug = slug
             case .pause:
-                Task { try? await OperatorClient(baseUrl: current.server, deviceToken: current.deviceToken).pauseSet(paused: true) }
+                Task { try? await current.client().pauseSet(paused: true) }
             case .resume:
-                Task { try? await OperatorClient(baseUrl: current.server, deviceToken: current.deviceToken).pauseSet(paused: false) }
+                Task { try? await current.client().pauseSet(paused: false) }
             }
             voice.pendingIntent = nil
         }
@@ -222,12 +223,26 @@ private struct PairedShell: View {
     }
 
     private func runSync() async {
+        // Phase 3 — register the queries the UI watches; pump
+        // SyncStream invalidations into the cache so refetches happen
+        // out-of-band rather than every screen doing its own.
+        let cache = SyncCache(client: current.client())
+        for name in [
+            "harnesses.list",
+            "running",
+            "toastLog.recent",
+            "auditLog.recent",
+        ] {
+            cache.registerQuery(name: name)
+        }
+
         let stream = SyncStream(baseUrl: current.server, deviceToken: current.deviceToken)
         defer { stream.disconnect() }
         while !Task.isCancelled {
             do {
                 let ev = try await stream.nextEvent()
                 lastInvalidate = ev.name
+                await cache.handleInvalidate(name: ev.name)
                 if ev.name.hasPrefix("harness") {
                     liveTick += 1
                 }

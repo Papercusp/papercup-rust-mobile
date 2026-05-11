@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.compose.ui.res.stringResource
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -110,9 +111,27 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         return
     }
 
+    // Phase 3 — shared in-memory cache. Each tab registers the
+    // queries it cares about; SyncStream invalidations refetch the
+    // matching cache entry. UI screens still hold their own state
+    // (the cache is additive) but the cache stops the chatty
+    // every-screen-refetches-on-every-invalidate pattern.
+    val cache = remember(current.deviceToken) {
+        uniffi.papercup.SyncCache(current.client())
+    }
+    DisposableEffect(current.deviceToken) {
+        listOf(
+            "harnesses.list",
+            "running",
+            "toastLog.recent",
+            "auditLog.recent",
+        ).forEach { cache.registerQuery(it) }
+        onDispose { cache.close() }
+    }
+
     // Single SSE subscription, lives for the duration of the paired
-    // session — both the list and detail screens read from it via the
-    // hoisted `liveTick` / `lastInvalidate` state below.
+    // session — pumps invalidations into the cache + bumps the
+    // liveTick the UI reads for transient "live · X" pills.
     DisposableEffect(current.deviceToken) {
         val stream = SyncStream(current.server, current.deviceToken)
         val job = kotlinx.coroutines.MainScope().launch {
@@ -120,6 +139,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
                 while (true) {
                     val ev = stream.nextEvent()
                     lastInvalidate = ev.name
+                    cache.handleInvalidate(ev.name)
                     if (ev.name.startsWith("harness")) {
                         liveTick += 1
                     }
@@ -141,7 +161,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
     LaunchedEffect(current.deviceToken) {
         try {
             val token = FirebaseMessaging.getInstance().token.await()
-            OperatorClient(current.server, current.deviceToken)
+            current.client()
                 .registerPush(platform = "fcm", token = token)
         } catch (_: Throwable) {
             // Ignore here; PushService.onNewToken will retry on rotation.
@@ -152,7 +172,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
     // 'paired phone is connected' badge stays green. 60s is plenty —
     // backend doesn't expire fast.
     LaunchedEffect(current.deviceToken) {
-        val client = OperatorClient(current.server, current.deviceToken)
+        val client = current.client()
         while (true) {
             try { client.heartbeat() } catch (_: Throwable) {}
             kotlinx.coroutines.delay(60_000)
@@ -169,9 +189,9 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             when (intent) {
                 is VoiceManager.Intent.Navigate -> route = Route.Detail(intent.slug)
                 VoiceManager.Intent.Pause ->
-                    runCatching { OperatorClient(current.server, current.deviceToken).pauseSet(true) }
+                    runCatching { current.client().pauseSet(true) }
                 VoiceManager.Intent.Resume ->
-                    runCatching { OperatorClient(current.server, current.deviceToken).pauseSet(false) }
+                    runCatching { current.client().pauseSet(false) }
             }
         }
     }
@@ -291,7 +311,7 @@ private fun PairedShell(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        "Lost desktop connection",
+                        stringResource(R.string.connection_lost),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onErrorContainer,
@@ -302,10 +322,10 @@ private fun PairedShell(
         bottomBar = {
             NavigationBar {
                 val items = listOf(
-                    Triple(Route.Operator, Icons.Default.Dashboard, "Operator"),
-                    Triple(Route.List, Icons.Default.Apps, "Harnesses"),
-                    Triple(Route.Activity, Icons.Default.Notifications, "Activity"),
-                    Triple(Route.Settings, Icons.Default.Settings, "Settings"),
+                    Triple(Route.Operator, Icons.Default.Dashboard, stringResource(R.string.tab_operator)),
+                    Triple(Route.List, Icons.Default.Apps, stringResource(R.string.tab_harnesses)),
+                    Triple(Route.Activity, Icons.Default.Notifications, stringResource(R.string.tab_activity)),
+                    Triple(Route.Settings, Icons.Default.Settings, stringResource(R.string.tab_settings)),
                 )
                 items.forEach { (r, icon, label) ->
                     NavigationBarItem(
@@ -387,7 +407,7 @@ fun HarnessListScreen(
     LaunchedEffect(creds.deviceToken, liveTick) {
         state = ScreenState.Loading
         state = try {
-            val client = OperatorClient(creds.server, creds.deviceToken)
+            val client = creds.client()
             ScreenState.Ready(client.listHarnesses())
         } catch (e: ApiException) {
             ScreenState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")
@@ -575,7 +595,7 @@ private fun PauseButton(creds: DeviceCredentials, liveTick: Int) {
 
     LaunchedEffect(creds.deviceToken, liveTick) {
         try {
-            paused = OperatorClient(creds.server, creds.deviceToken).pauseGet().paused
+            paused = creds.client().pauseGet().paused
         } catch (_: Throwable) { /* keep last-known state */ }
     }
 
@@ -596,7 +616,7 @@ private fun PauseButton(creds: DeviceCredentials, liveTick: Int) {
             inflight = true
             scope.launch {
                 try {
-                    paused = OperatorClient(creds.server, creds.deviceToken).pauseSet(target)
+                    paused = creds.client().pauseSet(target)
                 } catch (_: Throwable) {
                 } finally {
                     inflight = false

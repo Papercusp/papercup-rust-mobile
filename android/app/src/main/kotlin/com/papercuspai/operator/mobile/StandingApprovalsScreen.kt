@@ -33,7 +33,7 @@ fun StandingApprovalsScreen(
 
     suspend fun load() {
         try {
-            candidates = OperatorClient(creds.server, creds.deviceToken).standingCandidates()
+            candidates = creds.client().standingCandidates()
             error = null
         } catch (e: ApiException) {
             error = e.message ?: e::class.simpleName ?: "load failed"
@@ -50,7 +50,7 @@ fun StandingApprovalsScreen(
         hidden = hidden + k
         scope.launch {
             try {
-                OperatorClient(creds.server, creds.deviceToken)
+                creds.client()
                     .standingCandidateDecide(c.capability, c.targetHarness, approve)
             } catch (t: Throwable) {
                 error = t.message ?: "decision failed"

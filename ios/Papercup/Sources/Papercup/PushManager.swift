@@ -58,7 +58,7 @@ final class PushManager: NSObject {
     func register(deviceTokenData: Data) async {
         let hex = deviceTokenData.map { String(format: "%02x", $0) }.joined()
         do {
-            try await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+            try await creds.client()
                 .registerPush(platform: "apns", token: hex)
             os_log(.info, log: log, "push: registered apns token (%d chars)", hex.count)
         } catch {

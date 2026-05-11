@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import uniffi.papercup.OperatorClient
 
 data class DeviceCredentials(
     val server: String,
@@ -22,7 +23,23 @@ data class DeviceCredentials(
     /// Phase 6b: device's WireGuard private key, base64. Persisted in
     /// the same Keystore-backed prefs as the JWT.
     val wgPrivateKey: String? = null,
-)
+    /// Phase 6c: mesh URL the OperatorClient prefers when reachable
+    /// (e.g. http://10.10.0.2:3070). Falls back to `server` on
+    /// transport errors via OperatorClient.newWithFallback.
+    val meshUrl: String? = null,
+) {
+    /// Build an OperatorClient that prefers the mesh URL (if known)
+    /// and auto-falls back to the public `server` URL on transport
+    /// failure. Use this everywhere instead of OperatorClient(_, _).
+    fun client(): OperatorClient {
+        val mesh = meshUrl
+        return if (!mesh.isNullOrBlank() && mesh != server) {
+            OperatorClient.newWithFallback(mesh, server, deviceToken)
+        } else {
+            OperatorClient(server, deviceToken)
+        }
+    }
+}
 
 /// Keystore-backed credential store. Persists the JWT + paired desktop URL
 /// returned by `OperatorClient.pair()` so the app boots straight to the
@@ -52,6 +69,7 @@ class CredentialStore(context: Context) {
             meshAssignedIp = prefs.getString(KEY_MESH_IP, null),
             wgQuickConfig = prefs.getString(KEY_WG_QUICK, null),
             wgPrivateKey = prefs.getString(KEY_WG_PRIV, null),
+            meshUrl = prefs.getString(KEY_MESH_URL, null),
         )
     }
 
@@ -64,6 +82,7 @@ class CredentialStore(context: Context) {
             .putString(KEY_MESH_IP, creds.meshAssignedIp)
             .putString(KEY_WG_QUICK, creds.wgQuickConfig)
             .putString(KEY_WG_PRIV, creds.wgPrivateKey)
+            .putString(KEY_MESH_URL, creds.meshUrl)
             .apply()
     }
 
@@ -79,5 +98,6 @@ class CredentialStore(context: Context) {
         const val KEY_MESH_IP = "mesh_assigned_ip"
         const val KEY_WG_QUICK = "wg_quick_config"
         const val KEY_WG_PRIV = "wg_private_key"
+        const val KEY_MESH_URL = "mesh_url"
     }
 }

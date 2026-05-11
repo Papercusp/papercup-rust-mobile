@@ -52,7 +52,7 @@ fun OperatorScreen(
     // last successful values for each card persist; the error banner shows
     // only when nothing succeeded.
     LaunchedEffect(creds.deviceToken, liveTick) {
-        val client = OperatorClient(creds.server, creds.deviceToken)
+        val client = creds.client()
         var anyOk = false
         var lastErr: String? = null
         suspend fun <T> tryFetch(label: String, block: suspend () -> T): T? = try {
@@ -105,7 +105,7 @@ fun OperatorScreen(
                     onToggle = { target ->
                         scope.launch {
                             try {
-                                paused = OperatorClient(creds.server, creds.deviceToken).pauseSet(target)
+                                paused = creds.client().pauseSet(target)
                             } catch (_: Throwable) {}
                         }
                     },
@@ -196,7 +196,11 @@ private fun VoiceLeaseCard(
         lease.ownerKind == "mobile" -> "OTHER PHONE" to lease.ownerId.take(8) + "…"
         else -> "DESKTOP" to lease.ownerId.take(8) + "…"
     }
-    Card(modifier = modifier) {
+    Card(
+        modifier = modifier.semantics {
+            contentDescription = "Voice lease: $label. $sub"
+        },
+    ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text("Voice", style = MaterialTheme.typography.labelSmall)
             Text(label, style = MaterialTheme.typography.titleMedium)

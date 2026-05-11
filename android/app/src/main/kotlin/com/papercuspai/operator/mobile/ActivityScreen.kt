@@ -46,7 +46,7 @@ fun ActivityScreen(
     LaunchedEffect(creds.deviceToken, invalidationTick) {
         state = ActivityState.Loading
         state = try {
-            val client = OperatorClient(creds.server, creds.deviceToken)
+            val client = creds.client()
             ActivityState.Ready(
                 toasts = client.recentNotifications(),
                 audit = client.recentActions(),

@@ -116,7 +116,8 @@ struct PairView: View {
                     workspaceId: outcome.workspaceId,
                     meshAssignedIp: outcome.mesh?.assignedIp,
                     wgQuickConfig: wgQuick,
-                    wgPrivateKey: outcome.mesh != nil ? keys.privateKeyB64 : nil
+                    wgPrivateKey: outcome.mesh != nil ? keys.privateKeyB64 : nil,
+                    meshUrl: outcome.desktopMeshUrl
                 ))
             } catch let err as PairError {
                 if case .InvalidQr(_) = err {

@@ -64,7 +64,7 @@ struct StandingApprovalsView: View {
 
     private func load() async {
         do {
-            candidates = try await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken).standingCandidates()
+            candidates = try await creds.client().standingCandidates()
             error = nil
         } catch {
             self.error = "\(error)"
@@ -77,7 +77,7 @@ struct StandingApprovalsView: View {
         hidden.insert(k)
         Task {
             do {
-                try await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+                try await creds.client()
                     .standingCandidateDecide(capability: c.capability, targetHarness: c.targetHarness, approve: approve)
             } catch {
                 self.error = "\(error)"

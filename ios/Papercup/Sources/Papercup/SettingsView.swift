@@ -22,20 +22,24 @@ struct SettingsView: View {
                 workspacesSection
                 devicesSection
                 Section {
-                    NavigationLink("Standing approvals") {
+                    NavigationLink(NSLocalizedString("settings.standingApprovals", comment: "")) {
                         StandingApprovalsView(creds: creds)
                     }
-                    NavigationLink("Voice") {
+                    .accessibilityHint(Text("Opens standing approvals review."))
+                    NavigationLink(NSLocalizedString("settings.voice", comment: "")) {
                         VoiceSettingsView()
                     }
-                    NavigationLink("Diagnostics") {
+                    .accessibilityHint(Text("Opens voice and wake-word settings."))
+                    NavigationLink(NSLocalizedString("settings.diagnostics", comment: "")) {
                         DiagnosticsView(creds: creds, monitor: monitor)
                     }
+                    .accessibilityHint(Text("Opens connection and build diagnostics."))
                 }
                 Section {
                     Button(role: .destructive, action: onForget) {
-                        Text("Forget this device")
+                        Text(NSLocalizedString("settings.forgetDevice", comment: ""))
                     }
+                    .accessibilityHint(Text("Clears stored credentials and returns to pair view."))
                 }
             }
             .navigationTitle("Settings")
@@ -133,7 +137,7 @@ struct SettingsView: View {
 
     private func load() async {
         do {
-            let client = OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+            let client = creds.client()
             workspaces = try await client.listWorkspaces()
             devices = try await client.listDesktopDevices()
             error = nil
@@ -148,7 +152,7 @@ struct SettingsView: View {
     /// gateable methods (workspace_switch=Medium, revoke_device=High)
     /// route through LAContext before hitting the network.
     private func gatedClient() -> OperatorClient {
-        let c = OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+        let c = creds.client()
         c.setBiometricPrompt(prompt: BiometricGate())
         return c
     }

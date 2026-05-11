@@ -44,7 +44,7 @@ fun HarnessDetailScreen(
     LaunchedEffect(slug, invalidationTick) {
         state = DetailState.Loading
         state = try {
-            val client = OperatorClient(creds.server, creds.deviceToken)
+            val client = creds.client()
             DetailState.Ready(client.getHarnessStatus(slug))
         } catch (e: ApiException) {
             DetailState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")

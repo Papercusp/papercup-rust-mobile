@@ -52,7 +52,7 @@ struct OperatorView: View {
             guard let p = paused else { return }
             Task {
                 do {
-                    paused = try await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+                    paused = try await creds.client()
                         .pauseSet(paused: !p)
                 } catch {
                     // Surface failures via the error card at the top of
@@ -244,7 +244,7 @@ struct OperatorView: View {
     }
 
     private func load() async {
-        let client = OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+        let client = creds.client()
         var anyOk = false
         var lastErr: String? = nil
         do { let p = try await client.pauseGet(); paused = p.paused; anyOk = true }

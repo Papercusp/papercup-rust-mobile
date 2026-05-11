@@ -71,6 +71,152 @@ fn parse_qr_payload(text: String) -> Result<QrPayload, PairError> {
     })
 }
 
+// ── sync cache (Phase 3) ────────────────────────────────────────────────
+
+#[derive(Clone)]
+pub enum CacheUpdate {
+    Updated {
+        name: String,
+        value_json: String,
+        generation: i64,
+    },
+    Failed {
+        name: String,
+        error: String,
+    },
+}
+
+impl From<papercup_core::cache::CacheUpdate> for CacheUpdate {
+    fn from(u: papercup_core::cache::CacheUpdate) -> Self {
+        match u {
+            papercup_core::cache::CacheUpdate::Updated {
+                name,
+                value_json,
+                generation,
+            } => Self::Updated {
+                name,
+                value_json,
+                generation: generation as i64,
+            },
+            papercup_core::cache::CacheUpdate::Failed { name, error } => {
+                Self::Failed { name, error }
+            }
+        }
+    }
+}
+
+pub trait CacheSubscriber: Send + Sync {
+    fn on_update(&self, update: CacheUpdate);
+}
+
+struct CacheSubShim(std::sync::Arc<dyn CacheSubscriber>);
+impl papercup_core::cache::Subscriber for CacheSubShim {
+    fn on_update(&self, u: papercup_core::cache::CacheUpdate) {
+        self.0.on_update(u.into());
+    }
+}
+
+/// Fetcher that maps query name → REST call on the wrapped client.
+struct ClientFetcher {
+    client: CoreClient,
+}
+
+#[async_trait::async_trait]
+impl papercup_core::cache::Fetcher for ClientFetcher {
+    async fn fetch(&self, name: &str) -> Result<String, String> {
+        // Map sync-event names emitted by the desktop to the
+        // mobile route that returns the freshest snapshot. Names
+        // mirror the desktop's existing `name`-keyed invalidations.
+        let result = match name {
+            "harnesses.list" => self.client.list_harnesses().await.and_then(|v| {
+                serde_json::to_string(&v)
+                    .map_err(|e| papercup_core::client::ApiError::Decode(e.to_string()))
+            }),
+            "running" | "operatorScans.running" => self.client.list_running().await.and_then(|v| {
+                serde_json::to_string(&v)
+                    .map_err(|e| papercup_core::client::ApiError::Decode(e.to_string()))
+            }),
+            "toastLog.recent" | "notifications.recent" => {
+                self.client.recent_notifications().await.and_then(|v| {
+                    serde_json::to_string(&v)
+                        .map_err(|e| papercup_core::client::ApiError::Decode(e.to_string()))
+                })
+            }
+            "auditLog.recent" | "actions.recent" => {
+                self.client.recent_actions().await.and_then(|v| {
+                    serde_json::to_string(&v)
+                        .map_err(|e| papercup_core::client::ApiError::Decode(e.to_string()))
+                })
+            }
+            other if other.starts_with("harness.status:") => {
+                let slug = other.trim_start_matches("harness.status:");
+                self.client.get_harness_status(slug).await.and_then(|v| {
+                    serde_json::to_string(&v)
+                        .map_err(|e| papercup_core::client::ApiError::Decode(e.to_string()))
+                })
+            }
+            _ => return Err(format!("unmapped query name: {name}")),
+        };
+        result.map_err(|e| format!("{e}"))
+    }
+}
+
+pub struct SyncCache {
+    inner: papercup_core::cache::Cache,
+    /// Held across the lifetime of the cache to keep registered
+    /// subscribers alive.
+    _subs: std::sync::Mutex<Vec<papercup_core::cache::Subscription>>,
+    /// Names the host has registered. Cache::handle_invalidate
+    /// already gates on cache contents, but we also track here so
+    /// register_query can pre-populate by triggering a first refresh.
+    registered: std::sync::Mutex<std::collections::HashSet<String>>,
+}
+
+impl SyncCache {
+    pub fn new(client: std::sync::Arc<OperatorClient>) -> Self {
+        let fetcher = std::sync::Arc::new(ClientFetcher {
+            client: client.inner.clone(),
+        });
+        Self {
+            inner: papercup_core::cache::Cache::new(fetcher),
+            _subs: std::sync::Mutex::new(Vec::new()),
+            registered: std::sync::Mutex::new(std::collections::HashSet::new()),
+        }
+    }
+
+    pub fn register_query(&self, name: String) {
+        let mut reg = self.registered.lock().unwrap();
+        if reg.insert(name.clone()) {
+            // Kick off a first fetch so the cache has a value when UI
+            // first observes it.
+            let inner = self.inner.clone();
+            let n = name.clone();
+            rt().spawn(async move {
+                inner.refresh(&n).await;
+            });
+        }
+    }
+
+    pub async fn handle_invalidate(&self, name: String) {
+        // Non-registered → no-op (per cache contract).
+        let known = self.registered.lock().unwrap().contains(&name);
+        if known {
+            self.inner.refresh(&name).await;
+        }
+    }
+
+    pub fn subscribe(&self, subscriber: Box<dyn CacheSubscriber>) {
+        let arc: std::sync::Arc<dyn CacheSubscriber> = std::sync::Arc::from(subscriber);
+        let sub = std::sync::Arc::new(CacheSubShim(arc));
+        let subscription = self.inner.subscribe(sub);
+        self._subs.lock().unwrap().push(subscription);
+    }
+
+    pub fn get(&self, name: String) -> Option<String> {
+        self.inner.get(&name).and_then(|e| e.value_json)
+    }
+}
+
 // ── voice intent dispatch (Phase 4) ─────────────────────────────────────
 
 pub enum Intent {
@@ -223,6 +369,7 @@ pub struct PairOutcome {
     pub device_id: String,
     pub workspace_id: String,
     pub desktop_host: String,
+    pub desktop_mesh_url: Option<String>,
     pub mesh: Option<MeshConfig>,
 }
 
@@ -682,6 +829,19 @@ impl OperatorClient {
         }
     }
 
+    /// Phase 6c — auto-fallback constructor. Primary URL preferred;
+    /// transport failures swap to fallback for the rest of the session.
+    pub fn new_with_fallback(
+        primary: String,
+        fallback: String,
+        device_token: Option<String>,
+    ) -> Self {
+        Self {
+            inner: CoreClient::new_with_fallback(primary, fallback, device_token),
+            biometric: std::sync::Arc::new(std::sync::RwLock::new(None)),
+        }
+    }
+
     /// Phase 8 — set the platform-supplied biometric prompt. Pass None
     /// to disable gating (high-risk actions will deny).
     /// UDL `callback interface` lowers to Box<dyn>; we wrap into Arc.
@@ -944,11 +1104,25 @@ impl OperatorClient {
             .await
             .map_err(|_| PairError::Network)??;
         let mesh = resp.wg_config.as_ref().and_then(parse_mesh);
+        // Surface the broker-issued mesh URL so the host can hand it
+        // to OperatorClient::new_with_fallback.
+        let desktop_mesh_url = resp
+            .desktop_mesh_host
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|h| {
+                if h.contains("://") {
+                    h.clone()
+                } else {
+                    format!("http://{h}")
+                }
+            });
         Ok(PairOutcome {
             device_token: resp.device_token,
             device_id: resp.device_id,
             workspace_id: resp.workspace_id,
             desktop_host: resp.desktop_host,
+            desktop_mesh_url,
             mesh,
         })
     }

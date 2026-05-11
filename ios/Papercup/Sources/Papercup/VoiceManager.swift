@@ -58,7 +58,7 @@ final class VoiceManager: ObservableObject {
         state = .connecting
         Task {
             do {
-                try await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken).voiceLeaseClaim()
+                try await creds.client().voiceLeaseClaim()
             } catch {
                 state = .failed(message: "lease claim failed: \(error)")
                 return
@@ -76,7 +76,7 @@ final class VoiceManager: ObservableObject {
         synth.stopSpeaking(at: .immediate)
         state = .idle
         Task {
-            try? await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken).voiceLeaseRelease()
+            try? await creds.client().voiceLeaseRelease()
         }
     }
 

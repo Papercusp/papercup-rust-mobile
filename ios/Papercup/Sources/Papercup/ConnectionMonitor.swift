@@ -33,7 +33,7 @@ final class ConnectionMonitor: ObservableObject {
     }
 
     func probe() async {
-        let client = OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+        let client = creds.client()
         let t0 = Date()
         do {
             try await client.heartbeat()

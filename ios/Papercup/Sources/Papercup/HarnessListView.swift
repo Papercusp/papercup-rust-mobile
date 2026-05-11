@@ -81,7 +81,7 @@ struct HarnessListView: View {
     private func refetch() async {
         state = .loading
         do {
-            let client = OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+            let client = creds.client()
             let harnesses = try await client.listHarnesses()
             state = .ready(harnesses)
         } catch let err as ApiError {

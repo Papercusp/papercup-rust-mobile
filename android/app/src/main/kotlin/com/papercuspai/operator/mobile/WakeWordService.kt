@@ -65,8 +65,8 @@ class WakeWordService : Service() {
     private fun startForegroundCompat() {
         val notif: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Papercup")
-            .setContentText("Listening for ‘hey papercup'")
+            .setContentTitle(getString(R.string.wake_word_notification_title))
+            .setContentText(getString(R.string.wake_word_notification_text))
             .setOngoing(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
@@ -103,10 +103,10 @@ class WakeWordService : Service() {
             if (nm.getNotificationChannel(CHANNEL_ID) != null) return
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Wake-word listener",
+                context.getString(R.string.wake_word_channel_name),
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "Persistent listener for the ‘hey papercup' wake word."
+                description = context.getString(R.string.wake_word_channel_description)
                 setShowBadge(false)
             }
             nm.createNotificationChannel(channel)

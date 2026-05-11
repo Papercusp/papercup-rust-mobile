@@ -41,7 +41,7 @@ class PushService : FirebaseMessagingService() {
         val creds = store.load() ?: return
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                OperatorClient(creds.server, creds.deviceToken)
+                creds.client()
                     .registerPush(platform = "fcm", token = token)
             } catch (t: Throwable) {
                 Log.w(TAG, "registerPush failed: ${t.message}")
@@ -80,7 +80,7 @@ class PushService : FirebaseMessagingService() {
         val creds = store.load() ?: return
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                OperatorClient(creds.server, creds.deviceToken).heartbeat()
+                creds.client().heartbeat()
                 Log.i(TAG, "fcm invalidate refetch ack for $name")
             } catch (t: Throwable) {
                 Log.w(TAG, "fcm invalidate refetch failed: ${t.message}")

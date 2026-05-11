@@ -76,6 +76,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                         meshAssignedIp = mesh?.assignedIp,
                         wgQuickConfig = wgQuick,
                         wgPrivateKey = if (mesh != null) keys.privateKeyB64 else null,
+                        meshUrl = outcome.desktopMeshUrl,
                     ),
                 )
             } catch (e: PairException) {

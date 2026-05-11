@@ -14,6 +14,24 @@ struct DeviceCredentials: Equatable {
     var wgQuickConfig: String? = nil
     /// Phase 6b: device's WireGuard private key, base64.
     var wgPrivateKey: String? = nil
+    /// Phase 6c: mesh URL the OperatorClient prefers when reachable
+    /// (e.g. `http://10.10.0.2:3070`). Falls back to `server` on
+    /// transport errors via OperatorClient::new_with_fallback.
+    var meshUrl: String? = nil
+
+    /// Build an OperatorClient that prefers the mesh URL (if known)
+    /// and auto-falls back to the public `server` URL on transport
+    /// failure. Use this everywhere instead of OperatorClient(_:_:).
+    func client() -> OperatorClient {
+        if let mesh = meshUrl, !mesh.isEmpty, mesh != server {
+            return OperatorClient.newWithFallback(
+                primary: mesh,
+                fallback: server,
+                deviceToken: deviceToken
+            )
+        }
+        return OperatorClient(baseUrl: server, deviceToken: deviceToken)
+    }
 }
 
 /// Keychain-backed credential store. Mirrors Android's EncryptedSharedPreferences
@@ -50,7 +68,8 @@ enum CredentialStore {
             workspaceId: workspaceId,
             meshAssignedIp: dict["meshAssignedIp"],
             wgQuickConfig: dict["wgQuickConfig"],
-            wgPrivateKey: dict["wgPrivateKey"]
+            wgPrivateKey: dict["wgPrivateKey"],
+            meshUrl: dict["meshUrl"]
         )
     }
 
@@ -64,6 +83,7 @@ enum CredentialStore {
         if let ip = creds.meshAssignedIp { dict["meshAssignedIp"] = ip }
         if let q = creds.wgQuickConfig { dict["wgQuickConfig"] = q }
         if let p = creds.wgPrivateKey { dict["wgPrivateKey"] = p }
+        if let m = creds.meshUrl { dict["meshUrl"] = m }
         let data = try! JSONSerialization.data(withJSONObject: dict)
         clear()
         let query: [String: Any] = [

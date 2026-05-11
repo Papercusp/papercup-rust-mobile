@@ -33,6 +33,47 @@ interface Intent {
     Speak(string text);
 };
 
+/// Phase 3 — in-memory query cache backed by SyncStream invalidations.
+/// The host instantiates one Cache per paired session, registers a
+/// CacheSubscriber to receive deltas, and pumps SyncStream events
+/// into `handle_invalidate` so the cache refetches the named query.
+[Enum]
+interface CacheUpdate {
+    /// Refresh succeeded; value_json is the new payload, generation
+    /// bumps on each successful refresh.
+    Updated(string name, string value_json, i64 generation);
+    /// Refresh failed; previous value (if any) still served.
+    Failed(string name, string error);
+};
+
+callback interface CacheSubscriber {
+    void on_update(CacheUpdate update);
+};
+
+interface SyncCache {
+    /// Build a cache scoped to the given OperatorClient. The cache
+    /// uses the client to refetch on invalidate. Caller wires
+    /// register_query at startup for each query name the UI watches.
+    constructor(OperatorClient client);
+
+    /// Tell the cache about a query name. Subsequent
+    /// `handle_invalidate(name)` calls will refresh it.
+    void register_query(string name);
+
+    /// Apply a SyncStream invalidation event. No-op for unregistered
+    /// names. Triggers a refetch if the name is known.
+    [Async]
+    void handle_invalidate(string name);
+
+    /// Subscribe to all cache deltas. Subscribers persist until the
+    /// SyncCache is dropped or the host explicitly drops it.
+    void subscribe(CacheSubscriber subscriber);
+
+    /// Read the latest value (raw JSON) for a name, or null if never
+    /// fetched.
+    string? get(string name);
+};
+
 [Error]
 enum ApiError {
     "Network",
@@ -139,6 +180,12 @@ dictionary PairOutcome {
     string device_id;
     string workspace_id;
     string desktop_host;
+    /// Phase 6c: server-suggested mesh URL
+    /// (e.g. `http://10.10.0.2:3070`) the OperatorClient should
+    /// prefer once the WireGuard tunnel is up. Falls back to
+    /// `desktop_host` on transport errors. None when the broker
+    /// hasn't issued mesh credentials.
+    string? desktop_mesh_url;
     /// Defguard mesh config returned by the broker, when configured.
     /// Phase 6a: surfaced for display + persistence; Phase 6b will use
     /// it to bring up the actual WireGuard tunnel.
@@ -257,6 +304,13 @@ interface SyncStream {
 
 interface OperatorClient {
     constructor(string base_url, string? device_token);
+
+    /// Phase 6c — preferred mesh URL with auto-fallback to public.
+    /// Transport-level errors against `primary` swap to `fallback`
+    /// for the rest of the session. HTTP 4xx/5xx do not trigger
+    /// the swap (those propagate as ApiError::Server).
+    [Name=new_with_fallback]
+    constructor(string primary, string fallback, string? device_token);
 
     /// Phase 8 — register or clear the platform biometric prompt.
     /// When set, `revoke_device` (High) and `workspace_switch`

@@ -88,7 +88,7 @@ class VoiceManager(
 
         s.launch(Dispatchers.IO) {
             try {
-                OperatorClient(creds.server, creds.deviceToken).voiceLeaseClaim()
+                creds.client().voiceLeaseClaim()
             } catch (t: Throwable) {
                 Log.w(TAG, "lease claim failed: ${t.message}")
             }
@@ -102,7 +102,7 @@ class VoiceManager(
             while (true) {
                 delay(5_000)
                 try {
-                    OperatorClient(creds.server, creds.deviceToken).voiceLeaseHeartbeat()
+                    creds.client().voiceLeaseHeartbeat()
                 } catch (_: Throwable) {}
             }
         }
@@ -132,7 +132,7 @@ class VoiceManager(
         // Best-effort lease release.
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                OperatorClient(creds.server, creds.deviceToken).voiceLeaseRelease()
+                creds.client().voiceLeaseRelease()
             } catch (_: Throwable) {}
         }
     }

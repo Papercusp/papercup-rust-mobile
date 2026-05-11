@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 import os.log
+#if canImport(Sentry)
+import Sentry
+#endif
 
 private let appLog = OSLog(subsystem: "com.papercuspai.operator.mobile", category: "App")
 
@@ -10,6 +13,30 @@ struct PapercupApp: App {
     @StateObject private var deepLink = DeepLinkRouter.shared
 
     init() {
+        #if canImport(Sentry)
+        // Phase 10 — iOS crash reporting parity with Android Crashlytics.
+        // DSN comes from Info.plist key SENTRY_DSN (set per-build via
+        // xcconfig); empty-string DSN disables uploads, so dev builds
+        // without the key are no-op. Sentry SDK auto-captures crashes,
+        // unhandled NSExceptions, and fatalError().
+        if let dsn = Bundle.main.object(forInfoDictionaryKey: "SENTRY_DSN") as? String,
+           !dsn.isEmpty {
+            SentrySDK.start { options in
+                options.dsn = dsn
+                options.releaseName = "papercup-mobile@\(version())"
+                options.environment = {
+                    #if DEBUG
+                    return "debug"
+                    #else
+                    return "release"
+                    #endif
+                }()
+                // Performance + sessions disabled by default; enable later.
+                options.tracesSampleRate = 0.0
+            }
+        }
+        #endif
+
         #if DEBUG
         // XCUITest hooks — DEBUG-only so release builds can't be
         // pair-injected via Xcode launch args. Both no-ops without args.

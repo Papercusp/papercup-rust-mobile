@@ -18,6 +18,11 @@ options:
     iOS: "17.0"
   developmentLanguage: en
 
+packages:
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: 8.40.0
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -43,6 +48,7 @@ targets:
       - framework: PapercupCore.xcframework
         embed: false
         codeSign: false
+      - package: Sentry
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.papercuspai.operator.mobile

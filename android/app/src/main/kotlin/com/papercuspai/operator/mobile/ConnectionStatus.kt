@@ -42,7 +42,7 @@ class ConnectionMonitor(
     }
 
     suspend fun probe() {
-        val client = OperatorClient(creds.server, creds.deviceToken)
+        val client = creds.client()
         val t0 = System.currentTimeMillis()
         try {
             client.heartbeat()

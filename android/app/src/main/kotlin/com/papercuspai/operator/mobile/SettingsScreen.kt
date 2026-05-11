@@ -9,6 +9,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import com.papercuspai.operator.mobile.theme.PapercupCardHeader
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
@@ -50,7 +54,7 @@ fun SettingsScreen(
         c as? androidx.fragment.app.FragmentActivity
     }
     val gatedClient: () -> OperatorClient = {
-        OperatorClient(creds.server, creds.deviceToken).also { c ->
+        creds.client().also { c ->
             activity?.let { c.setBiometricPrompt(BiometricGate(it)) }
         }
     }
@@ -62,7 +66,7 @@ fun SettingsScreen(
 
     suspend fun load() {
         try {
-            val client = OperatorClient(creds.server, creds.deviceToken)
+            val client = creds.client()
             workspaces = client.listWorkspaces()
             devices = client.listDesktopDevices()
             error = null
@@ -185,11 +189,23 @@ fun SettingsScreen(
                 Spacer(Modifier.height(8.dp))
                 PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(0.dp)) {
                     Column {
-                        NavRow("Standing approvals", "Auto-dispatched patterns waiting for review", onOpenStandingApprovals)
+                        NavRow(
+                            stringResource(R.string.settings_standing_approvals),
+                            stringResource(R.string.settings_standing_approvals_subtitle),
+                            onOpenStandingApprovals,
+                        )
                         HorizontalDivider()
-                        NavRow("Voice", "Wake word, speech rate, voices", onOpenVoiceSettings)
+                        NavRow(
+                            stringResource(R.string.settings_voice),
+                            stringResource(R.string.settings_voice_subtitle),
+                            onOpenVoiceSettings,
+                        )
                         HorizontalDivider()
-                        NavRow("Diagnostics", "Connection, mesh, build info", onOpenDiagnostics)
+                        NavRow(
+                            stringResource(R.string.settings_diagnostics),
+                            stringResource(R.string.settings_diagnostics_subtitle),
+                            onOpenDiagnostics,
+                        )
                     }
                 }
             }
@@ -202,7 +218,7 @@ fun SettingsScreen(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                     ),
-                ) { Text("Forget this device") }
+                ) { Text(stringResource(R.string.settings_forget_device)) }
             }
         }
     }
@@ -284,6 +300,10 @@ private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$title. $subtitle. Double-tap to open."
+                role = androidx.compose.ui.semantics.Role.Button
+            }
             .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {

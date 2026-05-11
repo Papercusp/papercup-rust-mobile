@@ -119,7 +119,7 @@ struct ActivityView: View {
 
     private func load() async {
         do {
-            let client = OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+            let client = creds.client()
             async let t = client.recentNotifications()
             async let a = client.recentActions()
             toasts = try await t
