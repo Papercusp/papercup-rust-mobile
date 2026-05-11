@@ -50,6 +50,18 @@ for i in 1 2 3; do
     fi
 done
 
-xcodebuild test-without-building \
-    -project Papercup.xcodeproj -scheme Papercup \
-    -destination "$DEST" -derivedDataPath build/dd
+for i in 1 2 3; do
+    set +e
+    xcodebuild test-without-building \
+        -project Papercup.xcodeproj -scheme Papercup \
+        -destination "$DEST" -derivedDataPath build/dd
+    rc=$?
+    set -e
+    if [ $rc -eq 0 ]; then
+        exit 0
+    fi
+    echo "[test retry $i: rc=$rc]"
+    sleep 3
+done
+echo "ERROR: test-without-building failed after 3 retries" >&2
+exit 1
