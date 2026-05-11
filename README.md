@@ -77,14 +77,29 @@ GPL-3.0-or-later. See `LICENSE`.
 
 ## Status (per phase)
 
-- [x] Phase 0 — workspace + Compose hello-world calls into Rust core ✅
-- [ ] Phase 1 — HTTP client + harness list
-- [ ] Phase 2 — Pair flow (**Stage 1 GATE**)
-- [ ] Phase 3 — SSE sync cache
-- [ ] Phase 4 — Voice WS
-- [ ] Phase 5 — Picovoice wake-word
-- [ ] Phase 6 — WireGuard mesh
-- [ ] Phase 7 — FCM push
-- [ ] Phase 8 — Biometric gating
-- [ ] Phase 9 — Workspace switcher + remaining screens
-- [ ] Phase 10 — Polish + store submission
+- [x] Phase 0 — workspace + Compose hello-world calls into Rust core
+- [x] Phase 1 — HTTP client + harness list
+- [x] Phase 2 — Pair flow (CameraX/AVFoundation QR + Keystore/Keychain creds)
+- [x] Phase 3 — SSE sync cache (`papercup-core::sync`, single shared subscription)
+- [x] Phase 4 — Harness detail (rich `StatusResp` rendering)
+- [x] Phase 5 — FCM push registration + tap-to-deep-link (Android shipped, iOS scaffold)
+- [x] Phase 6 — WireGuard mesh (Android shipped, iOS scaffold, broker-blocked at Hetzner FW)
+- [x] Phase 7 — Heartbeat + workspaces + paired devices + Settings
+- [x] Phase 8 — Pause toggle + Activity (Notifications + Audit)
+- [x] Phase 9 — Voice WS + STT/TTS + lease APIs
+- [x] Phase 10a-g — Bottom nav + Operator landing + Currently-running + workspace switch + mic-level halo + wake-word scaffold
+- [x] Phase 11a-g — Full Tauri parity: StandingApprovals/VoiceSettings/Diagnostics/RunLog (both platforms), ConnectionMonitor + offline banner, iOS voice manager + halo, iOS wake-word scaffold, iOS APNs+mesh+deep-link plumbing, CI workflow + pre-push hook + `make check`
+
+### What's blocked
+
+- **APNs delivery / NetworkExtension mesh** on iOS — needs Apple Developer Program enrolment + signed entitlements. Code is wired (`PushManager.swift`, `MeshManager.swift`, `DeepLink.swift`); flips on with config.
+- **Wake-word activation** — Picovoice AccessKey approval pending. Both `WakeWordEngine` files (Android Kotlin + iOS Swift) are inert until the key arrives.
+- **RunLog SSE + StandingApprovals** — backend doesn't yet expose `/api/mobile/harnesses/{slug}/log/stream` (cookie-auth-only on the existing route) or implement the standing-candidates endpoint (currently 500). Mobile clients are wired end-to-end; renew the asks at `coord/mobile.jsonl`.
+- **Cellular pair via Cloudflare** — CF dashboard has a Worker/rule returning synthetic 404 on `api.papercuspai.com/api/mobile/*`. LAN + mesh paths work fine.
+- **iOS Resources bundle (app icon, launch screen)** — Xcode 16.2 ships iOS 18.2 SDK, and Apple no longer hosts the matching simulator runtime. Upgrade to Xcode 16.3 (`xcodes install 16.3`) to bundle Resources at build time.
+- **GitHub Actions CI** — papercupai org hit the Actions monthly spend cap on the first 9-minute run. Workflow is `workflow_dispatch`-only at `.github/workflows/ci.yml`. Local `make check` is the actual gate today; install `make install-hooks` for a pre-push hook that runs it.
+
+### Test surface
+
+- 19 wiremock client tests + 6 unit tests (`make test`)
+- Pre-push gate: `make check` (= fmt-check + clippy `-D warnings` + tests)
