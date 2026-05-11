@@ -90,6 +90,7 @@ UDL changes require re-running the binding generator (see `tools/build-scripts/`
 ## Known issues
 
 - **Xcode 16.2 destination race**: `xcodebuild` occasionally fails first-try with "iOS 18.2 is not installed" because the SDK and the only-installed 18.3.1 runtime mismatch on the destination resolver. The `make test-ios` wrapper retries 8x. Switching to Xcode 16.3 resolves it.
+- **iOS voice mode requires Xcode 16.3+**. ElevenLabsSDK pulls LiveKit + livekit-uniffi-xcframework + JWTKit transitively. Xcode 16.2's SwiftPM dep-order resolution fails to build these in the right order, surfacing as `no such module 'LiveKitUniFFI'` and then `no such module 'Crypto'`. Same dep-resolution fragility as the destination-resolver race above. Android voice path is unaffected (Maven Central + Gradle handles deps cleanly).
 - **`xcodebuild test -scheme` post-Sentry**: Permanently broken since the Sentry SwiftPM landed — the package resolver loses sim devices in Xcode's cache. Workaround: per-target builds (`xcodebuild -target Papercup`, `-target PapercupTests`, `-target PapercupUITests`).
 - **CI billing**: GitHub Actions org capped. Workflow is `workflow_dispatch`-only. `make check` + pre-push hook is the actual gate today.
 - **Apple Developer Program**: Required for APNs delivery, NetworkExtension entitlement (mesh), and TestFlight. iOS push + mesh code is wired but inert without enrollment.
