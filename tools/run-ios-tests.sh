@@ -28,16 +28,19 @@ xcodegen generate >/dev/null
 DEST="platform=iOS Simulator,id=$PAPERCUP_IOS_SIM_UDID"
 
 for i in 1 2 3; do
-    if xcodebuild build-for-testing \
+    out=$(xcodebuild build-for-testing \
         -project Papercup.xcodeproj -scheme Papercup \
         -destination "$DEST" -sdk iphonesimulator \
-        -derivedDataPath build/dd 2>&1 | tail -3 | grep -q "TEST BUILD SUCCEEDED"; then
+        -derivedDataPath build/dd 2>&1)
+    if echo "$out" | grep -q "TEST BUILD SUCCEEDED"; then
         break
     fi
     echo "[retry $i: destination race]"
     sleep 3
     if [ "$i" = "3" ]; then
         echo "ERROR: build-for-testing failed after 3 retries" >&2
+        echo "--- last 20 lines of xcodebuild output ---" >&2
+        echo "$out" | tail -20 >&2
         exit 1
     fi
 done
