@@ -59,20 +59,13 @@ build-rust:
 test:
 	cargo test --workspace
 
-# Run iOS XCTest. PAPERCUP_IOS_SIM_UDID overrides the default sim
-# (auto-picks the first available iPhone if unset). Splits build +
-# test to dodge the Xcode 16.2 destination-resolver race.
+# Run iOS XCTest. PAPERCUP_IOS_SIM_UDID overrides the default sim;
+# unset → first available iPhone 16. Splits build + test to dodge
+# the Xcode 16.2 destination-resolver race. Real shell logic in
+# tools/run-ios-tests.sh because make's $ escaping kept eating the
+# variable name.
 test-ios:
-	@SIM=${PAPERCUP_IOS_SIM_UDID:-$(xcrun simctl list devices available | awk -F '[()]' '/iPhone 16 \(/{print $2; exit}')}; \
-	cd ios && xcodegen generate >/dev/null && \
-	for i in 1 2 3; do \
-	  xcodebuild build-for-testing -project Papercup.xcodeproj -scheme Papercup \
-	    -destination "platform=iOS Simulator,id=$SIM" -sdk iphonesimulator \
-	    -derivedDataPath build/dd 2>&1 | tail -2 | grep -q "TEST BUILD SUCCEEDED" && break || \
-	  echo "[retry $i: dest race]"; sleep 3; \
-	done; \
-	xcodebuild test-without-building -project Papercup.xcodeproj -scheme Papercup \
-	  -destination "platform=iOS Simulator,id=$SIM" -derivedDataPath build/dd
+	./tools/run-ios-tests.sh
 
 bindings-kotlin:
 	cargo run --quiet --bin uniffi-bindgen -- generate \
