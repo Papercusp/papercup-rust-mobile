@@ -25,15 +25,6 @@ packages:
   ElevenLabsSDK:
     url: https://github.com/elevenlabs/elevenlabs-swift-sdk
     from: 3.1.4
-  # NOTE: ElevenLabsSDK transitively pulls LiveKit + livekit-uniffi-
-  # xcframework + JWTKit (Crypto). Xcode 16.2's SwiftPM dep-order
-  # resolution fails to build these in the right order:
-  #   - "no such module 'LiveKitUniFFI'"  (LiveKit 2.11.0+ split)
-  #   - "no such module 'Crypto'"          (JWTKit transitive)
-  # Same class of issue as the destination-resolver race documented
-  # in docs/BUILD.md. **iOS voice mode requires Xcode 16.3+ on the
-  # Mac VM.** Android voice path is independent (Maven works) and
-  # is shipping today on master.
 
 settings:
   base:
