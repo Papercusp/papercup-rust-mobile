@@ -118,13 +118,20 @@ xcodebuild ... build
   is set in `Info.plist`. Awaiting Picovoice approval (same blocker
   as Android).
 - **Xcode 16.2 destination race**: `xcodebuild` sometimes fails to
-  resolve the iPhone 16 sim destination on the first try (returns
-  "iOS 18.2 is not installed" because Xcode 16.2 ships SDK 18.2 but
-  Apple no longer hosts that sim runtime). Retry; second or third
-  invocation usually picks up the iPhone 16 / iOS 18.3.1 runtime that
-  *is* installed. App icons + launch screen + the rest of the asset
-  catalog all bundle correctly under Xcode 16.2 once the destination
-  resolves.
+  resolve the iPhone 16 sim destination (returns "iOS 18.2 is not
+  installed" because Xcode 16.2 ships SDK 18.2 but Apple no longer
+  hosts that sim runtime). Workaround: build per-target instead of
+  per-scheme:
+  ```
+  xcodebuild -project Papercup.xcodeproj -target Papercup \
+    -sdk iphonesimulator -destination "platform=iOS Simulator,id=$UDID" build
+  ```
+  This bypasses scheme-level destination resolution and works
+  reliably. `make test-ios` (which uses `xcodebuild test ... -scheme`)
+  is currently broken since Sentry SwiftPM was added — Xcode's
+  scheme-side destination resolver fails to enumerate sim devices
+  after Sentry package resolution. Real fix is Xcode 16.3 install
+  on the Mac VM (`xcodes install 16.3`).
 - **CI**: workflow at `.github/workflows/ci.yml` (fmt + clippy
   `-D warnings` + tests + bindings smoke) is wired but **trigger is
   manual-only** — the papercupai org hit its Actions spending cap on
