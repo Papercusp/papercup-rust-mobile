@@ -57,10 +57,13 @@ xcodebuild -project Papercup.xcodeproj \
     -configuration Debug \
     build
 
-TEST_BUNDLE="$PRODUCTS/PapercupTests.xctest"
 APP_BUNDLE="$PRODUCTS/Papercup.app"
+# Test bundle gets embedded under the app's PlugIns directory.
+TEST_BUNDLE="$APP_BUNDLE/PlugIns/PapercupTests.xctest"
 if [ ! -d "$TEST_BUNDLE" ] || [ ! -d "$APP_BUNDLE" ]; then
-    echo "ERROR: build outputs missing — expected $TEST_BUNDLE + $APP_BUNDLE" >&2
+    echo "ERROR: build outputs missing" >&2
+    echo "  expected: $TEST_BUNDLE" >&2
+    echo "  expected: $APP_BUNDLE" >&2
     ls -la "$PRODUCTS" >&2
     exit 1
 fi
