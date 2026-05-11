@@ -75,19 +75,20 @@ interface SyncCache {
 };
 
 [Error]
-enum ApiError {
-    "Network",
-    "Server",
-    "Decode",
-    "Unauthorized",
+interface ApiError {
+    Network(string detail);
+    Server(u16 status, string detail);
+    Decode(string detail);
+    Unauthorized();
 };
 
 [Error]
-enum PairError {
-    "InvalidQr",
-    "Network",
-    "Server",
-    "Decode",
+interface PairError {
+    InvalidQr(string detail);
+    Network(string detail);
+    Server(u16 status, string detail);
+    Decode(string detail);
+    Unauthorized(string detail);
 };
 
 [Error]

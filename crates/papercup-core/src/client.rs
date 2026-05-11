@@ -538,6 +538,9 @@ impl OperatorClient {
                 .await
                 .map(|e| e.error)
                 .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
+            if status == reqwest::StatusCode::UNAUTHORIZED {
+                return Err(ApiError::Unauthorized);
+            }
             return Err(ApiError::Server {
                 status: status.as_u16(),
                 detail,

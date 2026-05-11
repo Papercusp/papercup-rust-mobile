@@ -60,9 +60,13 @@ fn parse_qr_payload(text: String) -> Result<QrPayload, PairError> {
         #[serde(rename = "workspaceId")]
         workspace_id: String,
     }
-    let raw: Raw = serde_json::from_str(text.trim()).map_err(|_| PairError::InvalidQr)?;
+    let raw: Raw = serde_json::from_str(text.trim()).map_err(|_| PairError::InvalidQr {
+        detail: "JSON parse failed".into(),
+    })?;
     if raw.server.is_empty() || raw.pair_token.is_empty() || raw.workspace_id.is_empty() {
-        return Err(PairError::InvalidQr);
+        return Err(PairError::InvalidQr {
+            detail: "JSON parse failed".into(),
+        });
     }
     Ok(QrPayload {
         server: raw.server,
@@ -249,22 +253,22 @@ fn parse_intent(text: String) -> Intent {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
-    #[error("network error")]
-    Network,
-    #[error("server error")]
-    Server,
-    #[error("decode error")]
-    Decode,
-    #[error("unauthorized")]
+    #[error("network: {detail}")]
+    Network { detail: String },
+    #[error("server returned {status}: {detail}")]
+    Server { status: u16, detail: String },
+    #[error("decode: {detail}")]
+    Decode { detail: String },
+    #[error("unauthorized — re-pair the device")]
     Unauthorized,
 }
 
 impl From<CoreApiError> for ApiError {
     fn from(e: CoreApiError) -> Self {
         match e {
-            CoreApiError::Network(_) => ApiError::Network,
-            CoreApiError::Server { .. } => ApiError::Server,
-            CoreApiError::Decode(_) => ApiError::Decode,
+            CoreApiError::Network(detail) => ApiError::Network { detail },
+            CoreApiError::Server { status, detail } => ApiError::Server { status, detail },
+            CoreApiError::Decode(detail) => ApiError::Decode { detail },
             CoreApiError::Unauthorized => ApiError::Unauthorized,
         }
     }
@@ -272,23 +276,27 @@ impl From<CoreApiError> for ApiError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum PairError {
-    #[error("QR payload is malformed or missing required fields")]
-    InvalidQr,
-    #[error("network error")]
-    Network,
-    #[error("server error")]
-    Server,
-    #[error("decode error")]
-    Decode,
+    #[error("QR payload malformed: {detail}")]
+    InvalidQr { detail: String },
+    #[error("network: {detail}")]
+    Network { detail: String },
+    #[error("server returned {status}: {detail}")]
+    Server { status: u16, detail: String },
+    #[error("decode: {detail}")]
+    Decode { detail: String },
+    #[error("pair token invalid or expired: {detail}")]
+    Unauthorized { detail: String },
 }
 
 impl From<CoreApiError> for PairError {
     fn from(e: CoreApiError) -> Self {
         match e {
-            CoreApiError::Network(_) => PairError::Network,
-            CoreApiError::Server { .. } => PairError::Server,
-            CoreApiError::Decode(_) => PairError::Decode,
-            CoreApiError::Unauthorized => PairError::Server,
+            CoreApiError::Network(detail) => PairError::Network { detail },
+            CoreApiError::Server { status, detail } => PairError::Server { status, detail },
+            CoreApiError::Decode(detail) => PairError::Decode { detail },
+            CoreApiError::Unauthorized => PairError::Unauthorized {
+                detail: "pair token rejected by server".into(),
+            },
         }
     }
 }
@@ -865,7 +873,9 @@ impl OperatorClient {
         let result = rt()
             .spawn(async move { core.list_harnesses().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(result.into_iter().map(Harness::from).collect())
     }
 
@@ -874,7 +884,9 @@ impl OperatorClient {
         let resp = rt()
             .spawn(async move { core.get_harness_status(&slug).await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(resp.into())
     }
 
@@ -885,7 +897,9 @@ impl OperatorClient {
                 .await
         })
         .await
-        .map_err(|_| ApiError::Network)??;
+        .map_err(|_| ApiError::Network {
+            detail: "tokio join".into(),
+        })??;
         Ok(())
     }
 
@@ -893,7 +907,9 @@ impl OperatorClient {
         let core = self.inner.clone();
         rt().spawn(async move { core.heartbeat().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(())
     }
 
@@ -902,7 +918,9 @@ impl OperatorClient {
         let p = rt()
             .spawn(async move { core.pause_get().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(p.into())
     }
 
@@ -911,7 +929,9 @@ impl OperatorClient {
         let p = rt()
             .spawn(async move { core.pause_set(paused).await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(p)
     }
 
@@ -919,7 +939,9 @@ impl OperatorClient {
         let core = self.inner.clone();
         rt().spawn(async move { core.voice_lease_claim().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(())
     }
 
@@ -927,7 +949,9 @@ impl OperatorClient {
         let core = self.inner.clone();
         rt().spawn(async move { core.voice_lease_heartbeat().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(())
     }
 
@@ -935,7 +959,9 @@ impl OperatorClient {
         let core = self.inner.clone();
         rt().spawn(async move { core.voice_lease_release().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(())
     }
 
@@ -944,7 +970,9 @@ impl OperatorClient {
         let result = rt()
             .spawn(async move { core.voice_lease_get().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(result.map(VoiceLease::from))
     }
 
@@ -953,7 +981,9 @@ impl OperatorClient {
         let result = rt()
             .spawn(async move { core.list_running().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(result.into_iter().map(Running::from).collect())
     }
 
@@ -962,7 +992,9 @@ impl OperatorClient {
         let result = rt()
             .spawn(async move { core.recent_notifications().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(result.into_iter().map(Toast::from).collect())
     }
 
@@ -971,7 +1003,9 @@ impl OperatorClient {
         let result = rt()
             .spawn(async move { core.recent_actions().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(result.into_iter().map(AuditEntry::from).collect())
     }
 
@@ -980,7 +1014,9 @@ impl OperatorClient {
         let result = rt()
             .spawn(async move { core.list_workspaces().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(result.into_iter().map(Workspace::from).collect())
     }
 
@@ -1023,7 +1059,9 @@ impl OperatorClient {
         let result = rt()
             .spawn(async move { core.list_desktop_devices().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(result.into_iter().map(Device::from).collect())
     }
 
@@ -1066,7 +1104,9 @@ impl OperatorClient {
         let result = rt()
             .spawn(async move { core.standing_candidates().await })
             .await
-            .map_err(|_| ApiError::Network)??;
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
         Ok(result.into_iter().map(StandingCandidate::from).collect())
     }
 
@@ -1083,7 +1123,9 @@ impl OperatorClient {
                 .await
         })
         .await
-        .map_err(|_| ApiError::Network)??;
+        .map_err(|_| ApiError::Network {
+            detail: "tokio join".into(),
+        })??;
         Ok(())
     }
 
@@ -1102,7 +1144,9 @@ impl OperatorClient {
                 .await
             })
             .await
-            .map_err(|_| PairError::Network)??;
+            .map_err(|_| PairError::Network {
+                detail: "tokio join".into(),
+            })??;
         let mesh = resp.wg_config.as_ref().and_then(parse_mesh);
         // Surface the broker-issued mesh URL so the host can hand it
         // to OperatorClient::new_with_fallback.
