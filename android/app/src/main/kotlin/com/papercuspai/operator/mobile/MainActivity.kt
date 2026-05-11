@@ -234,10 +234,24 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             @Suppress("UnspecifiedRegisterReceiverFlag")
             context.registerReceiver(receiver, filter)
         }
-        WakeWordService.start(context)
+        // Only start the microphone-FGS wake-word service when both:
+        //   - Picovoice key is configured (otherwise the engine is a no-op anyway), AND
+        //   - RECORD_AUDIO is granted (FGS type=microphone on API 34+ requires it; the
+        //     OS throws SecurityException at startForeground otherwise — crashed the
+        //     app on launch in the dormant-key case before this gate).
+        val hasRecordAudio = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.RECORD_AUDIO,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val wakeWordStarted = WakeWordEngine.isConfigured() && hasRecordAudio
+        if (wakeWordStarted) {
+            WakeWordService.start(context)
+        }
         onDispose {
             try { context.unregisterReceiver(receiver) } catch (_: Throwable) {}
-            WakeWordService.stop(context)
+            if (wakeWordStarted) {
+                WakeWordService.stop(context)
+            }
         }
     }
     // Throttle the service while voice is actively listening so

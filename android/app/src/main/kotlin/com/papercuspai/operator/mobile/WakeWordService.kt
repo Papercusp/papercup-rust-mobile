@@ -38,6 +38,33 @@ class WakeWordService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // The Service manifest declares foregroundServiceType="microphone".
+        // Starting FGS-microphone on API 34+ requires RECORD_AUDIO at the
+        // moment of startForeground(); and downgrading at runtime to type
+        // NONE is prohibited because of the manifest declaration. So if
+        // either Picovoice key OR RECORD_AUDIO is missing, the safe move
+        // is to refuse the start — but we MUST still call startForeground
+        // within 10s OR the FGS-did-not-start-in-time exception kills the
+        // whole app. We do go FGS-microphone (matching manifest), then
+        // stopSelf — startForeground crashes if RECORD_AUDIO missing, so
+        // gate caller-side as well (see MainActivity).
+        val hasRecordAudio = androidx.core.content.ContextCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.RECORD_AUDIO,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!WakeWordEngine.isConfigured() || !hasRecordAudio) {
+            Log.i(TAG, "wake word inert — key=${WakeWordEngine.isConfigured()} rec=$hasRecordAudio; faking FGS to satisfy ANR contract then stopping")
+            // Fallback: declare-only. Without RECORD_AUDIO we can't go
+            // FGS-microphone; the only way to avoid the timer-fired
+            // ForegroundServiceDidNotStartInTimeException is to satisfy
+            // the contract with the same microphone type and accept the
+            // SecurityException, OR never have been started. We choose
+            // the latter — MainActivity must gate this. If we get here,
+            // we're already in an unrecoverable state, but stopSelf is
+            // the least-bad option.
+            stopSelf()
+            return
+        }
         ensureChannel(applicationContext)
         startForegroundCompat()
         engine = WakeWordEngine(applicationContext) {
@@ -48,7 +75,10 @@ class WakeWordService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
+        // NOT_STICKY: if the OS kills us we don't want auto-restart loops.
+        // The Composable's DisposableEffect re-starts us next remount
+        // when the caller-side gate passes.
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {

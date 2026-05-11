@@ -75,8 +75,14 @@ class WakeWordEngine(
         manager = null
     }
 
-    private companion object {
-        const val TAG = "PapercupWake"
-        val ACCESS_KEY: String = BuildConfig.PICOVOICE_ACCESS_KEY
+    companion object {
+        private const val TAG = "PapercupWake"
+        private val ACCESS_KEY: String = BuildConfig.PICOVOICE_ACCESS_KEY
+
+        /// Static check used at the Service-start gate: true only when a
+        /// Picovoice AccessKey is baked into BuildConfig. Avoids ever
+        /// touching the foreground microphone service when wake-word is
+        /// dormant (default — Picovoice key approval pending).
+        fun isConfigured(): Boolean = ACCESS_KEY.isNotBlank()
     }
 }

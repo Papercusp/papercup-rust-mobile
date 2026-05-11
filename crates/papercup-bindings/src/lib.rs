@@ -212,6 +212,11 @@ impl SyncCache {
     pub fn subscribe(&self, subscriber: Box<dyn CacheSubscriber>) {
         let arc: std::sync::Arc<dyn CacheSubscriber> = std::sync::Arc::from(subscriber);
         let sub = std::sync::Arc::new(CacheSubShim(arc));
+        // core::cache::Cache::subscribe spawns a tokio task. Kotlin/Swift
+        // call this from a synchronous Composable / SwiftUI lifecycle
+        // callback where no tokio runtime is active; enter our owned
+        // runtime so tokio::spawn finds it.
+        let _guard = rt().enter();
         let subscription = self.inner.subscribe(sub);
         self._subs.lock().unwrap().push(subscription);
     }
