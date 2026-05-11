@@ -50,12 +50,30 @@ targets:
         LD_RUNPATH_SEARCH_PATHS: "@executable_path/Frameworks"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
+  PapercupTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: PapercupTests
+    dependencies:
+      - target: Papercup
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.papercuspai.operator.mobile.tests
+        BUNDLE_LOADER: $(TEST_HOST)
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Papercup.app/Papercup
+
 schemes:
   Papercup:
     build:
       targets:
         Papercup: all
+        PapercupTests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - PapercupTests
     archive:
       config: Release
