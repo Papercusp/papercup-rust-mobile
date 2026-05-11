@@ -202,7 +202,8 @@ enum SessionResult {
     /// Server closed cleanly with a code. 1008 means auth rejected.
     Closed { code: u16, reason: String },
     /// Underlying transport error; treat as transient and reconnect.
-    Transient(String),
+    /// String is the underlying transport error, kept for future logging.
+    Transient(#[allow(dead_code)] String),
 }
 
 async fn run_session(
