@@ -144,12 +144,20 @@ struct SettingsView: View {
         }
     }
 
+    /// Build a client with the platform biometric prompt wired so
+    /// gateable methods (workspace_switch=Medium, revoke_device=High)
+    /// route through LAContext before hitting the network.
+    private func gatedClient() -> OperatorClient {
+        let c = OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
+        c.setBiometricPrompt(prompt: BiometricGate())
+        return c
+    }
+
     private func switchWorkspace(_ w: Workspace) async {
         revoking = "switch:\(w.id)"
         defer { revoking = nil }
         do {
-            let res = try await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
-                .workspaceSwitch(workspaceId: w.id)
+            let res = try await gatedClient().workspaceSwitch(workspaceId: w.id)
             var fresh = creds
             fresh.deviceToken = res.deviceToken
             fresh.workspaceId = res.workspaceId
@@ -163,8 +171,7 @@ struct SettingsView: View {
         revoking = d.deviceId
         defer { revoking = nil }
         do {
-            try await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
-                .revokeDevice(deviceId: d.deviceId)
+            try await gatedClient().revokeDevice(deviceId: d.deviceId)
             await load()
         } catch let e {
             self.error = "Revoke failed: \(e)"

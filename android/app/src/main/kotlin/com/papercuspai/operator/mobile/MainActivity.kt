@@ -52,7 +52,7 @@ import uniffi.papercup.SyncException
 import uniffi.papercup.SyncStream
 import uniffi.papercup.version
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {
     private val deepLinkSlug = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {

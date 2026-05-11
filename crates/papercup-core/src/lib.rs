@@ -12,6 +12,7 @@
 // build time than it pays back. Once we hit ~10 mobile ops (Phase 4
 // brings voice WS + sync/sse + workspaces), swap to progenitor.
 
+pub mod biometric;
 pub mod client;
 pub mod mesh;
 pub mod sync;

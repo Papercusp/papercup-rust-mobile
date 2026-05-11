@@ -39,6 +39,21 @@ fun SettingsScreen(
     onOpenVoiceSettings: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
 ) {
+    val activity = androidx.compose.ui.platform.LocalContext.current.let { ctx ->
+        // Walk to the FragmentActivity (MainActivity) so BiometricGate
+        // can show the prompt. ContextThemeWrapper is occasionally in
+        // the chain; unwrap it.
+        var c: android.content.Context = ctx
+        while (c is android.content.ContextWrapper && c !is androidx.fragment.app.FragmentActivity) {
+            c = c.baseContext
+        }
+        c as? androidx.fragment.app.FragmentActivity
+    }
+    val gatedClient: () -> OperatorClient = {
+        OperatorClient(creds.server, creds.deviceToken).also { c ->
+            activity?.let { c.setBiometricPrompt(BiometricGate(it)) }
+        }
+    }
     var workspaces by remember { mutableStateOf<List<Workspace>?>(null) }
     var devices by remember { mutableStateOf<List<Device>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -117,8 +132,7 @@ fun SettingsScreen(
                                 scope.launch {
                                     revoking = "switch:${w.id}"
                                     try {
-                                        val res = OperatorClient(creds.server, creds.deviceToken)
-                                            .workspaceSwitch(w.id)
+                                        val res = gatedClient().workspaceSwitch(w.id)
                                         onWorkspaceSwitched(
                                             creds.copy(
                                                 deviceToken = res.deviceToken,
@@ -154,8 +168,7 @@ fun SettingsScreen(
                             scope.launch {
                                 revoking = d.deviceId
                                 try {
-                                    OperatorClient(creds.server, creds.deviceToken)
-                                        .revokeDevice(d.deviceId)
+                                    gatedClient().revokeDevice(d.deviceId)
                                     load()
                                 } catch (t: Throwable) {
                                     error = "Revoke failed: ${t.message}"

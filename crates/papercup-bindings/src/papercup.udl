@@ -244,6 +244,11 @@ interface SyncStream {
 interface OperatorClient {
     constructor(string base_url, string? device_token);
 
+    /// Phase 8 — register or clear the platform biometric prompt.
+    /// When set, `revoke_device` (High) and `workspace_switch`
+    /// (Medium) gate behind the prompt. Pass null to disable.
+    void set_biometric_prompt(BiometricPrompt? prompt);
+
     [Throws=ApiError, Async]
     sequence<Harness> list_harnesses();
 
@@ -326,4 +331,26 @@ interface OperatorClient {
     /// device's public key.
     [Throws=PairError, Async]
     PairOutcome pair(string pair_token, string? wireguard_pubkey_b64);
+};
+
+/// Phase 8 — biometric gating.
+///
+/// `BiometricPrompt` is a callback interface implemented by the
+/// platform shell (Android: BiometricPrompt; iOS: LAContext). Rust
+/// core decides which actions need a check (revoke_device → High,
+/// workspace_switch → Medium) and calls `prompt(reason)` before the
+/// action proceeds. The platform shows the OS-native prompt and
+/// resolves synchronously with the user's decision.
+[Enum]
+interface BiometricResult {
+    Approved();
+    Denied();
+    /// User cancelled or the platform isn't available (no enrolled
+    /// fingerprint/face, hardware missing, etc.). Core treats as
+    /// denied for high-risk actions; medium-risk falls through.
+    Unavailable(string reason);
+};
+
+callback interface BiometricPrompt {
+    BiometricResult prompt(string reason);
 };

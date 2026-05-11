@@ -17,6 +17,7 @@ uniffi = { workspace = true, features = ["tokio"] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
+async-trait = "0.1"
 serde_json = { workspace = true }
 
 [build-dependencies]

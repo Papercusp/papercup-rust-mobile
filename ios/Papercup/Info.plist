@@ -60,6 +60,8 @@
     </array>
     <key>NSCameraUsageDescription</key>
     <string>Papercup uses the camera to scan the pair-code QR shown by your desktop.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Papercup uses Face ID to confirm high-risk actions like revoking a paired device.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Papercup uses the microphone to listen for voice commands.</string>
     <key>NSSpeechRecognitionUsageDescription</key>

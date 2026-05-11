@@ -587,13 +587,89 @@ fn rt() -> &'static tokio::runtime::Runtime {
 
 pub struct OperatorClient {
     inner: CoreClient,
+    biometric: std::sync::Arc<
+        std::sync::RwLock<Option<std::sync::Arc<dyn papercup_core::biometric::BiometricPrompt>>>,
+    >,
+}
+
+/// UDL-declared types re-exported.
+#[derive(Clone)]
+pub enum BiometricResult {
+    Approved,
+    Denied,
+    Unavailable { reason: String },
+}
+
+#[derive(Clone, Copy)]
+pub enum RiskLevel {
+    Low,
+    Medium,
+    High,
+}
+
+impl From<RiskLevel> for papercup_core::biometric::RiskLevel {
+    fn from(r: RiskLevel) -> Self {
+        match r {
+            RiskLevel::Low => Self::Low,
+            RiskLevel::Medium => Self::Medium,
+            RiskLevel::High => Self::High,
+        }
+    }
+}
+
+/// Trait that UDL `callback interface BiometricPrompt` lowers to.
+/// The platform shell implements this in Kotlin/Swift; we receive an
+/// Arc<dyn BiometricPrompt> from set_biometric_prompt below.
+pub trait BiometricPrompt: Send + Sync {
+    fn prompt(&self, reason: String) -> BiometricResult;
+}
+
+/// Wraps the UDL callback (delivered as Box<dyn>) into an Arc so the
+/// core::biometric trait can hold it across .await points.
+struct PromptShim(std::sync::Arc<dyn BiometricPrompt>);
+
+impl From<Box<dyn BiometricPrompt>> for PromptShim {
+    fn from(b: Box<dyn BiometricPrompt>) -> Self {
+        Self(std::sync::Arc::from(b))
+    }
+}
+#[async_trait::async_trait]
+impl papercup_core::biometric::BiometricPrompt for PromptShim {
+    async fn prompt(&self, reason: String) -> papercup_core::biometric::BiometricResult {
+        match self.0.prompt(reason) {
+            BiometricResult::Approved => papercup_core::biometric::BiometricResult::Approved,
+            BiometricResult::Denied => papercup_core::biometric::BiometricResult::Denied,
+            BiometricResult::Unavailable { reason } => {
+                papercup_core::biometric::BiometricResult::Unavailable(reason)
+            }
+        }
+    }
 }
 
 impl OperatorClient {
     pub fn new(base_url: String, device_token: Option<String>) -> Self {
         Self {
             inner: CoreClient::new(base_url, device_token),
+            biometric: std::sync::Arc::new(std::sync::RwLock::new(None)),
         }
+    }
+
+    /// Phase 8 — set the platform-supplied biometric prompt. Pass None
+    /// to disable gating (high-risk actions will deny).
+    /// UDL `callback interface` lowers to Box<dyn>; we wrap into Arc.
+    pub fn set_biometric_prompt(&self, prompt: Option<Box<dyn BiometricPrompt>>) {
+        let mut w = self.biometric.write().unwrap();
+        *w = prompt.map(|p| {
+            let shim: std::sync::Arc<dyn papercup_core::biometric::BiometricPrompt> =
+                std::sync::Arc::new(PromptShim::from(p));
+            shim
+        });
+    }
+
+    fn current_prompt(
+        &self,
+    ) -> Option<std::sync::Arc<dyn papercup_core::biometric::BiometricPrompt>> {
+        self.biometric.read().unwrap().clone()
     }
 
     pub async fn list_harnesses(&self) -> Result<Vec<Harness>, ApiError> {
@@ -725,11 +801,33 @@ impl OperatorClient {
         workspace_id: String,
     ) -> Result<WorkspaceSwitchResult, ApiError> {
         let core = self.inner.clone();
-        let result = rt()
-            .spawn(async move { core.workspace_switch(&workspace_id).await })
-            .await
-            .map_err(|_| ApiError::Network)??;
-        Ok(result.into())
+        let prompt = self.current_prompt();
+        let ws_for_reason = workspace_id.clone();
+        let gated = papercup_core::biometric::gate(
+            prompt,
+            papercup_core::biometric::RiskLevel::Medium,
+            &format!("Switch to workspace {ws_for_reason}"),
+            || async {
+                let r = rt()
+                    .spawn(async move { core.workspace_switch(&workspace_id).await })
+                    .await;
+                match r {
+                    Ok(Ok(v)) => Ok(v),
+                    Ok(Err(e)) => Err(e),
+                    Err(_) => Err(papercup_core::client::ApiError::Network(
+                        "join failure".into(),
+                    )),
+                }
+            },
+        )
+        .await;
+        match gated {
+            Ok(v) => Ok(v.into()),
+            Err(papercup_core::biometric::BiometricGateError::Denied) => {
+                Err(ApiError::Unauthorized)
+            }
+            Err(papercup_core::biometric::BiometricGateError::Inner(e)) => Err(e.into()),
+        }
     }
 
     pub async fn list_desktop_devices(&self) -> Result<Vec<Device>, ApiError> {
@@ -743,10 +841,36 @@ impl OperatorClient {
 
     pub async fn revoke_device(&self, device_id: String) -> Result<(), ApiError> {
         let core = self.inner.clone();
-        rt().spawn(async move { core.revoke_device(&device_id).await })
-            .await
-            .map_err(|_| ApiError::Network)??;
-        Ok(())
+        let prompt = self.current_prompt();
+        let id_for_reason = device_id.clone();
+        let gated = papercup_core::biometric::gate(
+            prompt,
+            papercup_core::biometric::RiskLevel::High,
+            &format!(
+                "Revoke device {}",
+                &id_for_reason[..id_for_reason.len().min(8)]
+            ),
+            || async {
+                let r = rt()
+                    .spawn(async move { core.revoke_device(&device_id).await })
+                    .await;
+                match r {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(e)) => Err(e),
+                    Err(_) => Err(papercup_core::client::ApiError::Network(
+                        "join failure".into(),
+                    )),
+                }
+            },
+        )
+        .await;
+        match gated {
+            Ok(()) => Ok(()),
+            Err(papercup_core::biometric::BiometricGateError::Denied) => {
+                Err(ApiError::Unauthorized)
+            }
+            Err(papercup_core::biometric::BiometricGateError::Inner(e)) => Err(e.into()),
+        }
     }
 
     pub async fn standing_candidates(&self) -> Result<Vec<StandingCandidate>, ApiError> {
