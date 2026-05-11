@@ -37,10 +37,15 @@ final class DeepLinkRouter: ObservableObject {
     /// Returns true if the URL was a recognised papercup deep-link.
     @discardableResult
     func handle(url: URL) -> Bool {
-        guard url.scheme == "papercup" else { return false }
+        NSLog("PapercupDeepLink: handle url=%@", url.absoluteString)
+        guard url.scheme == "papercup" else {
+            NSLog("PapercupDeepLink: non-papercup scheme, ignoring")
+            return false
+        }
         // papercup://harness/<slug>
         let parts = url.pathComponents.filter { $0 != "/" }
         if url.host == "harness", let slug = parts.first {
+            NSLog("PapercupDeepLink: harness/%@", slug)
             pendingSlug = slug
             return true
         }
@@ -54,10 +59,13 @@ final class DeepLinkRouter: ObservableObject {
                 })
             if let server = q["server"], let token = q["pairToken"], let ws = q["workspaceId"],
                !server.isEmpty, !token.isEmpty, !ws.isEmpty {
+                NSLog("PapercupDeepLink: pendingPair set server=%@ ws=%@", server, ws)
                 pendingPair = PendingPair(server: server, pairToken: token, workspaceId: ws)
                 return true
             }
+            NSLog("PapercupDeepLink: pair URL missing required fields, q=%@", String(describing: q))
         }
+        NSLog("PapercupDeepLink: unrecognised host=%@", String(describing: url.host))
         return false
     }
 

@@ -55,6 +55,8 @@ struct AppRoot: View {
     /// (email, scanning a QR with the system camera, etc.).
     @MainActor
     private func autoPair(_ p: PendingPair) async {
+        NSLog("PapercupAutoPair: starting server=%@ token=%@... ws=%@",
+              p.server, String(p.pairToken.prefix(12)), p.workspaceId)
         deepLink.pendingPair = nil
         let keys = generateWgKeypair()
         let client = OperatorClient(baseUrl: p.server, deviceToken: nil)
@@ -63,6 +65,7 @@ struct AppRoot: View {
                 pairToken: p.pairToken,
                 wireguardPubkeyB64: keys.publicKeyB64
             )
+            NSLog("PapercupAutoPair: pair OK deviceId=%@", outcome.deviceId)
             let wgQuick = outcome.mesh.map { meshToWgQuick(privateKeyB64: keys.privateKeyB64, config: $0) }
             let fresh = DeviceCredentials(
                 server: p.server,
@@ -77,7 +80,7 @@ struct AppRoot: View {
             creds = fresh
             tab = .operatorTab
         } catch {
-            // Surface failure via PairView's manual flow (left visible).
+            NSLog("PapercupAutoPair: FAILED %@", String(describing: error))
         }
     }
 }
