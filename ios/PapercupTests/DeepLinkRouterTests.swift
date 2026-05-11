@@ -52,10 +52,10 @@ final class DeepLinkRouterTests: XCTestCase {
     func testPairUrlSetsPendingPair() {
         let router = DeepLinkRouter.shared
         router.pendingPair = nil
-        let url = URL(string: "papercup://pair?server=http://10.0.2.2:3060&pairToken=abc-123&workspaceId=default")!
+        let url = URL(string: "papercup://pair?server=http://10.0.2.2:3055&pairToken=abc-123&workspaceId=default")!
         XCTAssertTrue(router.handle(url: url))
         XCTAssertEqual(router.pendingPair, PendingPair(
-            server: "http://10.0.2.2:3060",
+            server: "http://10.0.2.2:3055",
             pairToken: "abc-123",
             workspaceId: "default"
         ))

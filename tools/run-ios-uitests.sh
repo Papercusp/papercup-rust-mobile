@@ -9,7 +9,11 @@
 # pass it via PAPERCUP_PAIR_PAYLOAD. Without it, only the fresh-launch
 # smoke test runs (the paired flows XCTSkip themselves).
 #
-#   PAPERCUP_PAIR_PAYLOAD='{"server":"http://10.0.2.2:3060","pairToken":"...","workspaceId":"default"}'
+#   PAPERCUP_PAIR_PAYLOAD='{"server":"http://10.0.2.2:3055","pairToken":"...","workspaceId":"default"}'
+# (3055 is the operator dev server / TypeScript backend; 3070 is prod TS.
+#  Do NOT point the example at the Rust port :3060 — the mobile app only
+#  uses the TypeScript backend; Rust is opt-in via ?backend=rust on the
+#  desktop only.)
 #   ./tools/run-ios-uitests.sh
 #
 # PAPERCUP_IOS_SIM_UDID overrides the default sim picker.

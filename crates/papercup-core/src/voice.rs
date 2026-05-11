@@ -330,8 +330,8 @@ mod tests {
     #[test]
     fn ws_url_http_to_ws() {
         assert_eq!(
-            build_ws_url("http://10.0.2.2:3060"),
-            "ws://10.0.2.2:3060/api/mobile/voice"
+            build_ws_url("http://10.0.2.2:3055"),
+            "ws://10.0.2.2:3055/api/mobile/voice"
         );
     }
 

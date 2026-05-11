@@ -69,7 +69,8 @@
     <key>NSAppTransportSecurity</key>
     <dict>
         <!-- Dev convenience: allow plain HTTP so the simulator can hit
-             http://10.0.2.2:3060 on the QEMU host. Tighten for release. -->
+             http://10.0.2.2:3055 (TS operator) on the QEMU host. Tighten
+             for release. The mobile app only uses the TypeScript backend. -->
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
