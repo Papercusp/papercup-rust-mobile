@@ -22,6 +22,9 @@ packages:
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: 8.40.0
+  ElevenLabsSDK:
+    url: https://github.com/elevenlabs/elevenlabs-swift-sdk
+    from: 3.1.4
 
 settings:
   base:
@@ -49,6 +52,8 @@ targets:
         embed: false
         codeSign: false
       - package: Sentry
+      - package: ElevenLabsSDK
+        product: ElevenLabs
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.papercuspai.operator.mobile
