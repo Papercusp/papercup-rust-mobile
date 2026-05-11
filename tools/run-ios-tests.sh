@@ -35,45 +35,36 @@ fi
 DEST="platform=iOS Simulator,id=$PAPERCUP_IOS_SIM_UDID"
 DD="$PWD/build/dd"
 
-# Build the test bundle. -target avoids the scheme's destination
-# resolution which is flaky under Xcode 16.2 + Sentry SwiftPM init.
+# Build the app + test bundle target-by-target. Avoids the scheme's
+# -destination resolution which is flaky under Xcode 16.2 + Sentry
+# SwiftPM init. The build output lands in PROJECT_DIR/build/<config>-iphonesimulator
+# by default when no -derivedDataPath is set.
+PRODUCTS="$PWD/build/Debug-iphonesimulator"
+
+echo "▶ build Papercup (app target = test host)"
+xcodebuild -project Papercup.xcodeproj \
+    -target Papercup \
+    -sdk iphonesimulator \
+    -destination "$DEST" \
+    -configuration Debug \
+    build
+
 echo "▶ build PapercupTests"
 xcodebuild -project Papercup.xcodeproj \
     -target PapercupTests \
     -sdk iphonesimulator \
     -destination "$DEST" \
     -configuration Debug \
-    -derivedDataPath "$DD" \
     build
 
-# Run the test bundle directly via xctest. The bundle lives in the
-# DerivedData products dir after the build above.
-TEST_BUNDLE="$DD/Build/Products/Debug-iphonesimulator/PapercupTests.xctest"
-TEST_HOST="$DD/Build/Products/Debug-iphonesimulator/Papercup.app/Papercup"
-if [ ! -d "$TEST_BUNDLE" ] || [ ! -f "$TEST_HOST" ]; then
-    # PapercupTests has TEST_HOST=Papercup.app, so we also need the
-    # app target built.
-    echo "▶ build Papercup app target (test host)"
-    xcodebuild -project Papercup.xcodeproj \
-        -target Papercup \
-        -sdk iphonesimulator \
-        -destination "$DEST" \
-        -configuration Debug \
-        -derivedDataPath "$DD" \
-        build
+TEST_BUNDLE="$PRODUCTS/PapercupTests.xctest"
+APP_BUNDLE="$PRODUCTS/Papercup.app"
+if [ ! -d "$TEST_BUNDLE" ] || [ ! -d "$APP_BUNDLE" ]; then
+    echo "ERROR: build outputs missing — expected $TEST_BUNDLE + $APP_BUNDLE" >&2
+    ls -la "$PRODUCTS" >&2
+    exit 1
 fi
 
-# Use simctl to launch xctest inside the sim. This bypasses the
-# scheme's build-for-testing entirely.
-xcrun simctl install "$PAPERCUP_IOS_SIM_UDID" \
-    "$DD/Build/Products/Debug-iphonesimulator/Papercup.app"
-
-# xctest runner from the simulator's runtime
-SIM_RUNTIME=$(xcrun simctl runtime list 2>/dev/null | awk '/iOS 18/ {print $NF; exit}')
-if [ -z "$SIM_RUNTIME" ]; then
-    SIM_RUNTIME=$(xcrun --sdk iphonesimulator --show-sdk-platform-path)
-fi
-
-echo "▶ xcrun simctl spawn ... xctest PapercupTests"
-xcrun simctl spawn "$PAPERCUP_IOS_SIM_UDID" \
-    xctest "$TEST_BUNDLE"
+echo "▶ xcrun simctl install + xctest"
+xcrun simctl install "$PAPERCUP_IOS_SIM_UDID" "$APP_BUNDLE"
+xcrun simctl spawn "$PAPERCUP_IOS_SIM_UDID" xctest "$TEST_BUNDLE"
