@@ -117,11 +117,14 @@ xcodebuild ... build
 - **Wake word**: `WakeWordEngine` is dormant unless `PICOVOICE_ACCESS_KEY`
   is set in `Info.plist`. Awaiting Picovoice approval (same blocker
   as Android).
-- **Resources in build**: Xcode 16.2 ships iOS 18.2 SDK; only iOS 18.3.1
-  sim runtime is available from Apple. To build with the Resources
-  bundle (app icons + launch screen), upgrade to Xcode 16.3
-  (`xcodes install 16.3`). Today the asset-catalog stage is excluded
-  from the simulator build path; Swift compiles fine.
+- **Xcode 16.2 destination race**: `xcodebuild` sometimes fails to
+  resolve the iPhone 16 sim destination on the first try (returns
+  "iOS 18.2 is not installed" because Xcode 16.2 ships SDK 18.2 but
+  Apple no longer hosts that sim runtime). Retry; second or third
+  invocation usually picks up the iPhone 16 / iOS 18.3.1 runtime that
+  *is* installed. App icons + launch screen + the rest of the asset
+  catalog all bundle correctly under Xcode 16.2 once the destination
+  resolves.
 - **CI**: workflow at `.github/workflows/ci.yml` (fmt + clippy
   `-D warnings` + tests + bindings smoke) is wired but **trigger is
   manual-only** — the papercupai org hit its Actions spending cap on

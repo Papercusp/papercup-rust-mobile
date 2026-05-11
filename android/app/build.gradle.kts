@@ -10,6 +10,17 @@ android {
     namespace = "com.papercuspai.operator.mobile"
     compileSdk = 35
 
+    lint {
+        lintConfig = file("lint.xml")
+        abortOnError = true
+        // Bring all the messy upstream warnings into the report so we
+        // can pick at them over time, but don't break the build for
+        // them — only errors do. (lint.xml suppresses the four NewApi
+        // false-positives in generated/themes code.)
+        warningsAsErrors = false
+        checkAllWarnings = false
+    }
+
     defaultConfig {
         applicationId = "com.papercuspai.operator.mobile"
         minSdk = 24

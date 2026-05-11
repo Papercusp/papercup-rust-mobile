@@ -6,12 +6,13 @@
 
 .PHONY: help build-rust build-android build-ios install-android \
         bindings-kotlin bindings-swift test check fmt fmt-check \
-        clippy install-hooks clean
+        clippy lint-android install-hooks clean
 
 help:
 	@echo "Targets:"
 	@echo "  make check              — pre-push gate: fmt-check + clippy -D warnings + tests"
 	@echo "  make install-hooks      — install git pre-push hook that runs 'make check'"
+	@echo "  make lint-android       — run Android lint (auto-uses Android Studio JBR if found)"
 	@echo "  make fmt                — cargo fmt --all"
 	@echo "  make fmt-check          — cargo fmt --all -- --check (fails on diff)"
 	@echo "  make clippy             — cargo clippy --workspace --all-targets -- -D warnings"
@@ -39,6 +40,17 @@ clippy:
 
 install-hooks:
 	./tools/install-git-hooks.sh
+
+# Run Android lintDebug — needs JAVA_HOME pointing at JDK 17+ (AGP requirement).
+# Falls back to Android Studio's bundled JBR if a system java isn't 17+.
+lint-android:
+	@if [ -d /snap/android-studio/209/jbr ]; then \
+		echo "▶ JAVA_HOME=/snap/android-studio/209/jbr (Android Studio bundled JBR)"; \
+		JAVA_HOME=/snap/android-studio/209/jbr android/gradlew -p android :app:lintDebug; \
+	else \
+		echo "▶ Using ambient java"; \
+		android/gradlew -p android :app:lintDebug; \
+	fi
 
 build-rust:
 	cargo build --workspace

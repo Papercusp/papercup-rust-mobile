@@ -96,7 +96,7 @@ GPL-3.0-or-later. See `LICENSE`.
 - **Wake-word activation** — Picovoice AccessKey approval pending. Both `WakeWordEngine` files (Android Kotlin + iOS Swift) are inert until the key arrives.
 - **RunLog SSE + StandingApprovals** — backend doesn't yet expose `/api/mobile/harnesses/{slug}/log/stream` (cookie-auth-only on the existing route) or implement the standing-candidates endpoint (currently 500). Mobile clients are wired end-to-end; renew the asks at `coord/mobile.jsonl`.
 - **Cellular pair via Cloudflare** — CF dashboard has a Worker/rule returning synthetic 404 on `api.papercuspai.com/api/mobile/*`. LAN + mesh paths work fine.
-- **iOS Resources bundle (app icon, launch screen)** — Xcode 16.2 ships iOS 18.2 SDK, and Apple no longer hosts the matching simulator runtime. Upgrade to Xcode 16.3 (`xcodes install 16.3`) to bundle Resources at build time.
+- **Xcode 16.2 destination race** — `xcodebuild` occasionally fails first-try with "iOS 18.2 is not installed" because Xcode 16.2's SDK and the only-available 18.3.1 simulator runtime mismatch on the destination resolver. Retry; second invocation picks up the installed runtime. The asset catalog (app icon + launch screen) bundles fine.
 - **GitHub Actions CI** — papercupai org hit the Actions monthly spend cap on the first 9-minute run. Workflow is `workflow_dispatch`-only at `.github/workflows/ci.yml`. Local `make check` is the actual gate today; install `make install-hooks` for a pre-push hook that runs it.
 
 ### Test surface

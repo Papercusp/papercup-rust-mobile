@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+        Suppress lint for files we don't author. UniFFI generates the
+        Cleaner code at API 33+; the runtime path it picks at API <33
+        uses a different code path (see WeakReferenceCleanable in the
+        same file), so the static-analyzer NewApi error is a false
+        positive. -->
+    <issue id="NewApi">
+        <ignore path="src/main/kotlin/uniffi/**" />
+    </issue>
+
+    <!-- android:windowLightNavigationBar exists on API 27+; we want
+         the styling on those versions and don't care that older
+         Android skips the attribute (graceful degradation). -->
+    <issue id="NewApi">
+        <ignore path="src/main/res/values/themes.xml" />
+    </issue>
+</lint>
