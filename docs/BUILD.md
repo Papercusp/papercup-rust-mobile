@@ -4,6 +4,11 @@
 Top-level `Makefile` drives everything. The Rust workspace is the source of
 truth; native projects consume generated bindings + the cross-compiled core.
 
+> **Runtime target = TypeScript / Hono.** Mobile pair JSON must point at the
+> Hono operator (production `https://api.papercupai.com`; local Android
+> emulator `http://10.0.2.2:3055`; local iOS sim `http://localhost:3055`).
+> `:3060` is the Rust dev server — do not paste it into pair JSON.
+
 ## Prerequisites
 
 ### Host (off-device, Linux or macOS)

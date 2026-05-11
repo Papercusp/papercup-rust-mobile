@@ -71,9 +71,18 @@ GPL-3.0-or-later. See `LICENSE`.
 
 ## Coordination
 
-- **Backend** (`papercup-rust-server/`) — owns the wire contract via `openapi.yaml`. We consume it via `progenitor`.
-- **Desktop** (`papercup-native/`) — same contract; no shared UI.
-- **Operator** (Next.js + Hono at `apps/operator/`, axum at `papercup-rust-server/`) — mobile hits whatever backend is wired through `https://api.papercupai.com` (Cloudflare Tunnel). The Rust port runs alongside the TS handler and is gated on `?backend=rust` (see `docs/COORDINATION.md`).
+> **Runtime target = TypeScript / Hono.** The mobile apps in this repo are
+> the Rust-port deliverable for **the client**. The **server** target is and
+> stays the TypeScript Hono operator at `papercup/apps/operator/` — that is
+> production. `papercup-rust-server/` exists alongside but is in development
+> and **mobile must not depend on it at runtime**. The openapi.yaml in
+> `papercup-rust-server/` is the shared wire-contract spec; the contract is
+> served by Hono.
+
+- **Backend (spec)** — `papercup-rust-server/openapi.yaml` is the source of truth for wire shapes. We hand-mirror types into `core::types`; wiremock tests catch drift.
+- **Backend (runtime)** — Hono inside `papercup/apps/operator/app/api/_hono/`. Mobile hits `https://api.papercupai.com` (Cloudflare Tunnel → Next on `:3055` → Hono catchall) in production. Locally: `http://10.0.2.2:3055` from the Android emulator, `http://localhost:3055` from the iOS sim.
+- **Desktop** (`papercup-native/`) — same spec; no shared UI.
+- **Never paste pair JSON pointing at `:3060`** — that's the Rust dev port and is not the contract for mobile.
 
 ## Status (per phase)
 

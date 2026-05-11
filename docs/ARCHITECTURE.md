@@ -47,13 +47,30 @@ layer; the Rust core owns all business logic.
 The contract: **UI never makes a network call.** UI calls Rust → core runs the
 work, updates the cache, fires the subscriber → UI re-renders from new state.
 
-## Backend dialect
+## Backend target
+
+**Mobile runtime target is the TypeScript / Hono operator** at
+`papercup/apps/operator/app/api/_hono/`. The Rust server
+(`papercup-rust-server/`) is in development and **mobile must not depend on
+it at runtime**.
+
+- Production: `https://api.papercupai.com` (Cloudflare Tunnel → Next `:3055` → Hono catchall).
+- Local Android emulator: `http://10.0.2.2:3055`.
+- Local iOS sim: `http://localhost:3055`.
+- `:3060` is the Rust dev server — never paste it into a pair JSON.
+
+The openapi.yaml in `papercup-rust-server/` is the shared wire-contract spec
+(hand-mirrored into `core::types`; wiremock tests catch drift), but the
+contract is served by Hono.
+
+### Backend dialect
 
 The Hono operator emits colon-style invalidation names (`actions:recent`); the
 Rust port emits dot-style (`auditLog.recent`, `toastLog.recent`,
 `operatorPauseFlag`, `harnessIdentity`). The cache registers the dot-style names
-today. A normalization layer (or backend convergence) may be needed once the
-desktop ships against Rust.
+today — these were wired against the Rust port at the time of the cache work,
+**and need to be re-verified against Hono's actual emitted names** before
+relying on the cache in production.
 
 ## Mesh fallback
 
