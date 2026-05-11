@@ -6,11 +6,12 @@
 
 .PHONY: help build-rust build-android build-ios install-android \
         bindings-kotlin bindings-swift test check fmt fmt-check \
-        clippy clean
+        clippy install-hooks clean
 
 help:
 	@echo "Targets:"
 	@echo "  make check              — pre-push gate: fmt-check + clippy -D warnings + tests"
+	@echo "  make install-hooks      — install git pre-push hook that runs 'make check'"
 	@echo "  make fmt                — cargo fmt --all"
 	@echo "  make fmt-check          — cargo fmt --all -- --check (fails on diff)"
 	@echo "  make clippy             — cargo clippy --workspace --all-targets -- -D warnings"
@@ -35,6 +36,9 @@ fmt-check:
 
 clippy:
 	cargo clippy --workspace --all-targets -- -D warnings
+
+install-hooks:
+	./tools/install-git-hooks.sh
 
 build-rust:
 	cargo build --workspace
