@@ -33,6 +33,20 @@
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
+    <!--
+        Without UIApplicationSceneManifest, iOS 13+ falls back to the
+        legacy AppDelegate-only lifecycle and SwiftUI's WindowGroup
+        .onOpenURL never receives papercup:// events. Empty
+        UISceneConfigurations means SwiftUI provides the default scene
+        delegate, which routes URLs into onOpenURL correctly.
+    -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict/>
+    </dict>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
