@@ -55,7 +55,7 @@ fun RunLogScreen(
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .build()
         val req = Request.Builder()
-            .url("${creds.server}/api/harness/${slug}/log/stream?tail=$MAX_LINES")
+            .url("${creds.server}/api/mobile/harnesses/${slug}/log/stream?tail=$MAX_LINES")
             .addHeader("Authorization", "Bearer ${creds.deviceToken}")
             .build()
         val source = EventSources.createFactory(client).newEventSource(req, object : EventSourceListener() {

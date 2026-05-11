@@ -93,7 +93,7 @@ struct RunLogView: View {
         lines = []
         error = nil
         streamTask = Task {
-            guard let url = URL(string: "\(creds.server)/api/harness/\(slug)/log/stream?tail=\(MAX_LINES)") else {
+            guard let url = URL(string: "\(creds.server)/api/mobile/harnesses/\(slug)/log/stream?tail=\(MAX_LINES)") else {
                 error = "bad url"; return
             }
             var req = URLRequest(url: url)
