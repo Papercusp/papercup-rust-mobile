@@ -23,7 +23,16 @@ if [ -z "$PAPERCUP_IOS_SIM_UDID" ]; then
 fi
 echo "▶ sim: $PAPERCUP_IOS_SIM_UDID"
 
-xcodegen generate >/dev/null
+# The destination race resolves much more reliably when the sim is
+# already booted before xcodebuild starts looking for destinations.
+xcrun simctl boot "$PAPERCUP_IOS_SIM_UDID" 2>/dev/null || true
+xcrun simctl bootstatus "$PAPERCUP_IOS_SIM_UDID" -b 2>/dev/null || true
+
+# Skip xcodegen if the project already exists — regenerating wipes
+# Xcode's per-scheme destination cache and re-triggers the race.
+if [ ! -d Papercup.xcodeproj ]; then
+    xcodegen generate >/dev/null
+fi
 
 DEST="platform=iOS Simulator,id=$PAPERCUP_IOS_SIM_UDID"
 
