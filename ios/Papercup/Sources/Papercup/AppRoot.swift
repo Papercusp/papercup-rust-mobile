@@ -8,6 +8,7 @@ struct AppRoot: View {
     @State private var liveTick: Int = 0
     @State private var lastInvalidate: String? = nil
     @State private var pushedDetailSlug: String? = nil
+    @EnvironmentObject private var deepLink: DeepLinkRouter
 
     enum Tab: Hashable { case operatorTab, harnesses, activity, settings }
     @State private var tab: Tab = .operatorTab
@@ -21,6 +22,7 @@ struct AppRoot: View {
                     liveTick: $liveTick,
                     lastInvalidate: $lastInvalidate,
                     pushedDetailSlug: $pushedDetailSlug,
+                    deepLink: deepLink,
                     onForget: {
                         CredentialStore.clear()
                         creds = nil
@@ -48,6 +50,7 @@ private struct PairedShell: View {
     @Binding var liveTick: Int
     @Binding var lastInvalidate: String?
     @Binding var pushedDetailSlug: String?
+    @ObservedObject var deepLink: DeepLinkRouter
     let onForget: () -> Void
     let onWorkspaceSwitched: (DeviceCredentials) -> Void
 
@@ -60,6 +63,7 @@ private struct PairedShell: View {
          liveTick: Binding<Int>,
          lastInvalidate: Binding<String?>,
          pushedDetailSlug: Binding<String?>,
+         deepLink: DeepLinkRouter,
          onForget: @escaping () -> Void,
          onWorkspaceSwitched: @escaping (DeviceCredentials) -> Void) {
         self.current = current
@@ -67,6 +71,7 @@ private struct PairedShell: View {
         self._liveTick = liveTick
         self._lastInvalidate = lastInvalidate
         self._pushedDetailSlug = pushedDetailSlug
+        self.deepLink = deepLink
         self.onForget = onForget
         self.onWorkspaceSwitched = onWorkspaceSwitched
         let voiceState = StateObject(wrappedValue: VoiceManager(creds: current))
@@ -143,7 +148,19 @@ private struct PairedShell: View {
         .onChange(of: voice.state) { _, new in
             if new == .idle { wakeWord.start() } else { wakeWord.stop() }
         }
-        .onAppear { if voice.state == .idle { wakeWord.start() } }
+        .onChange(of: deepLink.pendingSlug) { _, new in
+            if let slug = new {
+                pushedDetailSlug = slug
+                deepLink.pendingSlug = nil
+            }
+        }
+        .onAppear {
+            if voice.state == .idle { wakeWord.start() }
+            if let slug = deepLink.pendingSlug {
+                pushedDetailSlug = slug
+                deepLink.pendingSlug = nil
+            }
+        }
         .onDisappear { monitor.stop(); voice.stop(); wakeWord.stop() }
     }
 

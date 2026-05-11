@@ -33,6 +33,17 @@
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.papercuspai.operator.mobile.deeplink</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>papercup</string>
+            </array>
+        </dict>
+    </array>
     <key>NSCameraUsageDescription</key>
     <string>Papercup uses the camera to scan the pair-code QR shown by your desktop.</string>
     <key>NSMicrophoneUsageDescription</key>
