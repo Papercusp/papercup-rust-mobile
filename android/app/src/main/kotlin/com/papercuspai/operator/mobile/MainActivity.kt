@@ -398,6 +398,10 @@ private fun PairedShell(
                 }
             }
         },
+        // Voice FAB shown on every top-level tab (Operator/Harnesses/
+        // Activity/Settings). Previously was nested inside the
+        // HarnessListScreen Scaffold, so other tabs lost it.
+        floatingActionButton = { VoiceFab(voice) },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when (route) {
@@ -478,7 +482,8 @@ fun HarnessListScreen(
     }
 
     Scaffold(
-        floatingActionButton = { VoiceFab(voice) },
+        // Voice FAB is hoisted to PairedShell so it's visible on every
+        // top-level tab — not just this one.
         topBar = {
             TopAppBar(
                 title = {

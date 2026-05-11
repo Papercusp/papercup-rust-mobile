@@ -113,8 +113,11 @@ class VoiceManager(
                     userId = init.dynamicVariables.deviceId,
                     onConnect = { _ -> Log.i(TAG, "EL connected") },
                     onDisconnect = { reason ->
-                        Log.i(TAG, "EL disconnected: $reason")
-                        if (_state.value !is State.Failed) _state.value = State.Idle
+                        // Fully tear down so a subsequent FAB tap can
+                        // start a fresh session. Without this, `scope`
+                        // stays non-null and `start()` short-circuits.
+                        Log.i(TAG, "EL disconnected: $reason — tearing down")
+                        teardown(reason = reason.toString())
                     },
                     onStatusChange = { status ->
                         when (status) {
@@ -159,22 +162,30 @@ class VoiceManager(
         }
     }
 
-    fun stop() {
+    fun stop() = teardown(reason = "user")
+
+    private fun teardown(reason: String) {
         val s = scope ?: return
         scope = null
         val sess = session
         session = null
-        // endSession() is a suspend fn; fire-and-forget on IO before
-        // we cancel the scope.
         if (sess != null) {
-            CoroutineScope(Dispatchers.IO).launch {
-                try { sess.endSession() } catch (_: Throwable) {}
+            // endSession() is a suspend fn; fire-and-forget on IO before
+            // we cancel the scope. Skip if SDK already disconnected
+            // (reason from onDisconnect callback) — calling endSession
+            // on an already-dead session can hang.
+            if (reason == "user") {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try { sess.endSession() } catch (_: Throwable) {}
+                }
             }
         }
         sessionJob?.cancel()
         sessionJob = null
         _micLevel.value = 0f
-        _state.value = State.Idle
+        // Preserve a Failed state if onError fired earlier; otherwise
+        // park at Idle so the UI shows "Listen" again.
+        if (_state.value !is State.Failed) _state.value = State.Idle
         s.cancel()
     }
 
