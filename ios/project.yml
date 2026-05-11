@@ -25,6 +25,13 @@ packages:
   ElevenLabsSDK:
     url: https://github.com/elevenlabs/elevenlabs-swift-sdk
     from: 3.1.4
+  # Pin LiveKit (transitive of ElevenLabsSDK) to 2.13.x — 2.14.0 switched
+  # UniFFI bindings to a dylib that Xcode 16.2 can't resolve ("no such
+  # module 'LiveKitUniFFI'"). 2.13.x ships a static UniFFI module that
+  # links cleanly. Unpin when the Mac VM upgrades to Xcode 16.3+.
+  LiveKit:
+    url: https://github.com/livekit/client-sdk-swift
+    exactVersion: 2.13.0
 
 settings:
   base:
