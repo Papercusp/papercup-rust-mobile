@@ -1,11 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: CI
 
+# Triggers are manual-only after the papercupai org hit its Actions
+# spending cap (run 25647070739 burned the budget; runs 25648261681
+# and 25648317810 then failed in seconds before any step executed).
+# Re-enable push/PR triggers below once billing is sorted; until then,
+# trigger via `gh workflow run ci.yml` to avoid red commit dots on
+# every push.
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
+  workflow_dispatch:
+  # push:
+  #   branches: [master]
+  # pull_request:
+  #   branches: [master]
 
 env:
   CARGO_TERM_COLOR: always

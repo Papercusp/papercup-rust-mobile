@@ -104,8 +104,12 @@ xcodebuild ... build
   bundle (app icons + launch screen), upgrade to Xcode 16.3
   (`xcodes install 16.3`). Today the asset-catalog stage is excluded
   from the simulator build path; Swift compiles fine.
-- **CI**: no GitHub Actions workflow yet — the Mac VM in `OSX-KVM`
-  is the only Mac in the loop.
+- **CI**: workflow at `.github/workflows/ci.yml` (fmt + clippy
+  `-D warnings` + tests + bindings smoke) is wired but **trigger is
+  manual-only** — the papercupai org hit its Actions spending cap on
+  the first push (~30 macOS-minutes at 10x billing). Re-enable the
+  push/PR triggers in the workflow file once billing is sorted. Run
+  manually with `gh workflow run ci.yml` in the meantime.
 
 ## Backend coord asks (still open)
 
