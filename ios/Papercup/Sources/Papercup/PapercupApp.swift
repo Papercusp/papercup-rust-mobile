@@ -66,6 +66,7 @@ struct PapercupApp: App {
         WindowGroup {
             AppRoot()
                 .tint(PapercupTheme.accent)
+                .preferredColorScheme(.dark)
                 .environmentObject(deepLink)
                 .onOpenURL { url in
                     os_log(.info, log: appLog, "WindowGroup.onOpenURL fired url=%{public}@", url.absoluteString)

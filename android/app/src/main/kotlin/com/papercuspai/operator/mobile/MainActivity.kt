@@ -255,8 +255,15 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         }
     }
     // Throttle the service while voice is actively listening so
-    // SpeechRecognizer doesn't fight Porcupine over the mic.
+    // SpeechRecognizer doesn't fight Porcupine over the mic. Gated
+    // by the same caller-side check as the DisposableEffect above —
+    // never (re-)start FGS-microphone without RECORD_AUDIO + key.
     LaunchedEffect(voiceState, current.deviceToken) {
+        val canRun = WakeWordEngine.isConfigured() &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.RECORD_AUDIO,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!canRun) return@LaunchedEffect
         if (voiceState is VoiceManager.State.Idle) {
             WakeWordService.start(context)
         } else {

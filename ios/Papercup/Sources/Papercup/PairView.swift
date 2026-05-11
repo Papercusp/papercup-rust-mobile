@@ -64,6 +64,7 @@ struct PairView: View {
                         TextEditor(text: $pasteText)
                             .frame(minHeight: 120)
                             .font(.footnote.monospaced())
+                            .foregroundColor(PapercupTheme.text)
                             .disabled(redeeming)
                             .scrollContentBackground(.hidden)
                             .padding(8)
