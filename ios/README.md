@@ -62,6 +62,24 @@ xcrun simctl install $SIM ~/Library/Developer/Xcode/DerivedData/Papercup-*/Build
 xcrun simctl launch $SIM com.papercuspai.operator.mobile
 ```
 
+## Run tests
+
+```sh
+cd ios
+xcodegen generate
+# build-for-testing succeeds where xcodebuild test sometimes fails
+# (Xcode 16.2 + iOS 18.3.1 sim runtime mismatch — same race the
+# build target hits; retry once if 'Unable to find a destination').
+xcodebuild build-for-testing -project Papercup.xcodeproj -scheme Papercup \
+  -destination "platform=iOS Simulator,id=$SIM" \
+  -sdk iphonesimulator -derivedDataPath build/dd
+xcodebuild test-without-building -project Papercup.xcodeproj -scheme Papercup \
+  -destination "platform=iOS Simulator,id=$SIM" \
+  -derivedDataPath build/dd
+```
+
+11 tests today across `DeepLinkRouterTests` and `VoicePrefsTests`.
+
 ## Re-running after Rust changes
 
 ```sh
