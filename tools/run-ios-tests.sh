@@ -70,4 +70,14 @@ fi
 
 echo "▶ xcrun simctl install + xctest"
 xcrun simctl install "$PAPERCUP_IOS_SIM_UDID" "$APP_BUNDLE"
-xcrun simctl spawn "$PAPERCUP_IOS_SIM_UDID" xctest "$TEST_BUNDLE"
+# `xctest` lives under the runtime root, not /usr/bin in the simulator.
+# Locate it dynamically rather than hard-coding the iOS version.
+SIM_RUNTIME=$(find /Library/Developer/CoreSimulator/Volumes -name xctest -path '*RuntimeRoot/Developer/usr/bin/xctest' 2>/dev/null | head -1)
+if [ -z "$SIM_RUNTIME" ]; then
+    echo "ERROR: couldn't find sim's xctest binary" >&2
+    exit 1
+fi
+# simctl spawn invokes xctest in the sim's environment. The bundle
+# path is interpreted relative to the sim's filesystem; xctest takes
+# the absolute path on the host as long as it's accessible.
+xcrun simctl spawn "$PAPERCUP_IOS_SIM_UDID" "$SIM_RUNTIME" "$TEST_BUNDLE"
