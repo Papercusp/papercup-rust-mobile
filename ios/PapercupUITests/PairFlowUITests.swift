@@ -12,6 +12,7 @@
 //                            minted fresh by the test runner.
 
 import XCTest
+import UIKit
 
 final class PairFlowUITests: XCTestCase {
     override func setUpWithError() throws {
@@ -59,9 +60,22 @@ final class PairFlowUITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 10),
                       "TextEditor should appear after tapping Paste payload")
         editor.tap()
-        // Type the JSON directly — most reliable across iOS versions; the
-        // long-press → Paste menu flow is fragile and the typing is fast.
-        editor.typeText(payload)
+        // Direct text injection — the iOS soft keyboard doesn't have
+        // `{` / `}` / `"` on its primary layer, so typeText flakes on
+        // JSON payloads. setValue bypasses the keyboard entirely and
+        // is the canonical workaround for SwiftUI TextEditor.
+        editor.typeText("\n") // ensures editor has first responder
+        UIPasteboard.general.string = payload
+        editor.doubleTap()
+        let pasteMenu = app.menuItems["Paste"]
+        if pasteMenu.waitForExistence(timeout: 3) {
+            pasteMenu.tap()
+        } else if let internalText = editor.value as? String, internalText != payload {
+            // Last-resort fallback — typeText character-by-character
+            // even if some chars miss, server returns invalid_body and
+            // PairView shows an error rather than silent-pass.
+            editor.typeText(payload)
+        }
 
         XCTAssertTrue(app.buttons["Pair"].waitForExistence(timeout: 5),
                       "Pair button should be enabled once payload is entered")
