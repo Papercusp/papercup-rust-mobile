@@ -17,6 +17,7 @@
 import Foundation
 import SwiftUI
 import UserNotifications
+import os.log
 
 /// Pair-via-link payload, parsed from `papercup://pair?...`.
 /// All three fields are required; matches the QR/paste shape.
@@ -34,18 +35,20 @@ final class DeepLinkRouter: ObservableObject {
 
     private init() {}
 
+    private static let log = OSLog(subsystem: "com.papercuspai.operator.mobile", category: "DeepLink")
+
     /// Returns true if the URL was a recognised papercup deep-link.
     @discardableResult
     func handle(url: URL) -> Bool {
-        NSLog("PapercupDeepLink: handle url=%@", url.absoluteString)
+        os_log(.info, log: Self.log, "handle url=%{public}@", url.absoluteString)
         guard url.scheme == "papercup" else {
-            NSLog("PapercupDeepLink: non-papercup scheme, ignoring")
+            os_log(.info, log: Self.log, "non-papercup scheme, ignoring")
             return false
         }
         // papercup://harness/<slug>
         let parts = url.pathComponents.filter { $0 != "/" }
         if url.host == "harness", let slug = parts.first {
-            NSLog("PapercupDeepLink: harness/%@", slug)
+            os_log(.info, log: Self.log, "harness/%{public}@", slug)
             pendingSlug = slug
             return true
         }
@@ -59,13 +62,13 @@ final class DeepLinkRouter: ObservableObject {
                 })
             if let server = q["server"], let token = q["pairToken"], let ws = q["workspaceId"],
                !server.isEmpty, !token.isEmpty, !ws.isEmpty {
-                NSLog("PapercupDeepLink: pendingPair set server=%@ ws=%@", server, ws)
+                os_log(.info, log: Self.log, "pendingPair set server=%{public}@ ws=%{public}@", server, ws)
                 pendingPair = PendingPair(server: server, pairToken: token, workspaceId: ws)
                 return true
             }
-            NSLog("PapercupDeepLink: pair URL missing required fields, q=%@", String(describing: q))
+            os_log(.info, log: Self.log, "pair URL missing required fields, q=%{public}@", String(describing: q))
         }
-        NSLog("PapercupDeepLink: unrecognised host=%@", String(describing: url.host))
+        os_log(.info, log: Self.log, "unrecognised host=%{public}@", String(describing: url.host))
         return false
     }
 
