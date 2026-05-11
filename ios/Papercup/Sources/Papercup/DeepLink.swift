@@ -40,15 +40,15 @@ final class DeepLinkRouter: ObservableObject {
     /// Returns true if the URL was a recognised papercup deep-link.
     @discardableResult
     func handle(url: URL) -> Bool {
-        os_log(.default, log: Self.log, "handle url=%{public}@", url.absoluteString)
+        os_log(.error, log: Self.log, "handle url=%{public}@", url.absoluteString)
         guard url.scheme == "papercup" else {
-            os_log(.default, log: Self.log, "non-papercup scheme, ignoring")
+            os_log(.error, log: Self.log, "non-papercup scheme, ignoring")
             return false
         }
         // papercup://harness/<slug>
         let parts = url.pathComponents.filter { $0 != "/" }
         if url.host == "harness", let slug = parts.first {
-            os_log(.default, log: Self.log, "harness/%{public}@", slug)
+            os_log(.error, log: Self.log, "harness/%{public}@", slug)
             pendingSlug = slug
             return true
         }
@@ -62,13 +62,13 @@ final class DeepLinkRouter: ObservableObject {
                 })
             if let server = q["server"], let token = q["pairToken"], let ws = q["workspaceId"],
                !server.isEmpty, !token.isEmpty, !ws.isEmpty {
-                os_log(.default, log: Self.log, "pendingPair set server=%{public}@ ws=%{public}@", server, ws)
+                os_log(.error, log: Self.log, "pendingPair set server=%{public}@ ws=%{public}@", server, ws)
                 pendingPair = PendingPair(server: server, pairToken: token, workspaceId: ws)
                 return true
             }
-            os_log(.default, log: Self.log, "pair URL missing required fields, q=%{public}@", String(describing: q))
+            os_log(.error, log: Self.log, "pair URL missing required fields, q=%{public}@", String(describing: q))
         }
-        os_log(.default, log: Self.log, "unrecognised host=%{public}@", String(describing: url.host))
+        os_log(.error, log: Self.log, "unrecognised host=%{public}@", String(describing: url.host))
         return false
     }
 
