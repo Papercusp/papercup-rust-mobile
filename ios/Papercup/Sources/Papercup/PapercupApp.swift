@@ -15,7 +15,7 @@ struct PapercupApp: App {
                 .tint(PapercupTheme.accent)
                 .environmentObject(deepLink)
                 .onOpenURL { url in
-                    os_log(.error, log: appLog, "WindowGroup.onOpenURL fired url=%{public}@", url.absoluteString)
+                    os_log(.info, log: appLog, "WindowGroup.onOpenURL fired url=%{public}@", url.absoluteString)
                     deepLink.handle(url: url)
                 }
         }

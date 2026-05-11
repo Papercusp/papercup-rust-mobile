@@ -132,6 +132,30 @@ xcodebuild ... build
   push/PR triggers in the workflow file once billing is sorted. Run
   manually with `gh workflow run ci.yml` in the meantime.
 
+## Pair-by-link / URL scheme
+
+The app registers `papercup://harness/<slug>` (push-tap deep link) and
+`papercup://pair?server=...&pairToken=...&workspaceId=...` (pair-by-link).
+Both go through `DeepLinkRouter` (`PapercupTests` covers parsing).
+
+**iOS 17.4+ sim limitation**: `xcrun simctl openurl` for custom schemes
+shows an unavoidable "Open in Papercup?" confirmation prompt that
+can't be dismissed from headless simctl. To validate the full pair
+flow end-to-end, either:
+
+1. Use a real device (paid Apple Dev account) where the prompt is
+   auto-accepted from in-app `UIApplication.shared.open()`, OR
+2. Tap the prompt manually in the Simulator window, OR
+3. Use the in-app Paste flow (`PairView` accepts the JSON payload
+   directly without going through the URL scheme).
+
+Required Info.plist keys for URL delivery to work at all:
+- `CFBundleURLTypes` with `papercup` scheme
+- `UIApplicationSceneManifest` (otherwise SwiftUI's `.onOpenURL`
+  silently never fires when wired alongside `UIApplicationDelegateAdaptor`)
+- `NSAppTransportSecurity → NSAllowsArbitraryLoads = YES` for
+  http://10.0.2.2 dev backend reachability
+
 ## Backend coord asks (still open)
 
 - Mobile-JWT-authed `/api/mobile/harnesses/{slug}/log/stream` so
