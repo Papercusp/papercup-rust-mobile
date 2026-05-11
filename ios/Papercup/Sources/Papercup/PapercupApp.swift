@@ -10,15 +10,13 @@ struct PapercupApp: App {
     @StateObject private var deepLink = DeepLinkRouter.shared
 
     init() {
-        // XCUITest hooks. Both no-ops in production.
+        #if DEBUG
+        // XCUITest hooks — DEBUG-only so release builds can't be
+        // pair-injected via Xcode launch args. Both no-ops without args.
         let args = CommandLine.arguments
         if args.contains("-com.papercuspai.uitests.wipeCredentials") {
             CredentialStore.clear()
         }
-        // Pair-payload backdoor for XCUITest: avoids the iOS 17.4
-        // "Open in Papercup?" system prompt that blocks simctl openurl,
-        // and the JSON-typing flake on the soft keyboard. The arg value
-        // is the same JSON shape PairView would parse.
         if let i = args.firstIndex(of: "-com.papercuspai.uitests.pairPayload"),
            i + 1 < args.count {
             let raw = args[i + 1]
@@ -34,6 +32,7 @@ struct PapercupApp: App {
                 }
             }
         }
+        #endif
     }
 
     var body: some Scene {

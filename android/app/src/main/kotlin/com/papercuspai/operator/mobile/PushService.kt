@@ -52,11 +52,40 @@ class PushService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         Log.i(TAG, "fcm message: data=${message.data} notif=${message.notification?.title}")
         val data = message.data
+
+        // Data-only invalidation payload — no title/body, just an
+        // `invalidate` key with the sync name to refetch. Plumb it
+        // through the existing OperatorClient (best-effort; FCM gives
+        // us up to ~10s of background CPU which is enough to refetch).
+        val invalidate = data["invalidate"]
+        if (invalidate != null && data["title"] == null) {
+            Log.i(TAG, "fcm data-only invalidate: $invalidate")
+            handleInvalidate(invalidate)
+            return
+        }
+
         val title = data["title"] ?: message.notification?.title ?: "Papercup"
         val body = data["body"] ?: message.notification?.body ?: return
         val slug = data["slug"]
         val eventId = data["eventId"] ?: message.messageId
         showNotification(applicationContext, title, body, slug, eventId)
+    }
+
+    /// Best-effort: poke a refresh on the named query. The full sync
+    /// cache landed in phase 11h (papercup-core::cache); for now we
+    /// just bump heartbeat so the desktop knows we're connected and
+    /// log the invalidation so it shows in adb logcat for triage.
+    private fun handleInvalidate(name: String) {
+        val store = CredentialStore(applicationContext)
+        val creds = store.load() ?: return
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                OperatorClient(creds.server, creds.deviceToken).heartbeat()
+                Log.i(TAG, "fcm invalidate refetch ack for $name")
+            } catch (t: Throwable) {
+                Log.w(TAG, "fcm invalidate refetch failed: ${t.message}")
+            }
+        }
     }
 
     private companion object {

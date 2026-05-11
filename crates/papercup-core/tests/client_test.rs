@@ -438,3 +438,56 @@ async fn standing_candidate_decide_surfaces_server_error() {
         other => panic!("expected ApiError::Server, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn fallback_url_used_when_primary_unreachable() {
+    // Primary URL points at a closed port → connection refused → ApiError::Network.
+    // Fallback is a real wiremock server. Client should silently swap.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/mobile/harnesses"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "harnesses": [
+                {"slug": "alpha", "path": "/p/alpha", "has_state": false}
+            ]
+        })))
+        .mount(&server)
+        .await;
+
+    // 0.0.0.0:1 is reliably refused on every linux box.
+    let primary = "http://0.0.0.0:1".to_string();
+    let client =
+        OperatorClient::new_with_fallback(primary.clone(), server.uri(), Some(TOKEN.to_string()));
+    let result = client.list_harnesses().await.unwrap();
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].slug, "alpha");
+    // Subsequent calls should use the fallback URL — verified by checking
+    // the client's active base_url moved away from primary.
+    assert_ne!(client.base_url(), primary);
+}
+
+#[tokio::test]
+async fn fallback_not_used_for_4xx() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/mobile/harnesses"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    // Both URLs valid; primary returns 503 → ApiError::Server, NOT a
+    // transport failure, so we should NOT swap to fallback.
+    let primary = server.uri();
+    let fallback = MockServer::start().await; // not configured; would 404
+    let client =
+        OperatorClient::new_with_fallback(primary.clone(), fallback.uri(), Some(TOKEN.to_string()));
+    let err = client.list_harnesses().await.unwrap_err();
+    assert!(matches!(
+        err,
+        papercup_core::client::ApiError::Server { status: 503, .. }
+    ));
+    assert_eq!(
+        client.base_url(),
+        primary,
+        "fallback should not be activated by HTTP errors"
+    );
+}

@@ -39,7 +39,8 @@ impl From<reqwest::Error> for ApiError {
 
 #[derive(Debug, Clone)]
 pub struct OperatorClient {
-    base_url: String,
+    base_url: std::sync::Arc<std::sync::RwLock<String>>,
+    fallback_url: Option<String>,
     device_token: Option<String>,
     http: reqwest::Client,
 }
@@ -54,46 +55,75 @@ impl OperatorClient {
             .build()
             .expect("reqwest client should build with these defaults");
         Self {
-            base_url: base_url.into().trim_end_matches('/').to_string(),
+            base_url: std::sync::Arc::new(std::sync::RwLock::new(
+                base_url.into().trim_end_matches('/').to_string(),
+            )),
+            fallback_url: None,
             device_token,
             http,
         }
     }
 
-    pub fn base_url(&self) -> &str {
-        &self.base_url
+    /// `new_with_fallback(mesh, public, token)` — preferred mesh URL
+    /// (e.g. `http://10.10.0.2:3070`) with automatic switch to the
+    /// public URL (e.g. `https://api.papercupai.com`) on connect
+    /// failure. Phase 6 designed deliverable.
+    pub fn new_with_fallback(
+        primary: impl Into<String>,
+        fallback: impl Into<String>,
+        device_token: Option<String>,
+    ) -> Self {
+        let mut s = Self::new(primary, device_token);
+        s.fallback_url = Some(fallback.into().trim_end_matches('/').to_string());
+        s
+    }
+
+    pub fn base_url(&self) -> String {
+        self.base_url.read().unwrap().clone()
+    }
+
+    /// Swap the active base URL. Public so the host can flip when mesh
+    /// status changes (e.g. after `MeshState::Up`).
+    pub fn set_base_url(&self, url: impl Into<String>) {
+        let mut w = self.base_url.write().unwrap();
+        *w = url.into().trim_end_matches('/').to_string();
+    }
+
+    /// Returns true if the error is a connection-level network error
+    /// (unreachable host, timeout) — i.e. one we should retry on the
+    /// fallback URL rather than surface to the caller.
+    fn is_transport_failure(err: &ApiError) -> bool {
+        matches!(err, ApiError::Network(_))
+    }
+
+    /// Try `op` against the primary base URL; on transport failure +
+    /// presence of a fallback URL, swap and retry once. Caller's
+    /// closure receives the current base URL string.
+    async fn with_fallback<F, Fut, T>(&self, op: F) -> Result<T, ApiError>
+    where
+        F: Fn(String) -> Fut,
+        Fut: std::future::Future<Output = Result<T, ApiError>>,
+    {
+        let primary = self.base_url();
+        match op(primary.clone()).await {
+            Ok(v) => Ok(v),
+            Err(e) if Self::is_transport_failure(&e) => match &self.fallback_url {
+                Some(fb) if *fb != primary => {
+                    self.set_base_url(fb.clone());
+                    op(fb.clone()).await
+                }
+                _ => Err(e),
+            },
+            Err(e) => Err(e),
+        }
     }
 
     /// `GET /api/mobile/harnesses` — returns the user's harnesses.
     /// Requires a paired device token.
     pub async fn list_harnesses(&self) -> Result<Vec<HarnessLite>, ApiError> {
-        let url = format!("{}/api/mobile/harnesses", self.base_url);
-        let mut req = self.http.get(&url);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            let detail = resp
-                .json::<ErrorBody>()
-                .await
-                .map(|e| e.error)
-                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail,
-            });
-        }
-        let body = resp
-            .json::<ListResp>()
+        self.bearer_get_json::<ListResp>("/api/mobile/harnesses")
             .await
-            .map_err(|e| ApiError::Decode(e.to_string()))?;
-        Ok(body.harnesses)
+            .map(|r| r.harnesses)
     }
 
     /// `GET /api/mobile/harnesses/{slug}` — returns the per-harness
@@ -101,7 +131,7 @@ impl OperatorClient {
     /// backend has the rich `StatusResp` shape on the desktop endpoint
     /// and will fold it into this route in a later stage.
     pub async fn get_harness_status(&self, slug: &str) -> Result<HarnessStatusFull, ApiError> {
-        let url = format!("{}/api/mobile/harnesses/{}", self.base_url, slug);
+        let url = format!("{}/api/mobile/harnesses/{}", self.base_url(), slug);
         let mut req = self.http.get(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -132,7 +162,7 @@ impl OperatorClient {
     /// harness (passed/todo/blocked counts + active_roles). Tauri-parity
     /// "Currently running" view.
     pub async fn list_running(&self) -> Result<Vec<RunningHarnessPhase>, ApiError> {
-        let url = format!("{}/api/mobile/running", self.base_url);
+        let url = format!("{}/api/mobile/running", self.base_url());
         self.bearer_get_json::<RunningResp>(&url)
             .await
             .map(|r| r.harnesses)
@@ -141,7 +171,7 @@ impl OperatorClient {
     /// `GET /api/mobile/voice-lease` — current lease holder (or `None`
     /// if no one is listening).
     pub async fn voice_lease_get(&self) -> Result<Option<VoiceLeaseShape>, ApiError> {
-        let url = format!("{}/api/mobile/voice-lease", self.base_url);
+        let url = format!("{}/api/mobile/voice-lease", self.base_url());
         self.bearer_get_json::<VoiceLeaseRead>(&url)
             .await
             .map(|r| r.lease)
@@ -164,13 +194,13 @@ impl OperatorClient {
 
     /// `DELETE /api/mobile/voice-lease` — release-if-mine; idempotent.
     pub async fn voice_lease_release(&self) -> Result<(), ApiError> {
-        let url = format!("{}/api/mobile/voice-lease", self.base_url);
+        let url = format!("{}/api/mobile/voice-lease", self.base_url());
         self.bearer_delete_empty(&url).await
     }
 
     /// Helper for POST endpoints that take no body and return only `{ok:true}`.
     async fn bearer_post_empty(&self, path: &str) -> Result<(), ApiError> {
-        let url = format!("{}{}", self.base_url, path);
+        let url = format!("{}{}", self.base_url(), path);
         let mut req = self.http.post(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -214,7 +244,7 @@ impl OperatorClient {
     /// the desktop's "is the phone connected" badge stays fresh. Cheap;
     /// safe to call every minute while foregrounded.
     pub async fn heartbeat(&self) -> Result<(), ApiError> {
-        let url = format!("{}/api/mobile/heartbeat", self.base_url);
+        let url = format!("{}/api/mobile/heartbeat", self.base_url());
         let mut req = self.http.post(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -237,7 +267,7 @@ impl OperatorClient {
     /// `GET /api/mobile/notifications/recent` — most recent toast_log
     /// entries scoped to the device's workspace. Limit defaults to 50.
     pub async fn recent_notifications(&self) -> Result<Vec<ToastRow>, ApiError> {
-        let url = format!("{}/api/mobile/notifications/recent", self.base_url);
+        let url = format!("{}/api/mobile/notifications/recent", self.base_url());
         self.bearer_get_json::<ToastsResp>(&url)
             .await
             .map(|r| r.toasts)
@@ -246,7 +276,7 @@ impl OperatorClient {
     /// `GET /api/mobile/actions/recent` — most recent audit_log entries
     /// scoped to the device's workspace.
     pub async fn recent_actions(&self) -> Result<Vec<AuditRow>, ApiError> {
-        let url = format!("{}/api/mobile/actions/recent", self.base_url);
+        let url = format!("{}/api/mobile/actions/recent", self.base_url());
         self.bearer_get_json::<AuditResp>(&url)
             .await
             .map(|r| r.entries)
@@ -254,7 +284,7 @@ impl OperatorClient {
 
     /// `GET /api/mobile/operator/pause` — current global pause state.
     pub async fn pause_get(&self) -> Result<PauseInfo, ApiError> {
-        let url = format!("{}/api/mobile/operator/pause", self.base_url);
+        let url = format!("{}/api/mobile/operator/pause", self.base_url());
         self.bearer_get_json::<PauseInfo>(&url).await
     }
 
@@ -262,7 +292,7 @@ impl OperatorClient {
     /// the new state. The server fires a `sync_invalidate` for
     /// `operatorPauseFlag` so peer clients converge instantly.
     pub async fn pause_set(&self, paused: bool) -> Result<bool, ApiError> {
-        let url = format!("{}/api/mobile/operator/pause", self.base_url);
+        let url = format!("{}/api/mobile/operator/pause", self.base_url());
         let mut req = if paused {
             self.http.post(&url)
         } else {
@@ -300,7 +330,7 @@ impl OperatorClient {
         &self,
         workspace_id: &str,
     ) -> Result<WorkspaceSwitchResp, ApiError> {
-        let url = format!("{}/api/mobile/workspace/switch", self.base_url);
+        let url = format!("{}/api/mobile/workspace/switch", self.base_url());
         let mut req = self.http.post(&url).json(&WorkspaceSwitchBody {
             workspace_id: workspace_id.to_string(),
         });
@@ -332,7 +362,7 @@ impl OperatorClient {
     /// `GET /api/mobile/workspaces` — list of workspaces the device can
     /// see, with the currently-selected one flagged.
     pub async fn list_workspaces(&self) -> Result<Vec<WorkspaceItem>, ApiError> {
-        let url = format!("{}/api/mobile/workspaces", self.base_url);
+        let url = format!("{}/api/mobile/workspaces", self.base_url());
         self.bearer_get_json::<WorkspacesResp>(&url)
             .await
             .map(|r| r.workspaces)
@@ -341,7 +371,7 @@ impl OperatorClient {
     /// `GET /api/mobile/desktop/devices` — every paired device, including
     /// this one (matched by device_id).
     pub async fn list_desktop_devices(&self) -> Result<Vec<DeviceRow>, ApiError> {
-        let url = format!("{}/api/mobile/desktop/devices", self.base_url);
+        let url = format!("{}/api/mobile/desktop/devices", self.base_url());
         self.bearer_get_json::<DesktopDevicesResp>(&url)
             .await
             .map(|r| r.devices)
@@ -349,7 +379,10 @@ impl OperatorClient {
 
     /// `GET /api/mobile/operator/standing-candidates`
     pub async fn standing_candidates(&self) -> Result<Vec<StandingCandidate>, ApiError> {
-        let url = format!("{}/api/mobile/operator/standing-candidates", self.base_url);
+        let url = format!(
+            "{}/api/mobile/operator/standing-candidates",
+            self.base_url()
+        );
         self.bearer_get_json::<StandingCandidatesResp>(&url)
             .await
             .map(|r| r.candidates)
@@ -364,7 +397,7 @@ impl OperatorClient {
     ) -> Result<(), ApiError> {
         let url = format!(
             "{}/api/mobile/operator/standing-candidates/decide",
-            self.base_url
+            self.base_url()
         );
         let mut req = self.http.post(&url).json(&StandingDecisionBody {
             capability: capability.to_string(),
@@ -392,7 +425,11 @@ impl OperatorClient {
     /// `DELETE /api/mobile/desktop/devices/{id}` — unpair the given device.
     /// Server also invokes Defguard revoke_user.
     pub async fn revoke_device(&self, device_id: &str) -> Result<(), ApiError> {
-        let url = format!("{}/api/mobile/desktop/devices/{}", self.base_url, device_id);
+        let url = format!(
+            "{}/api/mobile/desktop/devices/{}",
+            self.base_url(),
+            device_id
+        );
         let mut req = self.http.delete(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -415,39 +452,55 @@ impl OperatorClient {
     /// Bearer-auth GET → JSON. Helper for the read-only mobile endpoints.
     async fn bearer_get_json<T: serde::de::DeserializeOwned>(
         &self,
-        url: &str,
+        path_or_url: &str,
     ) -> Result<T, ApiError> {
-        let mut req = self.http.get(url);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            let detail = resp
-                .json::<ErrorBody>()
+        // Accept either a full URL (legacy callers that build their
+        // own from self.base_url()) or a leading-slash path. Path form
+        // gets the mesh→public fallback retry; full-URL form doesn't.
+        let is_path = path_or_url.starts_with('/');
+        let do_request = |base: String| async move {
+            let url = if is_path {
+                format!("{}{}", base, path_or_url)
+            } else {
+                path_or_url.to_string()
+            };
+            let mut req = self.http.get(&url);
+            req = match &self.device_token {
+                Some(tok) => req.bearer_auth(tok),
+                None => return Err(ApiError::Unauthorized),
+            };
+            let resp = req.send().await?;
+            let status = resp.status();
+            if status.as_u16() == 401 {
+                return Err(ApiError::Unauthorized);
+            }
+            if !status.is_success() {
+                let detail = resp
+                    .json::<ErrorBody>()
+                    .await
+                    .map(|e| e.error)
+                    .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
+                return Err(ApiError::Server {
+                    status: status.as_u16(),
+                    detail,
+                });
+            }
+            resp.json::<T>()
                 .await
-                .map(|e| e.error)
-                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail,
-            });
+                .map_err(|e| ApiError::Decode(e.to_string()))
+        };
+        if is_path {
+            self.with_fallback(do_request).await
+        } else {
+            do_request(String::new()).await
         }
-        resp.json::<T>()
-            .await
-            .map_err(|e| ApiError::Decode(e.to_string()))
     }
 
     /// `POST /api/mobile/push/register` — registers an FCM/APNS token
     /// with the backend so the desktop can deliver push notifications.
     /// Idempotent (server upserts).
     pub async fn register_push(&self, body: PushRegisterBody) -> Result<(), ApiError> {
-        let url = format!("{}/api/mobile/push/register", self.base_url);
+        let url = format!("{}/api/mobile/push/register", self.base_url());
         let mut req = self.http.post(&url).json(&body);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -476,7 +529,7 @@ impl OperatorClient {
     /// the desktop's QR code) for a long-lived device JWT. No bearer
     /// auth required for this call.
     pub async fn pair(&self, body: PairBody) -> Result<PairResp, ApiError> {
-        let url = format!("{}/api/mobile/pair", self.base_url);
+        let url = format!("{}/api/mobile/pair", self.base_url());
         let resp = self.http.post(&url).json(&body).send().await?;
         let status = resp.status();
         if !status.is_success() {

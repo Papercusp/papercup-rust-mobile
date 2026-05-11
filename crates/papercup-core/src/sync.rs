@@ -4,7 +4,9 @@
 // Backend emits one event type today, `invalidate`, with a JSON body
 // `{ "id": "<ulid>", "name": "<key>", "args": <json|null> }`. The server
 // also keeps a 60s ring of recent ids so reconnects can resume via
-// `Last-Event-ID`.
+// `Last-Event-ID`. The reqwest-eventsource crate tracks the last
+// observed `id:` field and automatically attaches `Last-Event-ID` on
+// reconnect — no client work needed.
 //
 // The stream is opened once via `SyncStream::connect`; a background
 // task drains the underlying `EventSource` (which already reconnects
