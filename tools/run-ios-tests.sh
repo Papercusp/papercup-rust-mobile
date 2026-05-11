@@ -36,7 +36,7 @@ fi
 
 DEST="platform=iOS Simulator,id=$PAPERCUP_IOS_SIM_UDID"
 
-for i in 1 2 3; do
+for i in 1 2 3 4 5; do
     # `set -e` would kill us on a failed xcodebuild before we get to
     # check $? — disable it for the assignment, then re-enable.
     set +e
@@ -49,17 +49,17 @@ for i in 1 2 3; do
     if [ $rc -eq 0 ] && echo "$out" | grep -q "TEST BUILD SUCCEEDED"; then
         break
     fi
-    echo "[retry $i: destination race, rc=$rc]"
-    sleep 3
-    if [ "$i" = "3" ]; then
-        echo "ERROR: build-for-testing failed after 3 retries (rc=$rc)" >&2
+    echo "[build retry $i: destination race, rc=$rc]"
+    sleep 5
+    if [ "$i" = "5" ]; then
+        echo "ERROR: build-for-testing failed after 5 retries (rc=$rc)" >&2
         echo "--- last 20 lines of xcodebuild output ---" >&2
         echo "$out" | tail -20 >&2
         exit 1
     fi
 done
 
-for i in 1 2 3; do
+for i in 1 2 3 4 5; do
     set +e
     xcodebuild test-without-building \
         -project Papercup.xcodeproj -scheme Papercup \
@@ -70,7 +70,7 @@ for i in 1 2 3; do
         exit 0
     fi
     echo "[test retry $i: rc=$rc]"
-    sleep 3
+    sleep 5
 done
-echo "ERROR: test-without-building failed after 3 retries" >&2
+echo "ERROR: test-without-building failed after 5 retries" >&2
 exit 1
