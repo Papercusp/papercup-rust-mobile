@@ -225,7 +225,7 @@ async fn list_workspaces_unwraps_envelope() {
 async fn list_desktop_devices_unwraps_envelope() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/desktop/devices"))
+        .and(path("/api/mobile/devices"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "devices": [
                 {
@@ -248,7 +248,7 @@ async fn list_desktop_devices_unwraps_envelope() {
 async fn revoke_device_uses_delete_method() {
     let (client, server) = paired_client().await;
     Mock::given(method("DELETE"))
-        .and(path("/api/mobile/desktop/devices/d-other"))
+        .and(path("/api/mobile/devices/d-other"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
         .expect(1)

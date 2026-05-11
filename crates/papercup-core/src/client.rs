@@ -368,10 +368,10 @@ impl OperatorClient {
             .map(|r| r.workspaces)
     }
 
-    /// `GET /api/mobile/desktop/devices` — every paired device, including
+    /// `GET /api/mobile/devices` — every paired device, including
     /// this one (matched by device_id).
     pub async fn list_desktop_devices(&self) -> Result<Vec<DeviceRow>, ApiError> {
-        let url = format!("{}/api/mobile/desktop/devices", self.base_url());
+        let url = format!("{}/api/mobile/devices", self.base_url());
         self.bearer_get_json::<DesktopDevicesResp>(&url)
             .await
             .map(|r| r.devices)
@@ -422,14 +422,10 @@ impl OperatorClient {
         Ok(())
     }
 
-    /// `DELETE /api/mobile/desktop/devices/{id}` — unpair the given device.
+    /// `DELETE /api/mobile/devices/{id}` — unpair the given device.
     /// Server also invokes Defguard revoke_user.
     pub async fn revoke_device(&self, device_id: &str) -> Result<(), ApiError> {
-        let url = format!(
-            "{}/api/mobile/desktop/devices/{}",
-            self.base_url(),
-            device_id
-        );
+        let url = format!("{}/api/mobile/devices/{}", self.base_url(), device_id);
         let mut req = self.http.delete(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
