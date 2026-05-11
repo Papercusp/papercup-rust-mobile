@@ -15,8 +15,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import uniffi.papercup.OperatorClient
@@ -47,8 +50,19 @@ class VoiceManager(
         data class Failed(val message: String) : State
     }
 
+    /// Phase 4 — local intents dispatched from voice WS Speak frames.
+    /// UI observes via [intents] and reacts (e.g. Navigate → push detail).
+    sealed interface Intent {
+        data class Navigate(val slug: String) : Intent
+        data object Pause : Intent
+        data object Resume : Intent
+    }
+
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
+
+    private val _intents = kotlinx.coroutines.flow.MutableSharedFlow<Intent>(extraBufferCapacity = 8)
+    val intents: kotlinx.coroutines.flow.SharedFlow<Intent> = _intents.asSharedFlow()
 
     /// Microphone amplitude reported by SpeechRecognizer.onRmsChanged
     /// while listening. Range observed in practice: ~-2.0 (silence) to
@@ -138,11 +152,31 @@ class VoiceManager(
                         startStt()
                     }
                     is VoiceEvent.Speak -> {
-                        _state.value = State.Speaking(ev.text, ev.source)
+                        // Phase 4: parse for local intent. Speak the
+                        // remainder; emit any Navigate/Pause/Resume to
+                        // the intents flow for UI to react.
+                        val parsed = uniffi.papercup.parseIntent(ev.text)
+                        val toSpeak = when (parsed) {
+                            is uniffi.papercup.Intent.Navigate -> {
+                                _intents.tryEmit(Intent.Navigate(parsed.slug))
+                                parsed.speak
+                            }
+                            is uniffi.papercup.Intent.Pause -> {
+                                _intents.tryEmit(Intent.Pause)
+                                parsed.speak
+                            }
+                            is uniffi.papercup.Intent.Resume -> {
+                                _intents.tryEmit(Intent.Resume)
+                                parsed.speak
+                            }
+                            is uniffi.papercup.Intent.ClaimVoice -> parsed.speak
+                            is uniffi.papercup.Intent.Speak -> parsed.text
+                        }
+                        _state.value = State.Speaking(toSpeak, ev.source)
                         sttPaused = true
                         try { recognizer?.cancel() } catch (_: Throwable) {}
                         client.sendStatus(VoiceStatus.SPEAKING)
-                        speak(ev.text, ev.format)
+                        if (toSpeak.isNotBlank()) speak(toSpeak, ev.format)
                     }
                     is VoiceEvent.Closed -> {
                         if (ev.code == 1008.toUShort()) {

@@ -17,6 +17,20 @@ namespace papercup {
     /// Render a wg-quick INI from the device's stored private key plus
     /// the broker-assigned mesh config.
     string mesh_to_wg_quick(string private_key_b64, MeshConfig config);
+
+    /// Phase 4 — parse a voice WS Speak frame for an inline directive.
+    /// Recognised prefixes: [NAVIGATE: <slug>], [PAUSE], [RESUME],
+    /// [CLAIM_VOICE]. Anything else returns Speak { text } unchanged.
+    Intent parse_intent(string text);
+};
+
+[Enum]
+interface Intent {
+    Navigate(string slug, string speak);
+    Pause(string speak);
+    Resume(string speak);
+    ClaimVoice(string speak);
+    Speak(string text);
 };
 
 [Error]

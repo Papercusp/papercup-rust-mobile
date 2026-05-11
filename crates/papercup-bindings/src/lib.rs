@@ -71,6 +71,34 @@ fn parse_qr_payload(text: String) -> Result<QrPayload, PairError> {
     })
 }
 
+// ── voice intent dispatch (Phase 4) ─────────────────────────────────────
+
+pub enum Intent {
+    Navigate { slug: String, speak: String },
+    Pause { speak: String },
+    Resume { speak: String },
+    ClaimVoice { speak: String },
+    Speak { text: String },
+}
+
+impl From<papercup_core::intent::Intent> for Intent {
+    fn from(i: papercup_core::intent::Intent) -> Self {
+        match i {
+            papercup_core::intent::Intent::Navigate { slug, speak } => {
+                Self::Navigate { slug, speak }
+            }
+            papercup_core::intent::Intent::Pause { speak } => Self::Pause { speak },
+            papercup_core::intent::Intent::Resume { speak } => Self::Resume { speak },
+            papercup_core::intent::Intent::ClaimVoice { speak } => Self::ClaimVoice { speak },
+            papercup_core::intent::Intent::Speak { text } => Self::Speak { text },
+        }
+    }
+}
+
+fn parse_intent(text: String) -> Intent {
+    papercup_core::intent::parse(&text).into()
+}
+
 // ── error mapping ───────────────────────────────────────────────────────
 
 #[derive(Debug, thiserror::Error)]

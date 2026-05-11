@@ -14,6 +14,7 @@
 
 pub mod biometric;
 pub mod client;
+pub mod intent;
 pub mod mesh;
 pub mod sync;
 pub mod types;

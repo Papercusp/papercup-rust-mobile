@@ -191,6 +191,20 @@ private struct PairedShell: View {
         .onChange(of: voice.state) { _, new in
             if new == .idle { wakeWord.start() } else { wakeWord.stop() }
         }
+        .onChange(of: voice.pendingIntent) { _, new in
+            // Phase 4 voice intent dispatch — navigate intents push
+            // the harness detail; pause/resume hit pause_set directly.
+            guard let intent = new else { return }
+            switch intent {
+            case .navigate(let slug):
+                pushedDetailSlug = slug
+            case .pause:
+                Task { try? await OperatorClient(baseUrl: current.server, deviceToken: current.deviceToken).pauseSet(paused: true) }
+            case .resume:
+                Task { try? await OperatorClient(baseUrl: current.server, deviceToken: current.deviceToken).pauseSet(paused: false) }
+            }
+            voice.pendingIntent = nil
+        }
         .onChange(of: deepLink.pendingSlug) { _, new in
             if let slug = new {
                 pushedDetailSlug = slug

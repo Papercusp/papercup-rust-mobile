@@ -27,6 +27,17 @@ final class VoiceManager: ObservableObject {
     /// 0…1 normalized RMS of the mic input, polled by the UI for the halo.
     @Published private(set) var micLevel: Float = 0
 
+    /// Phase 4 — local intents dispatched from voice WS Speak frames.
+    /// UI subscribes via the published value (single-shot — set then
+    /// nil so multiple Navigates each fire onChange).
+    @Published var pendingIntent: LocalIntent? = nil
+
+    enum LocalIntent: Equatable {
+        case navigate(slug: String)
+        case pause
+        case resume
+    }
+
     private let creds: DeviceCredentials
     private var client: VoiceClient? = nil
     private var pumpTask: Task<Void, Never>? = nil
@@ -96,8 +107,27 @@ final class VoiceManager: ObservableObject {
         case .connected:
             state = .listening
         case .speak(let text, let source, _, _):
-            state = .speaking(text: text, source: source)
-            speak(text)
+            // Phase 4: parse any inline directive. Speak the remainder;
+            // emit Navigate/Pause/Resume to pendingIntent for the UI.
+            let parsed = parseIntent(text: text)
+            let toSpeak: String
+            switch parsed {
+            case .navigate(let slug, let speak):
+                pendingIntent = .navigate(slug: slug)
+                toSpeak = speak
+            case .pause(let speak):
+                pendingIntent = .pause
+                toSpeak = speak
+            case .resume(let speak):
+                pendingIntent = .resume
+                toSpeak = speak
+            case .claimVoice(let speak):
+                toSpeak = speak
+            case .speak(let t):
+                toSpeak = t
+            }
+            state = .speaking(text: toSpeak, source: source)
+            if !toSpeak.isEmpty { speak(toSpeak) }
         case .closed(let code, let reason):
             state = .failed(message: "voice ws closed code=\(code) \(reason)")
         }

@@ -162,14 +162,55 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
     val voice = remember(current.deviceToken) { VoiceManager(context, current) }
     DisposableEffect(current.deviceToken) { onDispose { voice.stop() } }
 
-    // Phase 10g: wake-word engine. No-op without PICOVOICE_ACCESS_KEY.
-    // Runs only while voice is idle so SpeechRecognizer doesn't fight
-    // Porcupine over the mic.
+    // Phase 4: voice intent dispatch — navigate routes pushedDetail,
+    // pause/resume hit pause_set directly.
+    LaunchedEffect(voice) {
+        voice.intents.collect { intent ->
+            when (intent) {
+                is VoiceManager.Intent.Navigate -> route = Route.Detail(intent.slug)
+                VoiceManager.Intent.Pause ->
+                    runCatching { OperatorClient(current.server, current.deviceToken).pauseSet(true) }
+                VoiceManager.Intent.Resume ->
+                    runCatching { OperatorClient(current.server, current.deviceToken).pauseSet(false) }
+            }
+        }
+    }
+
+    // Phase 10g + Phase 5 foreground service: wake-word listener runs
+    // out-of-process via WakeWordService so 'hey papercup' fires even
+    // when the app is backgrounded or screen-off. Wake events arrive
+    // as ACTION_WAKE broadcasts that we route into voice.start().
+    // Service is a no-op without PICOVOICE_ACCESS_KEY.
     val voiceState by voice.state.collectAsState()
-    val wakeWord = remember(current.deviceToken) { WakeWordEngine(context) { voice.start() } }
-    DisposableEffect(current.deviceToken) { onDispose { wakeWord.stop() } }
+    DisposableEffect(current.deviceToken) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, intent: android.content.Intent?) {
+                if (intent?.action == WakeWordService.ACTION_WAKE) {
+                    voice.start()
+                }
+            }
+        }
+        val filter = android.content.IntentFilter(WakeWordService.ACTION_WAKE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, android.content.Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(receiver, filter)
+        }
+        WakeWordService.start(context)
+        onDispose {
+            try { context.unregisterReceiver(receiver) } catch (_: Throwable) {}
+            WakeWordService.stop(context)
+        }
+    }
+    // Throttle the service while voice is actively listening so
+    // SpeechRecognizer doesn't fight Porcupine over the mic.
     LaunchedEffect(voiceState, current.deviceToken) {
-        if (voiceState is VoiceManager.State.Idle) wakeWord.start() else wakeWord.stop()
+        if (voiceState is VoiceManager.State.Idle) {
+            WakeWordService.start(context)
+        } else {
+            WakeWordService.stop(context)
+        }
     }
 
     val onForget = remember<() -> Unit>(store) {
