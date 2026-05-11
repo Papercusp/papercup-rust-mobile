@@ -13,12 +13,13 @@ env:
 
 jobs:
   rust:
-    name: Rust workspace (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+    name: Rust workspace (Linux)
+    runs-on: ubuntu-latest
+    # macos-latest was dropped from the matrix after run 25648261681
+    # aborted in 11s with no steps — consistent with hitting the
+    # Actions monthly spend cap (macOS runners bill at 10x). The Rust
+    # core has no platform-specific glue; iOS-side compile is covered
+    # by the Mac VM in OSX-KVM via ssh-driven xcodebuild.
     steps:
       - uses: actions/checkout@v4
 
