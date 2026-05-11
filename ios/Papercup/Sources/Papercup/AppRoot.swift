@@ -57,7 +57,7 @@ struct AppRoot: View {
     @MainActor
     private func autoPair(_ p: PendingPair) async {
         let log = OSLog(subsystem: "com.papercuspai.operator.mobile", category: "AutoPair")
-        os_log(.info, log: log, "starting server=%{public}@ ws=%{public}@",
+        os_log(.default, log: log, "starting server=%{public}@ ws=%{public}@",
                p.server, p.workspaceId)
         deepLink.pendingPair = nil
         let keys = generateWgKeypair()
@@ -67,7 +67,7 @@ struct AppRoot: View {
                 pairToken: p.pairToken,
                 wireguardPubkeyB64: keys.publicKeyB64
             )
-            os_log(.info, log: log, "pair OK deviceId=%{public}@", outcome.deviceId)
+            os_log(.default, log: log, "pair OK deviceId=%{public}@", outcome.deviceId)
             let wgQuick = outcome.mesh.map { meshToWgQuick(privateKeyB64: keys.privateKeyB64, config: $0) }
             let fresh = DeviceCredentials(
                 server: p.server,
