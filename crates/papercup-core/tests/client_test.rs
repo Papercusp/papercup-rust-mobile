@@ -341,3 +341,97 @@ async fn recent_actions_unwraps_entries_envelope() {
     assert_eq!(entries[0].subject, "harness:alpha");
     assert_eq!(entries[0].details["reason"], "smoke");
 }
+
+#[tokio::test]
+async fn standing_candidates_unwraps_envelope() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/mobile/operator/standing-candidates"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "candidates": [
+                {
+                    "capability": "shell:run",
+                    "targetHarness": "alpha",
+                    "count": 4,
+                    "lastSeenAt": "2026-05-10T12:00:00Z",
+                    "firstShownAt": "2026-05-10T08:00:00Z"
+                },
+                {
+                    "capability": "git:push",
+                    "targetHarness": "beta",
+                    "count": 7,
+                    "lastSeenAt": "2026-05-10T11:00:00Z",
+                    "firstShownAt": null
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let candidates = client.standing_candidates().await.unwrap();
+    assert_eq!(candidates.len(), 2);
+    assert_eq!(candidates[0].capability, "shell:run");
+    assert_eq!(candidates[0].target_harness, "alpha");
+    assert_eq!(candidates[0].count, 4);
+    assert_eq!(candidates[0].first_shown_at.as_deref(), Some("2026-05-10T08:00:00Z"));
+    assert_eq!(candidates[1].capability, "git:push");
+    assert!(candidates[1].first_shown_at.is_none());
+}
+
+#[tokio::test]
+async fn standing_candidate_decide_approve_posts_correct_body() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/mobile/operator/standing-candidates/decide"))
+        .and(bearer_token(TOKEN))
+        .and(body_json(json!({
+            "capability": "shell:run",
+            "targetHarness": "alpha",
+            "decision": "approve"
+        })))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+    client
+        .standing_candidate_decide("shell:run", "alpha", "approve")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn standing_candidate_decide_dismiss_posts_correct_body() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/mobile/operator/standing-candidates/decide"))
+        .and(bearer_token(TOKEN))
+        .and(body_json(json!({
+            "capability": "git:push",
+            "targetHarness": "beta",
+            "decision": "dismiss"
+        })))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    client
+        .standing_candidate_decide("git:push", "beta", "dismiss")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn standing_candidate_decide_surfaces_server_error() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/mobile/operator/standing-candidates/decide"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    let err = client
+        .standing_candidate_decide("shell:run", "alpha", "approve")
+        .await
+        .unwrap_err();
+    match err {
+        papercup_core::client::ApiError::Server { status, .. } => assert_eq!(status, 500),
+        other => panic!("expected ApiError::Server, got {other:?}"),
+    }
+}
