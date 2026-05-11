@@ -45,7 +45,7 @@ class BiometricGate(
 
         val deferred = CompletableDeferred<BiometricResult>()
         val info = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Confirm")
+            .setTitle(activity.getString(R.string.biometric_title))
             .setSubtitle(reason)
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_WEAK or

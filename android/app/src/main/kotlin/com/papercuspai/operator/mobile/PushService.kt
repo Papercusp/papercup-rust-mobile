@@ -104,9 +104,9 @@ fun ensureNotificationChannel(context: Context) {
     if (nm.getNotificationChannel(PUSH_CHANNEL_ID) != null) return
     val channel = NotificationChannel(
         PUSH_CHANNEL_ID,
-        "Papercup updates",
+        context.getString(R.string.push_channel_name),
         NotificationManager.IMPORTANCE_DEFAULT,
-    ).apply { description = "Push notifications from your paired desktop." }
+    ).apply { description = context.getString(R.string.push_channel_description) }
     nm.createNotificationChannel(channel)
 }
 
