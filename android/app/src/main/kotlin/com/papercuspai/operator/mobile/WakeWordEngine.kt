@@ -41,12 +41,25 @@ class WakeWordEngine(
                 Log.i(TAG, "wake word detected")
                 onDetected()
             }
-            // No custom .ppn yet → fall back to built-in. Replace this
-            // path with the real `hey-papercup.ppn` once licensing lands.
+            // Prefer a real hey-papercup.ppn from assets/ once licensing
+            // lands; fall back to a built-in keyword until then. The
+            // Porcupine SDK reads the asset directly via path.
+            val customAssetPath = "hey-papercup.ppn"
+            val hasCustom = try {
+                context.assets.open(customAssetPath).use { true }
+            } catch (_: Throwable) {
+                false
+            }
             val builder = PorcupineManager.Builder()
                 .setAccessKey(ACCESS_KEY)
                 .setSensitivity(0.6f)
-                .setKeyword(ai.picovoice.porcupine.Porcupine.BuiltInKeyword.JARVIS)
+            if (hasCustom) {
+                builder.setKeywordPath(customAssetPath)
+                Log.i(TAG, "wake word: using custom hey-papercup.ppn from assets")
+            } else {
+                builder.setKeyword(ai.picovoice.porcupine.Porcupine.BuiltInKeyword.JARVIS)
+                Log.i(TAG, "wake word: hey-papercup.ppn not bundled — falling back to JARVIS")
+            }
             manager = builder.build(context, cb)
             manager?.start()
             Log.i(TAG, "wake word listening")

@@ -23,10 +23,18 @@
 import Foundation
 import os.log
 
+#if canImport(Porcupine)
+import Porcupine
+#endif
+
 final class WakeWordEngine {
     private let log = OSLog(subsystem: "com.papercuspai.operator.mobile", category: "WakeWord")
     private let onDetected: () -> Void
     private var running: Bool = false
+
+    #if canImport(Porcupine)
+    private var manager: PorcupineManager?
+    #endif
 
     init(onDetected: @escaping () -> Void) { self.onDetected = onDetected }
 
@@ -39,13 +47,39 @@ final class WakeWordEngine {
             return
         }
         #if canImport(Porcupine)
-        // Real init goes here once the Porcupine SwiftPM package is added
-        // to the target. Mirror Android's WakeWordEngine.kt:
-        //   - sensitivity 0.6
-        //   - prefer Bundle.main.path(forResource: "hey-papercup", ofType: "ppn")
-        //   - fall back to BuiltInKeyword.jarvis while custom .ppn is pending
-        os_log(.info, log: log, "wake word listening (Porcupine canImport=true)")
-        running = true
+        do {
+            // Mirror Android: prefer custom hey-papercup.ppn from the
+            // bundle; fall back to built-in JARVIS while licensing for
+            // the custom keyword is pending.
+            let custom = Bundle.main.path(forResource: "hey-papercup", ofType: "ppn")
+            let builder: PorcupineManager
+            if let path = custom {
+                builder = try PorcupineManager(
+                    accessKey: accessKey,
+                    keywordPath: path,
+                    sensitivity: 0.6
+                ) { [weak self] _ in
+                    os_log(.info, log: self?.log ?? .default, "wake word detected")
+                    self?.onDetected()
+                }
+            } else {
+                builder = try PorcupineManager(
+                    accessKey: accessKey,
+                    keyword: Porcupine.BuiltInKeyword.jarvis,
+                    sensitivity: 0.6
+                ) { [weak self] _ in
+                    os_log(.info, log: self?.log ?? .default, "wake word detected (builtin)")
+                    self?.onDetected()
+                }
+            }
+            try builder.start()
+            manager = builder
+            os_log(.info, log: log, "wake word listening")
+            running = true
+        } catch {
+            os_log(.error, log: log, "wake word init failed: %{public}@", String(describing: error))
+            manager = nil
+        }
         #else
         os_log(.info, log: log, "wake word: Porcupine SwiftPM package not linked — engine inert")
         #endif
@@ -54,7 +88,9 @@ final class WakeWordEngine {
     func stop() {
         guard running else { return }
         #if canImport(Porcupine)
-        // PorcupineManager stop + delete here.
+        try? manager?.stop()
+        manager?.delete()
+        manager = nil
         #endif
         running = false
     }
