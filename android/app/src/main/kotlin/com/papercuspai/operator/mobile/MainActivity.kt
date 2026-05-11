@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.Manifest
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -197,18 +198,40 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
     val voice = remember(current.deviceToken) { VoiceManager(context, current) }
     DisposableEffect(current.deviceToken) { onDispose { voice.stop() } }
 
-    // Phase 4: voice intent dispatch — navigate routes pushedDetail,
-    // pause/resume hit pause_set directly.
+    // Voice intent dispatch — every `browser: 'required'` client-tool
+    // call from the EL agent surfaces here and maps to native action.
     LaunchedEffect(voice) {
         voice.intents.collect { intent ->
             when (intent) {
-                is VoiceManager.Intent.Navigate -> route = Route.Detail(intent.slug)
+                is VoiceManager.Intent.NavigateHarness ->
+                    route = Route.Detail(intent.slug)
+                is VoiceManager.Intent.NavigateTab -> route = when (intent.tab) {
+                    VoiceManager.Intent.Tab.Operator -> Route.Operator
+                    VoiceManager.Intent.Tab.Harnesses -> Route.List
+                    VoiceManager.Intent.Tab.Activity -> Route.Activity
+                    VoiceManager.Intent.Tab.Settings -> Route.Settings
+                }
+                is VoiceManager.Intent.NavigateVoiceSettings ->
+                    route = Route.VoiceSettings
+                is VoiceManager.Intent.NavigateStandingApprovals ->
+                    route = Route.StandingApprovals
                 VoiceManager.Intent.Pause ->
                     runCatching { current.client().pauseSet(true) }
                 VoiceManager.Intent.Resume ->
                     runCatching { current.client().pauseSet(false) }
                 VoiceManager.Intent.ClaimVoice ->
                     runCatching { current.client().voiceLeaseClaim() }
+                is VoiceManager.Intent.VoiceSetMode -> {
+                    // mode=on → start, mode=off → stop. Anything else: log.
+                    when (intent.mode.lowercase()) {
+                        "on", "start", "listening" -> voice.start()
+                        "off", "stop", "idle" -> voice.stop()
+                        else -> Log.i("PapercupVoice", "voice.set-mode unrecognized: ${intent.mode}")
+                    }
+                }
+                is VoiceManager.Intent.WorkspaceSwitch -> {
+                    runCatching { current.client().workspaceSwitch(intent.workspaceId) }
+                }
             }
         }
     }

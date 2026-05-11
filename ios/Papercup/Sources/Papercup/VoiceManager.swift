@@ -37,11 +37,18 @@ final class VoiceManager: ObservableObject {
     /// after handling so the next intent of the same kind still fires.
     @Published var pendingIntent: LocalIntent? = nil
 
+    enum Tab: Equatable { case operatorTab, harnesses, activity, settings }
+
     enum LocalIntent: Equatable {
-        case navigate(slug: String)
+        case navigateTab(Tab)
+        case navigateHarness(slug: String)
+        case navigateVoiceSettings
+        case navigateStandingApprovals
         case pause
         case resume
         case claimVoice
+        case voiceSetMode(String)
+        case workspaceSwitch(workspaceId: String)
     }
 
     private let creds: DeviceCredentials
@@ -130,36 +137,88 @@ final class VoiceManager: ObservableObject {
 
     private func handleToolCall(_ call: ClientToolCallEvent, conv: Conversation) async {
         let params = (try? call.getParameters()) ?? [:]
+        let toolId = call.toolCallId
+        func ok() async { try? await conv.sendToolResult(for: toolId, result: ["ok": true]) }
+        func fail(_ msg: String) async {
+            try? await conv.sendToolResult(for: toolId, result: ["error": msg], isError: true)
+        }
+        func unsupported(_ reason: String) async {
+            await fail("not-supported-on-mobile: \(reason)")
+        }
+
         switch call.toolName {
+        // ── navigation ────────────────────────────────────────────────
+        case "navigate":
+            let path = (params["path"] as? String) ?? ""
+            let clean = path.trimmingCharacters(in: .whitespaces)
+                            .replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
+            switch clean {
+            case "", "/", "/harness", "/installed/harnesses":
+                pendingIntent = .navigateTab(.harnesses); await ok()
+            case "/settings":
+                pendingIntent = .navigateTab(.settings); await ok()
+            case "/settings/voice":
+                pendingIntent = .navigateVoiceSettings; await ok()
+            case "/marketplace": await unsupported("Marketplace isn't on the phone yet")
+            case "/docs": await unsupported("Docs aren't on the phone")
+            case "/settings/api-keys": await unsupported("API keys are desktop-only")
+            case "/settings/shortcuts": await unsupported("Shortcuts are desktop-only")
+            default:
+                if clean.hasPrefix("/harness/") {
+                    let slug = String(clean.dropFirst("/harness/".count))
+                    if slug.isEmpty { await fail("empty harness slug") }
+                    else { pendingIntent = .navigateHarness(slug: slug); await ok() }
+                } else { await fail("unknown path: \(path)") }
+            }
+        case "nav.harness", "nav.installed-harnesses":
+            pendingIntent = .navigateTab(.harnesses); await ok()
+        case "nav.settings":
+            pendingIntent = .navigateTab(.settings); await ok()
+        case "nav.settings-voice":
+            pendingIntent = .navigateVoiceSettings; await ok()
+        case "nav.marketplace": await unsupported("Marketplace isn't on the phone yet")
+        case "nav.docs": await unsupported("Docs aren't on the phone")
+        case "nav.settings-api-keys": await unsupported("API keys are desktop-only")
+        case "nav.settings-shortcuts": await unsupported("Shortcuts are desktop-only")
         case "nav.openHarness":
             if let slug = params["slug"] as? String, !slug.isEmpty {
-                pendingIntent = .navigate(slug: slug)
-                try? await conv.sendToolResult(for: call.toolCallId, result: ["ok": true])
-            } else {
-                try? await conv.sendToolResult(
-                    for: call.toolCallId,
-                    result: ["error": "missing slug"],
-                    isError: true
-                )
-            }
-        case "operator.pause":
-            pendingIntent = .pause
-            try? await conv.sendToolResult(for: call.toolCallId, result: ["ok": true])
-        case "operator.resume":
-            pendingIntent = .resume
-            try? await conv.sendToolResult(for: call.toolCallId, result: ["ok": true])
-        case "voice.claim":
-            pendingIntent = .claimVoice
-            try? await conv.sendToolResult(for: call.toolCallId, result: ["ok": true])
+                pendingIntent = .navigateHarness(slug: slug); await ok()
+            } else { await fail("missing slug") }
+
+        // ── operator pause / resume / scan ───────────────────────────
+        case "operator.pause": pendingIntent = .pause; await ok()
+        case "operator.resume": pendingIntent = .resume; await ok()
+        case "operator.approve-pending":
+            pendingIntent = .navigateStandingApprovals; await ok()
+        case "operator.scan": await unsupported("Run scans from the desktop")
+        case "operator.across-workspaces": await unsupported("Cross-workspace view is desktop-only")
+
+        // ── voice ────────────────────────────────────────────────────
+        case "voice.claim": pendingIntent = .claimVoice; await ok()
+        case "voice.set-mode":
+            let mode = (params["mode"] as? String) ?? ""
+            if mode.isEmpty { await fail("missing mode") }
+            else { pendingIntent = .voiceSetMode(mode); await ok() }
+
+        // ── workspace ────────────────────────────────────────────────
+        case "workspace.switch":
+            let wid = (params["workspaceId"] as? String) ?? ""
+            if wid.isEmpty { await fail("missing workspaceId") }
+            else { pendingIntent = .workspaceSwitch(workspaceId: wid); await ok() }
+
+        // ── panel.* — desktop concept; route cards to standing tab ───
+        case "panel.open", "panel.toggle":
+            pendingIntent = .navigateStandingApprovals; await ok()
+        case "panel.close":
+            await ok() // no-op on phone, accept so agent doesn't retry
+
+        // ── chat / delegate — desktop-only, accept for the flow ──────
+        case "chat.open-pane": await ok()
+        case "delegate_to_claude":
+            await unsupported("Delegation isn't available from phone voice in V1")
+
         default:
-            // Unhandled client tools — return an error so the agent
-            // knows not to retry locally; webhook-routable tools land
-            // on the server, not here.
-            try? await conv.sendToolResult(
-                for: call.toolCallId,
-                result: ["error": "unknown client tool: \(call.toolName)"],
-                isError: true
-            )
+            await fail("unknown client tool: \(call.toolName)")
         }
     }
 

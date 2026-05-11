@@ -57,11 +57,28 @@ class VoiceManager(
     /// Voice-driven phone intents. These map to client tools the
     /// agent invokes; they fire onto a SharedFlow the UI subscribes
     /// to (e.g. Navigate → push detail screen).
+    /// Phone-side intents the agent can fire via client tools. Each
+    /// maps to a `browser: 'required'` command in the desktop registry
+    /// so the agent's tool catalog is identical across desktop + phone;
+    /// the implementation is what differs. MainActivity consumes these.
     sealed interface Intent {
-        data class Navigate(val slug: String) : Intent
+        /// nav.* → navigate to a phone-native screen
+        data class NavigateTab(val tab: Tab) : Intent
+        data class NavigateHarness(val slug: String) : Intent
+        data class NavigateVoiceSettings(val unit: Unit = Unit) : Intent
+        data class NavigateStandingApprovals(val unit: Unit = Unit) : Intent
+        /// operator.*
         data object Pause : Intent
         data object Resume : Intent
+        /// voice.*
         data object ClaimVoice : Intent
+        data class VoiceSetMode(val mode: String) : Intent
+        /// workspace.switch
+        data class WorkspaceSwitch(val workspaceId: String) : Intent
+        /// panel.* — no panel concept on phone, but the agent may invoke
+        /// these reflexively; we accept + no-op so the conversation flows.
+
+        enum class Tab { Operator, Harnesses, Activity, Settings }
     }
 
     private val _state = MutableStateFlow<State>(State.Idle)
@@ -161,33 +178,122 @@ class VoiceManager(
         s.cancel()
     }
 
-    /// Native client-tool table. These are the `browser:'required'`
-    /// commands the desktop registry exposes — phone implementations
-    /// drive native UI for the same command ids. Tools that don't
-    /// need a UI session land server-side via the EL webhook and
-    /// don't appear here.
-    private fun buildClientTools(): Map<String, ClientTool> = mapOf(
-        "nav.openHarness" to clientTool { params ->
-            val slug = params["slug"]?.toString().orEmpty()
-            if (slug.isBlank()) ClientToolResult.failure("missing slug")
-            else {
-                _intents.tryEmit(Intent.Navigate(slug))
-                ClientToolResult.success("ok")
+    /// Native client-tool table covering every `browser:'required'`
+    /// command from the desktop registry. The agent's tool catalog is
+    /// the same across surfaces — phone implementations differ.
+    /// Tools that target desktop-only surfaces (marketplace, docs, API
+    /// keys, multi-workspace operator scan) return a failure with a
+    /// clear "mobile" reason so the agent can apologize rather than
+    /// silently doing nothing.
+    private fun buildClientTools(): Map<String, ClientTool> {
+        val ok = ClientToolResult.success("ok")
+        fun unsupported(reason: String) =
+            ClientToolResult.failure("not-supported-on-mobile: $reason")
+
+        fun navigatePath(path: String): ClientToolResult {
+            // Map desktop URLs to phone navigation. Anything unrecognized
+            // is a "doesn't exist on phone" error.
+            val clean = path.trim().removeSuffix("/")
+            return when {
+                clean == "" || clean == "/" || clean == "/harness" -> {
+                    _intents.tryEmit(Intent.NavigateTab(Intent.Tab.Harnesses)); ok
+                }
+                clean == "/settings" -> {
+                    _intents.tryEmit(Intent.NavigateTab(Intent.Tab.Settings)); ok
+                }
+                clean == "/settings/voice" -> {
+                    _intents.tryEmit(Intent.NavigateVoiceSettings()); ok
+                }
+                clean.startsWith("/harness/") -> {
+                    val slug = clean.removePrefix("/harness/")
+                    if (slug.isBlank()) ClientToolResult.failure("empty harness slug")
+                    else { _intents.tryEmit(Intent.NavigateHarness(slug)); ok }
+                }
+                clean == "/installed/harnesses" -> {
+                    _intents.tryEmit(Intent.NavigateTab(Intent.Tab.Harnesses)); ok
+                }
+                clean == "/marketplace" -> unsupported("Marketplace isn't available on the phone yet")
+                clean == "/docs" -> unsupported("Docs aren't available on the phone")
+                clean == "/settings/api-keys" -> unsupported("API keys are desktop-only")
+                clean == "/settings/shortcuts" -> unsupported("Shortcuts are desktop-only")
+                else -> ClientToolResult.failure("unknown path: $path")
             }
-        },
-        "operator.pause" to clientTool { _ ->
-            _intents.tryEmit(Intent.Pause)
-            ClientToolResult.success("ok")
-        },
-        "operator.resume" to clientTool { _ ->
-            _intents.tryEmit(Intent.Resume)
-            ClientToolResult.success("ok")
-        },
-        "voice.claim" to clientTool { _ ->
-            _intents.tryEmit(Intent.ClaimVoice)
-            ClientToolResult.success("ok")
-        },
-    )
+        }
+
+        return mapOf(
+            // ── navigation ────────────────────────────────────────────
+            "navigate" to clientTool { params ->
+                val path = params["path"]?.toString().orEmpty()
+                if (path.isBlank()) ClientToolResult.failure("missing path") else navigatePath(path)
+            },
+            "nav.harness" to clientTool { _ ->
+                _intents.tryEmit(Intent.NavigateTab(Intent.Tab.Harnesses)); ok
+            },
+            "nav.settings" to clientTool { _ ->
+                _intents.tryEmit(Intent.NavigateTab(Intent.Tab.Settings)); ok
+            },
+            "nav.settings-voice" to clientTool { _ ->
+                _intents.tryEmit(Intent.NavigateVoiceSettings()); ok
+            },
+            "nav.installed-harnesses" to clientTool { _ ->
+                _intents.tryEmit(Intent.NavigateTab(Intent.Tab.Harnesses)); ok
+            },
+            "nav.marketplace" to clientTool { _ -> unsupported("Marketplace isn't on the phone yet") },
+            "nav.docs" to clientTool { _ -> unsupported("Docs aren't on the phone") },
+            "nav.settings-api-keys" to clientTool { _ -> unsupported("API keys are desktop-only") },
+            "nav.settings-shortcuts" to clientTool { _ -> unsupported("Shortcuts are desktop-only") },
+
+            // Legacy alias from our pre-unification flow — agents may
+            // still emit it; map to NavigateHarness.
+            "nav.openHarness" to clientTool { params ->
+                val slug = params["slug"]?.toString().orEmpty()
+                if (slug.isBlank()) ClientToolResult.failure("missing slug")
+                else { _intents.tryEmit(Intent.NavigateHarness(slug)); ok }
+            },
+
+            // ── operator pause / resume ──────────────────────────────
+            "operator.pause" to clientTool { _ -> _intents.tryEmit(Intent.Pause); ok },
+            "operator.resume" to clientTool { _ -> _intents.tryEmit(Intent.Resume); ok },
+            "operator.approve-pending" to clientTool { _ ->
+                _intents.tryEmit(Intent.NavigateStandingApprovals()); ok
+            },
+            "operator.scan" to clientTool { _ -> unsupported("Run scans from the desktop") },
+            "operator.across-workspaces" to clientTool { _ -> unsupported("Cross-workspace view is desktop-only") },
+
+            // ── voice ────────────────────────────────────────────────
+            "voice.claim" to clientTool { _ -> _intents.tryEmit(Intent.ClaimVoice); ok },
+            "voice.set-mode" to clientTool { params ->
+                val mode = params["mode"]?.toString().orEmpty()
+                if (mode.isBlank()) ClientToolResult.failure("missing mode")
+                else { _intents.tryEmit(Intent.VoiceSetMode(mode)); ok }
+            },
+
+            // ── workspace ────────────────────────────────────────────
+            "workspace.switch" to clientTool { params ->
+                val id = params["workspaceId"]?.toString().orEmpty()
+                if (id.isBlank()) ClientToolResult.failure("missing workspaceId")
+                else { _intents.tryEmit(Intent.WorkspaceSwitch(id)); ok }
+            },
+
+            // ── panel.* — desktop-only concept, accept + no-op ───────
+            // The desktop operator has a side panel for cards. Phone
+            // surfaces cards through the Standing Approvals tab. We
+            // accept the call so the agent's reflexive UI flow doesn't
+            // crash, but actually route to Standing Approvals.
+            "panel.open" to clientTool { _ -> _intents.tryEmit(Intent.NavigateStandingApprovals()); ok },
+            "panel.close" to clientTool { _ -> ok },
+            "panel.toggle" to clientTool { _ -> _intents.tryEmit(Intent.NavigateStandingApprovals()); ok },
+
+            // ── chat pane — desktop-only, no-op ──────────────────────
+            "chat.open-pane" to clientTool { _ -> ok },
+
+            // ── delegate_to_claude — server-side from desktop; on
+            //    phone we lack the chat surface; surface error ───────
+            "delegate_to_claude" to clientTool { _ ->
+                unsupported("Delegation isn't available from phone voice in V1")
+            },
+        )
+    }
 
     private inline fun clientTool(crossinline body: suspend (Map<String, Any>) -> ClientToolResult?): ClientTool =
         object : ClientTool {

@@ -201,18 +201,39 @@ private struct PairedShell: View {
             if new == .idle { wakeWord.start() } else { wakeWord.stop() }
         }
         .onChange(of: voice.pendingIntent) { _, new in
-            // Phase 4 voice intent dispatch — navigate intents push
-            // the harness detail; pause/resume hit pause_set directly.
+            // Voice intent dispatch — every `browser: 'required'` client-
+            // tool call from the EL agent surfaces here and maps to a
+            // native action. iOS uses TabView's binding plus
+            // pushedDetailSlug; voice-settings + standing-approvals are
+            // sub-screens of the Settings tab, so we tab-switch to
+            // Settings for those (user drills in one tap).
             guard let intent = new else { return }
             switch intent {
-            case .navigate(let slug):
+            case .navigateHarness(let slug):
                 pushedDetailSlug = slug
+            case .navigateTab(let target):
+                tab = switch target {
+                    case .operatorTab: .operatorTab
+                    case .harnesses: .harnesses
+                    case .activity: .activity
+                    case .settings: .settings
+                }
+            case .navigateVoiceSettings, .navigateStandingApprovals:
+                tab = .settings
             case .pause:
                 Task { try? await current.client().pauseSet(paused: true) }
             case .resume:
                 Task { try? await current.client().pauseSet(paused: false) }
             case .claimVoice:
                 Task { try? await current.client().voiceLeaseClaim() }
+            case .voiceSetMode(let mode):
+                switch mode.lowercased() {
+                case "on", "start", "listening": voice.start()
+                case "off", "stop", "idle": voice.stop()
+                default: break
+                }
+            case .workspaceSwitch(let id):
+                Task { _ = try? await current.client().workspaceSwitch(workspaceId: id) }
             }
             voice.pendingIntent = nil
         }
