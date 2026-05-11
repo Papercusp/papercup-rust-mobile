@@ -33,6 +33,27 @@ cargo ndk \
 echo "==> Built jniLibs:"
 find android/app/src/main/jniLibs -name '*.so' -printf '    %p (%s bytes)\n'
 
+# Guard: every ABI's .so must be at least as fresh as the generated Kotlin
+# bindings, otherwise the APK ships with stale symbols and JNA throws
+# UnsatisfiedLinkError on the first checksum call (see history: 2026-05-11
+# pair-screen crash from missing uniffi_papercup_checksum_method_synccache_get).
+KT_BINDINGS="android/app/src/main/kotlin/uniffi/papercup/papercup.kt"
+if [ -f "$KT_BINDINGS" ]; then
+    KT_MTIME=$(stat -c %Y "$KT_BINDINGS")
+    STALE=()
+    for so in android/app/src/main/jniLibs/*/libpapercup.so; do
+        SO_MTIME=$(stat -c %Y "$so")
+        if [ "$SO_MTIME" -lt "$KT_MTIME" ]; then
+            STALE+=("$so")
+        fi
+    done
+    if [ "${#STALE[@]}" -gt 0 ]; then
+        echo "ERROR: jniLibs older than $KT_BINDINGS — APK would ship stale UniFFI symbols:" >&2
+        printf '  %s\n' "${STALE[@]}" >&2
+        exit 1
+    fi
+fi
+
 if [ -f android/gradlew ]; then
     echo "==> Assembling Android debug APK"
     cd android
