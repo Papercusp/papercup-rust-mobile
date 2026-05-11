@@ -89,7 +89,10 @@ impl OperatorClient {
                 detail,
             });
         }
-        let body = resp.json::<ListResp>().await.map_err(|e| ApiError::Decode(e.to_string()))?;
+        let body = resp
+            .json::<ListResp>()
+            .await
+            .map_err(|e| ApiError::Decode(e.to_string()))?;
         Ok(body.harnesses)
     }
 
@@ -115,7 +118,10 @@ impl OperatorClient {
                 .await
                 .map(|e| e.error)
                 .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server { status: status.as_u16(), detail });
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail,
+            });
         }
         resp.json::<HarnessStatusFull>()
             .await
@@ -127,20 +133,25 @@ impl OperatorClient {
     /// "Currently running" view.
     pub async fn list_running(&self) -> Result<Vec<RunningHarnessPhase>, ApiError> {
         let url = format!("{}/api/mobile/running", self.base_url);
-        self.bearer_get_json::<RunningResp>(&url).await.map(|r| r.harnesses)
+        self.bearer_get_json::<RunningResp>(&url)
+            .await
+            .map(|r| r.harnesses)
     }
 
     /// `GET /api/mobile/voice-lease` — current lease holder (or `None`
     /// if no one is listening).
     pub async fn voice_lease_get(&self) -> Result<Option<VoiceLeaseShape>, ApiError> {
         let url = format!("{}/api/mobile/voice-lease", self.base_url);
-        self.bearer_get_json::<VoiceLeaseRead>(&url).await.map(|r| r.lease)
+        self.bearer_get_json::<VoiceLeaseRead>(&url)
+            .await
+            .map(|r| r.lease)
     }
 
     /// `POST /api/mobile/voice-lease/claim` — phone always pre-empts.
     /// 12-second TTL server-side; refresh via `voice_lease_heartbeat`.
     pub async fn voice_lease_claim(&self) -> Result<(), ApiError> {
-        self.bearer_post_empty("/api/mobile/voice-lease/claim").await
+        self.bearer_post_empty("/api/mobile/voice-lease/claim")
+            .await
     }
 
     /// `POST /api/mobile/voice-lease/heartbeat` — refresh-if-mine; the
@@ -227,14 +238,18 @@ impl OperatorClient {
     /// entries scoped to the device's workspace. Limit defaults to 50.
     pub async fn recent_notifications(&self) -> Result<Vec<ToastRow>, ApiError> {
         let url = format!("{}/api/mobile/notifications/recent", self.base_url);
-        self.bearer_get_json::<ToastsResp>(&url).await.map(|r| r.toasts)
+        self.bearer_get_json::<ToastsResp>(&url)
+            .await
+            .map(|r| r.toasts)
     }
 
     /// `GET /api/mobile/actions/recent` — most recent audit_log entries
     /// scoped to the device's workspace.
     pub async fn recent_actions(&self) -> Result<Vec<AuditRow>, ApiError> {
         let url = format!("{}/api/mobile/actions/recent", self.base_url);
-        self.bearer_get_json::<AuditResp>(&url).await.map(|r| r.entries)
+        self.bearer_get_json::<AuditResp>(&url)
+            .await
+            .map(|r| r.entries)
     }
 
     /// `GET /api/mobile/operator/pause` — current global pause state.
@@ -304,7 +319,10 @@ impl OperatorClient {
                 .await
                 .map(|e| e.error)
                 .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server { status: status.as_u16(), detail });
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail,
+            });
         }
         resp.json::<WorkspaceSwitchResp>()
             .await
@@ -315,14 +333,18 @@ impl OperatorClient {
     /// see, with the currently-selected one flagged.
     pub async fn list_workspaces(&self) -> Result<Vec<WorkspaceItem>, ApiError> {
         let url = format!("{}/api/mobile/workspaces", self.base_url);
-        self.bearer_get_json::<WorkspacesResp>(&url).await.map(|r| r.workspaces)
+        self.bearer_get_json::<WorkspacesResp>(&url)
+            .await
+            .map(|r| r.workspaces)
     }
 
     /// `GET /api/mobile/desktop/devices` — every paired device, including
     /// this one (matched by device_id).
     pub async fn list_desktop_devices(&self) -> Result<Vec<DeviceRow>, ApiError> {
         let url = format!("{}/api/mobile/desktop/devices", self.base_url);
-        self.bearer_get_json::<DesktopDevicesResp>(&url).await.map(|r| r.devices)
+        self.bearer_get_json::<DesktopDevicesResp>(&url)
+            .await
+            .map(|r| r.devices)
     }
 
     /// `GET /api/mobile/operator/standing-candidates`
@@ -411,7 +433,10 @@ impl OperatorClient {
                 .await
                 .map(|e| e.error)
                 .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server { status: status.as_u16(), detail });
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail,
+            });
         }
         resp.json::<T>()
             .await
@@ -439,7 +464,10 @@ impl OperatorClient {
                 .await
                 .map(|e| e.error)
                 .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server { status: status.as_u16(), detail });
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail,
+            });
         }
         Ok(())
     }

@@ -2,21 +2,26 @@
 //
 // UniFFI bindings layer. Re-exports `papercup-core` to Kotlin + Swift.
 
+// uniffi::include_scaffolding! emits constants whose generated doc
+// comments trip several clippy rules; quiet them at the crate level
+// so our own code can still be -D warnings.
+#![allow(clippy::empty_line_after_doc_comments)]
+
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
 use papercup_core::mesh::{
     generate_wg_keypair as core_keygen, to_wg_quick as core_wgq, MeshSpec, WgKeyPair as CoreKp,
 };
 use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
-use papercup_core::voice::{
-    VoiceClient as CoreVoice, VoiceError as CoreVoiceError, VoiceEvent as CoreVoiceEvent,
-    VoiceStatus as CoreVoiceStatus,
-};
 use papercup_core::types::{
     AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
     PauseInfo as CorePauseInfo, PushRegisterBody, RunningHarnessPhase as CoreRunning,
     StandingCandidate as CoreStandingCandidate, ToastRow as CoreToast,
     VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
     WorkspaceSwitchResp as CoreWorkspaceSwitch,
+};
+use papercup_core::voice::{
+    VoiceClient as CoreVoice, VoiceError as CoreVoiceError, VoiceEvent as CoreVoiceEvent,
+    VoiceStatus as CoreVoiceStatus,
 };
 
 uniffi::include_scaffolding!("papercup");
@@ -310,7 +315,11 @@ impl From<CoreRunning> for Running {
 
 impl From<CorePauseInfo> for PauseInfo {
     fn from(p: CorePauseInfo) -> Self {
-        Self { paused: p.paused, at: p.at, by: p.by }
+        Self {
+            paused: p.paused,
+            at: p.at,
+            by: p.by,
+        }
     }
 }
 
@@ -395,13 +404,15 @@ fn parse_mesh(value: &serde_json::Value) -> Option<MeshConfig> {
         assigned_ip: String,
         mtu: u32,
     }
-    serde_json::from_value::<Raw>(value.clone()).ok().map(|r| MeshConfig {
-        peer_public_key: r.peer_public_key,
-        peer_endpoint: r.peer_endpoint,
-        allowed_ips: r.allowed_ips,
-        assigned_ip: r.assigned_ip,
-        mtu: r.mtu,
-    })
+    serde_json::from_value::<Raw>(value.clone())
+        .ok()
+        .map(|r| MeshConfig {
+            peer_public_key: r.peer_public_key,
+            peer_endpoint: r.peer_endpoint,
+            allowed_ips: r.allowed_ips,
+            assigned_ip: r.assigned_ip,
+            mtu: r.mtu,
+        })
 }
 
 pub struct SyncEvent {
@@ -509,9 +520,17 @@ impl From<CoreVoiceEvent> for VoiceEvent {
     fn from(e: CoreVoiceEvent) -> Self {
         match e {
             CoreVoiceEvent::Connected => VoiceEvent::Connected,
-            CoreVoiceEvent::Speak { text, source, agent_id, format } => {
-                VoiceEvent::Speak { text, source, agent_id, format }
-            }
+            CoreVoiceEvent::Speak {
+                text,
+                source,
+                agent_id,
+                format,
+            } => VoiceEvent::Speak {
+                text,
+                source,
+                agent_id,
+                format,
+            },
             CoreVoiceEvent::Closed { code, reason } => VoiceEvent::Closed { code, reason },
         }
     }
@@ -597,17 +616,18 @@ impl OperatorClient {
 
     pub async fn register_push(&self, platform: String, token: String) -> Result<(), ApiError> {
         let core = self.inner.clone();
-        rt()
-            .spawn(async move { core.register_push(PushRegisterBody { platform, token }).await })
-            .await
-            .map_err(|_| ApiError::Network)??;
+        rt().spawn(async move {
+            core.register_push(PushRegisterBody { platform, token })
+                .await
+        })
+        .await
+        .map_err(|_| ApiError::Network)??;
         Ok(())
     }
 
     pub async fn heartbeat(&self) -> Result<(), ApiError> {
         let core = self.inner.clone();
-        rt()
-            .spawn(async move { core.heartbeat().await })
+        rt().spawn(async move { core.heartbeat().await })
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(())
@@ -633,8 +653,7 @@ impl OperatorClient {
 
     pub async fn voice_lease_claim(&self) -> Result<(), ApiError> {
         let core = self.inner.clone();
-        rt()
-            .spawn(async move { core.voice_lease_claim().await })
+        rt().spawn(async move { core.voice_lease_claim().await })
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(())
@@ -642,8 +661,7 @@ impl OperatorClient {
 
     pub async fn voice_lease_heartbeat(&self) -> Result<(), ApiError> {
         let core = self.inner.clone();
-        rt()
-            .spawn(async move { core.voice_lease_heartbeat().await })
+        rt().spawn(async move { core.voice_lease_heartbeat().await })
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(())
@@ -651,8 +669,7 @@ impl OperatorClient {
 
     pub async fn voice_lease_release(&self) -> Result<(), ApiError> {
         let core = self.inner.clone();
-        rt()
-            .spawn(async move { core.voice_lease_release().await })
+        rt().spawn(async move { core.voice_lease_release().await })
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(())
@@ -703,7 +720,10 @@ impl OperatorClient {
         Ok(result.into_iter().map(Workspace::from).collect())
     }
 
-    pub async fn workspace_switch(&self, workspace_id: String) -> Result<WorkspaceSwitchResult, ApiError> {
+    pub async fn workspace_switch(
+        &self,
+        workspace_id: String,
+    ) -> Result<WorkspaceSwitchResult, ApiError> {
         let core = self.inner.clone();
         let result = rt()
             .spawn(async move { core.workspace_switch(&workspace_id).await })
@@ -723,8 +743,7 @@ impl OperatorClient {
 
     pub async fn revoke_device(&self, device_id: String) -> Result<(), ApiError> {
         let core = self.inner.clone();
-        rt()
-            .spawn(async move { core.revoke_device(&device_id).await })
+        rt().spawn(async move { core.revoke_device(&device_id).await })
             .await
             .map_err(|_| ApiError::Network)??;
         Ok(())
@@ -747,12 +766,12 @@ impl OperatorClient {
     ) -> Result<(), ApiError> {
         let core = self.inner.clone();
         let decision = if approve { "approve" } else { "dismiss" }.to_string();
-        rt()
-            .spawn(async move {
-                core.standing_candidate_decide(&capability, &target_harness, &decision).await
-            })
-            .await
-            .map_err(|_| ApiError::Network)??;
+        rt().spawn(async move {
+            core.standing_candidate_decide(&capability, &target_harness, &decision)
+                .await
+        })
+        .await
+        .map_err(|_| ApiError::Network)??;
         Ok(())
     }
 

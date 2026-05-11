@@ -231,7 +231,10 @@ async fn run_session(
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", generate_key())
-        .header("Sec-WebSocket-Protocol", format!("papercusp.bearer.{token}"))
+        .header(
+            "Sec-WebSocket-Protocol",
+            format!("papercusp.bearer.{token}"),
+        )
         .body(())
     {
         Ok(r) => r,
@@ -249,7 +252,7 @@ async fn run_session(
 
     if let Some(w) = initial_wake.as_deref() {
         let frame = serde_json::to_string(&OutboundFrame::Hello { wake_word: w }).unwrap();
-        if sink.send(Message::Text(frame.into())).await.is_err() {
+        if sink.send(Message::Text(frame)).await.is_err() {
             return SessionResult::Transient("send hello".into());
         }
     }
@@ -265,7 +268,7 @@ async fn run_session(
                     OwnedOutbound::Transcript { text } => serde_json::to_string(&OutboundFrame::Transcript { text: &text }),
                 };
                 let frame = match frame { Ok(f) => f, Err(_) => continue };
-                if sink.send(Message::Text(frame.into())).await.is_err() {
+                if sink.send(Message::Text(frame)).await.is_err() {
                     return SessionResult::Transient("send".into());
                 }
             }

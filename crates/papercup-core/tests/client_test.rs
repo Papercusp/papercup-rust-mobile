@@ -373,7 +373,10 @@ async fn standing_candidates_unwraps_envelope() {
     assert_eq!(candidates[0].capability, "shell:run");
     assert_eq!(candidates[0].target_harness, "alpha");
     assert_eq!(candidates[0].count, 4);
-    assert_eq!(candidates[0].first_shown_at.as_deref(), Some("2026-05-10T08:00:00Z"));
+    assert_eq!(
+        candidates[0].first_shown_at.as_deref(),
+        Some("2026-05-10T08:00:00Z")
+    );
     assert_eq!(candidates[1].capability, "git:push");
     assert!(candidates[1].first_shown_at.is_none());
 }
