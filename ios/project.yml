@@ -63,17 +63,31 @@ targets:
         BUNDLE_LOADER: $(TEST_HOST)
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/Papercup.app/Papercup
 
+  PapercupUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: PapercupUITests
+    dependencies:
+      - target: Papercup
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.papercuspai.operator.mobile.uitests
+        TEST_TARGET_NAME: Papercup
+
 schemes:
   Papercup:
     build:
       targets:
         Papercup: all
         PapercupTests: [test]
+        PapercupUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
         - PapercupTests
+        - PapercupUITests
     archive:
       config: Release

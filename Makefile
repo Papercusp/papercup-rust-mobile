@@ -5,8 +5,8 @@
 # one place.
 
 .PHONY: help build-rust build-android build-ios install-android \
-        bindings-kotlin bindings-swift test test-ios check fmt fmt-check \
-        clippy lint-android install-hooks clean
+        bindings-kotlin bindings-swift test test-ios test-ios-ui check \
+        fmt fmt-check clippy lint-android install-hooks clean
 
 help:
 	@echo "Targets:"
@@ -18,7 +18,8 @@ help:
 	@echo "  make clippy             — cargo clippy --workspace --all-targets -- -D warnings"
 	@echo "  make build-rust         — cargo build the host (off-device) Rust core + cli"
 	@echo "  make test               — run all Rust tests"
-	@echo "  make test-ios           — run iOS XCTest suite (requires macOS + Xcode)"
+	@echo "  make test-ios           — run iOS XCTest unit suite (requires macOS + Xcode)"
+	@echo "  make test-ios-ui        — run iOS XCUITest end-to-end suite (paired flows need PAPERCUP_PAIR_PAYLOAD)"
 	@echo "  make bindings-kotlin    — regenerate Kotlin bindings into android/app/src/main/kotlin/uniffi"
 	@echo "  make bindings-swift     — regenerate Swift bindings into ios/PapercupCore"
 	@echo "  make build-android      — cross-compile Rust core for all Android ABIs + assemble debug APK"
@@ -66,6 +67,13 @@ test:
 # variable name.
 test-ios:
 	./tools/run-ios-tests.sh
+
+# Run iOS XCUITest end-to-end UI tests. Set PAPERCUP_PAIR_PAYLOAD to
+# a freshly minted pair JSON to exercise the paste-pair flow + the
+# paired-state navigation; without it only the fresh-launch smoke
+# test runs (paired flows XCTSkip).
+test-ios-ui:
+	./tools/run-ios-uitests.sh
 
 bindings-kotlin:
 	cargo run --quiet --bin uniffi-bindgen -- generate \

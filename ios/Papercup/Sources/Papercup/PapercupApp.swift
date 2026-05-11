@@ -9,6 +9,16 @@ struct PapercupApp: App {
     @UIApplicationDelegateAdaptor(PapercupAppDelegate.self) var appDelegate
     @StateObject private var deepLink = DeepLinkRouter.shared
 
+    init() {
+        // XCUITest hook: wipe Keychain creds before launch when the
+        // -com.papercuspai.uitests.wipeCredentials YES launch arg is
+        // present. Lets PairFlowUITests start every run from a known
+        // un-paired state without adding a permanent dev backdoor.
+        if CommandLine.arguments.contains("-com.papercuspai.uitests.wipeCredentials") {
+            CredentialStore.clear()
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             AppRoot()
