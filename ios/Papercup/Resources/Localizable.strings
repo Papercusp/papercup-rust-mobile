@@ -1,0 +1,33 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/*
+ * Phase 10 — iOS localization scaffold. SwiftUI text resolves these
+ * via Text("key", bundle: .main). English-only at launch; other
+ * locales drop into <lang>.lproj/Localizable.strings.
+ *
+ * Most of the existing UI uses inline strings; this file is the
+ * authoritative location for newly-added user-facing text + the
+ * migration target for the existing inline strings.
+ */
+
+"app.name" = "Papercup";
+
+"tab.operator" = "Operator";
+"tab.harnesses" = "Harnesses";
+"tab.activity" = "Activity";
+"tab.settings" = "Settings";
+
+"settings.standingApprovals" = "Standing approvals";
+"settings.voice" = "Voice";
+"settings.diagnostics" = "Diagnostics";
+"settings.forgetDevice" = "Forget this device";
+
+"connection.lost" = "Lost desktop connection";
+
+"biometric.title" = "Confirm";
+"biometric.subtitle.workspaceSwitch" = "Switch to workspace %@";
+"biometric.subtitle.revokeDevice" = "Revoke device %@";
+
+"error.pairTokenExpired" = "Pair code expired — generate a new one from the desktop.";
+"error.meshUnreachable" = "Mesh tunnel unreachable — falling back to public URL.";
+"error.voiceWsFailed" = "Voice connection lost. Tap to reconnect.";
+"error.pushPermissionDenied" = "Notifications disabled. Enable in iOS Settings to get push alerts.";

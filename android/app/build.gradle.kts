@@ -4,6 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 android {
@@ -117,9 +118,11 @@ dependencies {
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
 
-    // Phase 5a: Firebase Cloud Messaging for push notifications.
+    // Phase 5a + Phase 10: Firebase BoM (FCM + Crashlytics).
     implementation(platform("com.google.firebase:firebase-bom:33.6.0"))
     implementation("com.google.firebase:firebase-messaging-ktx")
+    implementation("com.google.firebase:firebase-crashlytics-ktx")
+    implementation("com.google.firebase:firebase-analytics-ktx")
     // Tasks → coroutines bridge for awaiting FirebaseMessaging.getToken().
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 

@@ -9,6 +9,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
@@ -144,7 +148,16 @@ private fun PauseCard(
 ) {
     val isPaused = paused == true
     Card(
-        modifier = modifier.clickable(enabled = paused != null) { onToggle(!isPaused) },
+        modifier = modifier
+            .clickable(enabled = paused != null) { onToggle(!isPaused) }
+            .semantics {
+                contentDescription = when (paused) {
+                    true -> "Operator paused. Double-tap to resume."
+                    false -> "Operator running. Double-tap to pause."
+                    null -> "Operator state loading."
+                }
+                role = Role.Button
+            },
         colors = if (isPaused) {
             CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
         } else {

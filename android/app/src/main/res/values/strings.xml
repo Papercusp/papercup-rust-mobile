@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Phase 10 — localization scaffold. Strings used by the Compose UI
+    are resolved from here when wrapped in stringResource(R.string.X).
+    English-only at launch; other locales drop into values-<lang>/.
+
+    The bulk of the UI today still uses literal Kotlin strings; this
+    file is the authoritative location for newly-added user-facing
+    text and the migration target for the existing inline strings.
+-->
+<resources>
+    <string name="app_name">Papercup</string>
+
+    <!-- Tab nav (MainActivity bottom bar) -->
+    <string name="tab_operator">Operator</string>
+    <string name="tab_harnesses">Harnesses</string>
+    <string name="tab_activity">Activity</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Settings nav rows -->
+    <string name="settings_standing_approvals">Standing approvals</string>
+    <string name="settings_standing_approvals_subtitle">Auto-dispatched patterns waiting for review</string>
+    <string name="settings_voice">Voice</string>
+    <string name="settings_voice_subtitle">Wake word, speech rate, voices</string>
+    <string name="settings_diagnostics">Diagnostics</string>
+    <string name="settings_diagnostics_subtitle">Connection, mesh, build info</string>
+    <string name="settings_forget_device">Forget this device</string>
+
+    <!-- Connection banner -->
+    <string name="connection_lost">Lost desktop connection</string>
+
+    <!-- Wake-word service notification -->
+    <string name="wake_word_notification_title">Papercup</string>
+    <string name="wake_word_notification_text">Listening for "hey papercup"</string>
+    <string name="wake_word_channel_name">Wake-word listener</string>
+    <string name="wake_word_channel_description">Persistent listener for the "hey papercup" wake word.</string>
+
+    <!-- Biometric prompt copy -->
+    <string name="biometric_title">Confirm</string>
+    <string name="biometric_subtitle_workspace_switch">Switch to workspace %1$s</string>
+    <string name="biometric_subtitle_revoke_device">Revoke device %1$s</string>
+
+    <!-- Push notification channel -->
+    <string name="push_channel_name">Papercup updates</string>
+    <string name="push_channel_description">Push notifications from your paired desktop.</string>
+
+    <!-- Common error messages -->
+    <string name="error_pair_token_expired">Pair code expired — generate a new one from the desktop.</string>
+    <string name="error_mesh_unreachable">Mesh tunnel unreachable — falling back to public URL.</string>
+    <string name="error_voice_ws_failed">Voice connection lost. Tap to reconnect.</string>
+    <string name="error_push_permission_denied">Notifications disabled. Enable in Android Settings to get push alerts.</string>
+</resources>
