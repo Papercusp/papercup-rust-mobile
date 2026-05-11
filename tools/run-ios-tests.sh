@@ -28,17 +28,22 @@ xcodegen generate >/dev/null
 DEST="platform=iOS Simulator,id=$PAPERCUP_IOS_SIM_UDID"
 
 for i in 1 2 3; do
+    # `set -e` would kill us on a failed xcodebuild before we get to
+    # check $? — disable it for the assignment, then re-enable.
+    set +e
     out=$(xcodebuild build-for-testing \
         -project Papercup.xcodeproj -scheme Papercup \
         -destination "$DEST" -sdk iphonesimulator \
         -derivedDataPath build/dd 2>&1)
-    if echo "$out" | grep -q "TEST BUILD SUCCEEDED"; then
+    rc=$?
+    set -e
+    if [ $rc -eq 0 ] && echo "$out" | grep -q "TEST BUILD SUCCEEDED"; then
         break
     fi
-    echo "[retry $i: destination race]"
+    echo "[retry $i: destination race, rc=$rc]"
     sleep 3
     if [ "$i" = "3" ]; then
-        echo "ERROR: build-for-testing failed after 3 retries" >&2
+        echo "ERROR: build-for-testing failed after 3 retries (rc=$rc)" >&2
         echo "--- last 20 lines of xcodebuild output ---" >&2
         echo "$out" | tail -20 >&2
         exit 1
