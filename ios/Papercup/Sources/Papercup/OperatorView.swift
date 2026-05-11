@@ -64,7 +64,7 @@ struct OperatorView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(NSLocalizedString("operator.label", comment: "")).font(.caption)
                 Text(label).font(.title3.bold())
-                Text("tap to \(isPaused ? "resume" : "pause")").font(.caption)
+                Text(isPaused ? "operator.tapToResume" : "operator.tapToPause").font(.caption)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)

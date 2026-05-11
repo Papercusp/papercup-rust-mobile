@@ -33,11 +33,12 @@ struct RunLogView: View {
         VStack(spacing: 0) {
             HStack {
                 Picker("", selection: $filter) {
-                    Text("all").tag("all")
-                    Text("warn").tag("warn")
-                    Text("error").tag("error")
+                    Text("runlog.filter.all").tag("all")
+                    Text("runlog.filter.warn").tag("warn")
+                    Text("runlog.filter.error").tag("error")
                 }
                 .pickerStyle(.segmented)
+                .accessibilityLabel(Text("Log level filter"))
                 Spacer()
                 Text("\(visible.count)/\(lines.count)")
                     .font(.caption2)

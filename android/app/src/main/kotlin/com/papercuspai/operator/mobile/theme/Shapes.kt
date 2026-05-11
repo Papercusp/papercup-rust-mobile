@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -162,7 +164,7 @@ fun PapercupStatusChip(
     AssistChip(
         onClick = onClick ?: {},
         label = { Text(text, style = MaterialTheme.typography.labelSmall) },
-        modifier = modifier,
+        modifier = modifier.semantics { contentDescription = "Status $text" },
         shape = PapercupChipShape,
         border = BorderStroke(1.dp, borderColor),
         colors = AssistChipDefaults.assistChipColors(

@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -106,7 +108,11 @@ private fun StatusPill(s: ConnStatus) {
         ConnStatus.Offline -> "offline" to MaterialTheme.colorScheme.errorContainer
         ConnStatus.Unknown -> "unknown" to MaterialTheme.colorScheme.surfaceVariant
     }
-    Surface(color = container, shape = MaterialTheme.shapes.small) {
+    Surface(
+        color = container,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.semantics { contentDescription = "Status $label" },
+    ) {
         Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
     }
 }

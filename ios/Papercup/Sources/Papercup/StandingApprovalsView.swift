@@ -60,6 +60,8 @@ struct StandingApprovalsView: View {
                 .disabled(busy)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Candidate \(c.capability), target \(c.targetHarness), seen \(c.count) times."))
     }
 
     private func load() async {

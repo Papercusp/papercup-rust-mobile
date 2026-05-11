@@ -58,6 +58,8 @@ struct DiagnosticsView: View {
                 Text(String(v)).font(.caption)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("\(k): \(String(v))"))
     }
 
     private func statusPill(_ s: ConnStatus) -> some View {
@@ -72,6 +74,7 @@ struct DiagnosticsView: View {
             .background(color.opacity(0.2))
             .foregroundStyle(color)
             .clipShape(Capsule())
+            .accessibilityLabel(Text("Status \(label)"))
     }
 }
 

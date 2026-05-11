@@ -93,6 +93,7 @@ struct HarnessDetailView: View {
 
     private func chip(_ text: String, role: PapercupChipRole) -> some View {
         PapercupChip(text: text, role: role)
+            .accessibilityLabel(Text("Status \(text)"))
     }
 
     private func missionSection(_ s: HarnessStatus) -> some View {

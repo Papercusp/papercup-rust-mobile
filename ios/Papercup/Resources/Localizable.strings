@@ -79,3 +79,43 @@
 
 /* App brand */
 "app.brand" = "Papercup";
+
+/* Static labels backfilled from inline Text("…") — SwiftUI Text auto-resolves
+   LocalizedStringKey lookups so these match the literal in code today, and
+   become the translation hook tomorrow. */
+
+/* Error states */
+"error.couldntLoadStatus" = "Couldn't load status";
+"error.couldntLoadHarnesses" = "Couldn't load harnesses";
+
+/* Settings chips + hints */
+"settings.chip.current" = "current";
+"settings.chip.tapToSwitch" = "tap to switch";
+"settings.chip.thisPhone" = "this phone";
+"settings.hint.standingApprovals" = "Opens standing approvals review.";
+"settings.hint.voice" = "Opens voice and wake-word settings.";
+"settings.hint.diagnostics" = "Opens connection and build diagnostics.";
+"settings.hint.forgetDevice" = "Clears stored credentials and returns to pair view.";
+
+/* RunLog filter tags */
+"runlog.filter.all" = "all";
+"runlog.filter.warn" = "warn";
+"runlog.filter.error" = "error";
+
+/* Voice settings copy */
+"voice.wakeWordBlurb" = "Picovoice Porcupine accepts only its trained keyword set; this field is the wake-phrase shown to the voice WS server. Hot-reload requires app restart.";
+"voice.noSystemVoices" = "No system voices loaded.";
+
+/* Standing approvals copy */
+"standing.blurb" = "Patterns the operator has dispatched silently 3+ times in the last 24h. Approve to grant standing authority for this capability + target.";
+"standing.empty.section" = "No standing-approval candidates.";
+
+/* Operator pause toggle */
+"operator.tapToPause" = "tap to pause";
+"operator.tapToResume" = "tap to resume";
+
+/* A11y labels (added by audit gap-fill) */
+"a11y.harnessDetailChip" = "%@ %@";
+"a11y.runlogFilter" = "Filter %@";
+"a11y.diagnosticsRow" = "%@: %@";
+"a11y.standingRow" = "Standing approval candidate. %@. Seen %@ times.";
