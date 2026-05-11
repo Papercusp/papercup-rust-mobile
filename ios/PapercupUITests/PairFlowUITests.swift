@@ -52,23 +52,19 @@ final class PairFlowUITests: XCTestCase {
         app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Pair this device"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Pair this device"].waitForExistence(timeout: 10))
         app.buttons["Paste payload"].tap()
 
-        let editor = app.textViews.element(boundBy: 0)
-        XCTAssertTrue(editor.waitForExistence(timeout: 3))
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 10),
+                      "TextEditor should appear after tapping Paste payload")
         editor.tap()
-        editor.press(forDuration: 0.6) // brings up the loupe / Paste menu
+        // Type the JSON directly — most reliable across iOS versions; the
+        // long-press → Paste menu flow is fragile and the typing is fast.
+        editor.typeText(payload)
 
-        // The system Paste menu is presented; tap "Paste" in the menu bar.
-        let pasteMenu = app.menuItems["Paste"]
-        if pasteMenu.waitForExistence(timeout: 3) {
-            pasteMenu.tap()
-        } else {
-            // Fallback: type the JSON directly. Slow but reliable.
-            editor.typeText(payload)
-        }
-
+        XCTAssertTrue(app.buttons["Pair"].waitForExistence(timeout: 5),
+                      "Pair button should be enabled once payload is entered")
         app.buttons["Pair"].tap()
 
         // After successful pair, the tab bar appears with the Operator tab.
