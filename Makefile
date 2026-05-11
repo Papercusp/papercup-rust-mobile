@@ -25,6 +25,7 @@ help:
 	@echo "  make build-android      — cross-compile Rust core for all Android ABIs + assemble debug APK"
 	@echo "  make install-android    — build-android then adb install -r"
 	@echo "  make build-ios          — build iOS xcframework + Xcode project (macOS only)"
+	@echo "  make install-ios        — build-ios + install + launch on iPhone 16 sim (macOS only)"
 	@echo "  make clean              — remove all build artifacts"
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
@@ -98,6 +99,9 @@ install-android: build-android
 
 build-ios: bindings-swift
 	tools/build-scripts/build-ios.sh
+
+install-ios: build-ios
+	tools/build-scripts/install-ios.sh
 
 clean:
 	cargo clean
