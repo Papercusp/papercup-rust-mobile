@@ -7,9 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.*
-import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -125,7 +123,7 @@ fun StandingApprovalsScreen(
                                         onClick = { decide(c, true) },
                                         enabled = !busy,
                                         modifier = Modifier.weight(1f),
-                                    ) { Text(if (busy) "…" else "Approve") }
+                                    ) { Text(if (busy) "…" else stringResource(R.string.standing_approvals_approve)) }
                                     OutlinedButton(
                                         onClick = { decide(c, false) },
                                         enabled = !busy,

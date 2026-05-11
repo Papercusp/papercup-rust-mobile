@@ -119,7 +119,7 @@ fun SettingsScreen(
             }
 
             item {
-                PapercupCardHeader("Workspaces", meta = workspaces?.size?.toString())
+                PapercupCardHeader(stringResource(R.string.settings_workspaces), meta = workspaces?.size?.toString())
             }
             val ws = workspaces
             if (ws == null) {
@@ -157,7 +157,7 @@ fun SettingsScreen(
 
             item {
                 Spacer(Modifier.height(4.dp))
-                PapercupCardHeader("Paired devices", meta = devices?.size?.toString())
+                PapercupCardHeader(stringResource(R.string.settings_paired_devices), meta = devices?.size?.toString())
             }
             val dv = devices
             if (dv == null) {
@@ -287,7 +287,7 @@ private fun DeviceRowCard(device: Device, isSelf: Boolean, revoking: Boolean, on
             Kv("workspace", device.workspaceId)
             if (!isSelf) {
                 TextButton(onClick = onRevoke, enabled = !revoking) {
-                    Text(if (revoking) "Revoking…" else "Revoke")
+                    Text(if (revoking) "Revoking…" else stringResource(R.string.settings_revoke))
                 }
             }
         }

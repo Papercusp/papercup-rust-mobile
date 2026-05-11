@@ -8,16 +8,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.*
-import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.google.firebase.messaging.FirebaseMessaging
+import com.wireguard.android.backend.Tunnel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,8 +29,16 @@ fun DiagnosticsScreen(
     onBack: () -> Unit,
 ) {
     val state by monitor.state.collectAsState()
+    val meshState by MeshState.state.collectAsState()
     val scope = rememberCoroutineScope()
     var pinging by remember { mutableStateOf(false) }
+    var fcmToken by remember { mutableStateOf<String?>(null) }
+    var fcmError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(creds.deviceToken) {
+        runCatching { FirebaseMessaging.getInstance().token.await() }
+            .onSuccess { fcmToken = it }
+            .onFailure { fcmError = it.message ?: it.javaClass.simpleName }
+    }
 
     Scaffold(
         topBar = {
@@ -60,7 +70,7 @@ fun DiagnosticsScreen(
                         scope.launch { monitor.probe(); pinging = false }
                     },
                     enabled = !pinging,
-                ) { Text(if (pinging) "Pinging…" else "Ping desktop") }
+                ) { Text(if (pinging) stringResource(R.string.diagnostics_pinging) else stringResource(R.string.diagnostics_ping_button)) }
             }
             Section("Pairing") {
                 Kv("Device ID", creds.deviceId, mono = true)
@@ -68,7 +78,20 @@ fun DiagnosticsScreen(
                 Kv("Server", creds.server)
                 Kv("Token (first 12)", creds.deviceToken.take(12) + "…", mono = true)
                 Kv("Token length", "${creds.deviceToken.length} chars")
+            }
+            Section("Mesh") {
+                Kv("Tunnel state", meshState.toString())
+                creds.meshUrl?.let { Kv("Mesh URL", it) }
                 creds.meshAssignedIp?.let { Kv("Mesh address", it) }
+            }
+            Section("Push") {
+                val pushLabel = when {
+                    fcmToken != null -> "registered"
+                    fcmError != null -> "error: ${fcmError}"
+                    else -> "fetching…"
+                }
+                Kv("FCM status", pushLabel)
+                fcmToken?.let { Kv("FCM token (first 12)", it.take(12) + "…", mono = true) }
             }
             Section("Build") {
                 Kv("Core version", uniffi.papercup.version())

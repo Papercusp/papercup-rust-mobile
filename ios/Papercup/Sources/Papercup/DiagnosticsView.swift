@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 import UIKit
+import UserNotifications
 
 struct DiagnosticsView: View {
     let creds: DeviceCredentials
     @ObservedObject var monitor: ConnectionMonitor
     @State private var pinging: Bool = false
+    @State private var pushAuth: String = "checking…"
 
     var body: some View {
         List {
@@ -35,9 +37,20 @@ struct DiagnosticsView: View {
                 kv("Server", creds.server)
                 kv("Token (first 12)", creds.deviceToken.prefix(12) + "…", mono: true)
                 kv("Token length", "\(creds.deviceToken.count) chars")
+            }
+            Section("Mesh") {
+                if let url = creds.meshUrl {
+                    kv("Mesh URL", url)
+                } else {
+                    kv("Mesh URL", "not assigned")
+                }
                 if let ip = creds.meshAssignedIp {
                     kv("Mesh address", ip)
                 }
+                kv("Tunnel", "down — NEPacketTunnelProvider extension not built (requires Apple Dev Program)")
+            }
+            Section("Push") {
+                kv("Authorization", pushAuth)
             }
             Section("Build") {
                 kv("Core version", PapercupCoreVersion())
@@ -46,6 +59,17 @@ struct DiagnosticsView: View {
             }
         }
         .navigationTitle("Diagnostics")
+        .task {
+            let settings = await UNUserNotificationCenter.current().notificationSettings()
+            pushAuth = switch settings.authorizationStatus {
+                case .notDetermined: "not determined"
+                case .denied: "denied"
+                case .authorized: "authorized"
+                case .provisional: "provisional"
+                case .ephemeral: "ephemeral"
+                @unknown default: "unknown"
+            }
+        }
     }
 
     private func kv(_ k: String, _ v: some StringProtocol, mono: Bool = false) -> some View {

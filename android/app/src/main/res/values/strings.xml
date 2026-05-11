@@ -45,10 +45,6 @@
     <string name="push_channel_description">Push notifications from your paired desktop.</string>
 
     <!-- Common error messages -->
-    <string name="error_pair_token_expired">Pair code expired — generate a new one from the desktop.</string>
-    <string name="error_mesh_unreachable">Mesh tunnel unreachable — falling back to public URL.</string>
-    <string name="error_voice_ws_failed">Voice connection lost. Tap to reconnect.</string>
-    <string name="error_push_permission_denied">Notifications disabled. Enable in Android Settings to get push alerts.</string>
 
     <!-- Operator screen -->
     <string name="operator_screen_title">Operator</string>
@@ -75,7 +71,6 @@
 
     <!-- Pair screen -->
     <string name="pair_title">Pair this device</string>
-    <string name="pair_subtitle">Open the desktop operator at /settings/mobile, mint a pair token, and either scan the QR or paste the payload below.</string>
     <string name="pair_scan_qr">Scan QR code</string>
     <string name="pair_paste_payload">Paste payload</string>
     <string name="pair_back">Back</string>
@@ -91,15 +86,12 @@
     <!-- Voice settings screen -->
     <string name="voice_settings_title">Voice</string>
     <string name="voice_settings_wake_word_label">Wake word</string>
-    <string name="voice_settings_speech_rate">Speech rate</string>
-    <string name="voice_settings_pitch">Pitch</string>
     <string name="voice_settings_voice_label">Voice</string>
     <string name="voice_settings_test_button">Test</string>
     <string name="voice_settings_reset_button">Reset</string>
 
     <!-- Standing approvals -->
     <string name="standing_approvals_title">Standing approvals</string>
-    <string name="standing_approvals_empty">No standing approvals waiting.</string>
     <string name="standing_approvals_approve">Approve</string>
     <string name="standing_approvals_dismiss">Dismiss</string>
 

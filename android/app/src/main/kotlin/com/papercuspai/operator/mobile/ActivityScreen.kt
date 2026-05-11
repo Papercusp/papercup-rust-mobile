@@ -8,9 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.*
-import androidx.compose.ui.res.stringResource
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
@@ -118,7 +116,7 @@ fun ActivityScreen(
 @Composable
 private fun ToastList(toasts: List<ToastEntry>, onSelectHarness: (String) -> Unit) {
     if (toasts.isEmpty()) {
-        EmptyState("No recent notifications")
+        EmptyState(stringResource(R.string.activity_no_notifications))
         return
     }
     PapercupCard(contentPadding = PaddingValues(12.dp)) {
@@ -182,7 +180,7 @@ private fun ToastCard(t: ToastEntry, onSelectHarness: (String) -> Unit) {
 @Composable
 private fun AuditList(entries: List<AuditEntry>, onSelectHarness: (String) -> Unit) {
     if (entries.isEmpty()) {
-        EmptyState("No recent actions")
+        EmptyState(stringResource(R.string.activity_no_actions))
         return
     }
     PapercupPanel(contentPadding = PaddingValues(12.dp)) {

@@ -8,9 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.*
-import androidx.compose.ui.res.stringResource
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText

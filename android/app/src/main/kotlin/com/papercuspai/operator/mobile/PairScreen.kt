@@ -116,7 +116,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
             PairMode.Choose -> {
                 PapercupCard {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        PapercupCardHeader("Desktop pair", meta = "QR or code")
+                        PapercupCardHeader(stringResource(R.string.pair_desktop_pair_header), meta = "QR or code")
                         Button(
                             onClick = { mode = PairMode.Scan },
                             modifier = Modifier.fillMaxWidth(),
@@ -295,7 +295,7 @@ private fun PastePanel(
     var text by remember { mutableStateOf("") }
     PapercupCard {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            PapercupCardHeader("Manual pair code", meta = "JSON")
+            PapercupCardHeader(stringResource(R.string.pair_manual_code_label), meta = "JSON")
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },

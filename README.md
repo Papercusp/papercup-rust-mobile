@@ -2,7 +2,7 @@
 
 Native mobile app for the Papercup operator. Pure Rust core, Compose Android UI, SwiftUI iOS UI.
 
-This is the **Option C** rewrite of `apps/operator-mobile/` (which was Tauri 2 + React). See `papercup-rust-mobile-plan.md` and `papercup-rust-mobile-implementation.md` (sibling directory) for the full design rationale.
+This is the **Option C** rewrite that replaced the retired `apps/operator-mobile/` Tauri 2 + React app. See `papercup-rust-mobile-plan.md` and `papercup-rust-mobile-implementation.md` (sibling directory) for the full design rationale.
 
 ## Repo layout
 
@@ -73,7 +73,7 @@ GPL-3.0-or-later. See `LICENSE`.
 
 - **Backend** (`papercup-rust-server/`) — owns the wire contract via `openapi.yaml`. We consume it via `progenitor`.
 - **Desktop** (`papercup-native/`) — same contract; no shared UI.
-- **Existing operator** (Next.js at `apps/operator/`) — runs in parallel during the migration. Mobile hits whatever backend is wired through `https://api.papercupai.com` (Cloudflare Tunnel) — Next or axum, the mobile app doesn't know.
+- **Operator** (Next.js + Hono at `apps/operator/`, axum at `papercup-rust-server/`) — mobile hits whatever backend is wired through `https://api.papercupai.com` (Cloudflare Tunnel). The Rust port runs alongside the TS handler and is gated on `?backend=rust` (see `docs/COORDINATION.md`).
 
 ## Status (per phase)
 
