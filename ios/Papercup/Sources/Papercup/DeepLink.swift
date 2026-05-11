@@ -18,10 +18,19 @@ import Foundation
 import SwiftUI
 import UserNotifications
 
+/// Pair-via-link payload, parsed from `papercup://pair?...`.
+/// All three fields are required; matches the QR/paste shape.
+struct PendingPair: Equatable {
+    let server: String
+    let pairToken: String
+    let workspaceId: String
+}
+
 @MainActor
 final class DeepLinkRouter: ObservableObject {
     static let shared = DeepLinkRouter()
     @Published var pendingSlug: String? = nil
+    @Published var pendingPair: PendingPair? = nil
 
     private init() {}
 
@@ -29,11 +38,25 @@ final class DeepLinkRouter: ObservableObject {
     @discardableResult
     func handle(url: URL) -> Bool {
         guard url.scheme == "papercup" else { return false }
-        // papercup://harness/<slug>  (host="harness", first path segment is the slug)
+        // papercup://harness/<slug>
         let parts = url.pathComponents.filter { $0 != "/" }
         if url.host == "harness", let slug = parts.first {
             pendingSlug = slug
             return true
+        }
+        // papercup://pair?server=...&pairToken=...&workspaceId=...
+        if url.host == "pair" {
+            let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let q = Dictionary(uniqueKeysWithValues:
+                (comps?.queryItems ?? []).compactMap { item -> (String, String)? in
+                    guard let v = item.value else { return nil }
+                    return (item.name, v)
+                })
+            if let server = q["server"], let token = q["pairToken"], let ws = q["workspaceId"],
+               !server.isEmpty, !token.isEmpty, !ws.isEmpty {
+                pendingPair = PendingPair(server: server, pairToken: token, workspaceId: ws)
+                return true
+            }
         }
         return false
     }

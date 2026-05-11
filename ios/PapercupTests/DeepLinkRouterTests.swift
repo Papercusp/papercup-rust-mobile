@@ -48,4 +48,32 @@ final class DeepLinkRouterTests: XCTestCase {
         router.handle(notificationUserInfo: ["harnessSlug": 42])
         XCTAssertNil(router.pendingSlug)
     }
+
+    func testPairUrlSetsPendingPair() {
+        let router = DeepLinkRouter.shared
+        router.pendingPair = nil
+        let url = URL(string: "papercup://pair?server=http://10.0.2.2:3060&pairToken=abc-123&workspaceId=default")!
+        XCTAssertTrue(router.handle(url: url))
+        XCTAssertEqual(router.pendingPair, PendingPair(
+            server: "http://10.0.2.2:3060",
+            pairToken: "abc-123",
+            workspaceId: "default"
+        ))
+    }
+
+    func testPairUrlMissingFieldRejected() {
+        let router = DeepLinkRouter.shared
+        router.pendingPair = nil
+        let url = URL(string: "papercup://pair?server=foo&pairToken=bar")!
+        XCTAssertFalse(router.handle(url: url))
+        XCTAssertNil(router.pendingPair)
+    }
+
+    func testPairUrlEmptyTokenRejected() {
+        let router = DeepLinkRouter.shared
+        router.pendingPair = nil
+        let url = URL(string: "papercup://pair?server=foo&pairToken=&workspaceId=default")!
+        XCTAssertFalse(router.handle(url: url))
+        XCTAssertNil(router.pendingPair)
+    }
 }

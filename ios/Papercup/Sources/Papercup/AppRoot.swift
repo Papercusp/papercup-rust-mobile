@@ -39,7 +39,45 @@ struct AppRoot: View {
                     creds = fresh
                     tab = .operatorTab
                 }
+                .onChange(of: deepLink.pendingPair) { _, new in
+                    if let p = new { Task { await autoPair(p) } }
+                }
+                .onAppear {
+                    if let p = deepLink.pendingPair { Task { await autoPair(p) } }
+                }
             }
+        }
+    }
+
+    /// Consume a pendingPair (papercup://pair?...) without going through
+    /// PairView. Mirrors PairView.redeem(): generate WG key + POST
+    /// /api/mobile/pair + persist DeviceCredentials. Used for pair-by-link
+    /// (email, scanning a QR with the system camera, etc.).
+    @MainActor
+    private func autoPair(_ p: PendingPair) async {
+        deepLink.pendingPair = nil
+        let keys = generateWgKeypair()
+        let client = OperatorClient(baseUrl: p.server, deviceToken: nil)
+        do {
+            let outcome = try await client.pair(
+                pairToken: p.pairToken,
+                wireguardPubkeyB64: keys.publicKeyB64
+            )
+            let wgQuick = outcome.mesh.map { meshToWgQuick(privateKeyB64: keys.privateKeyB64, config: $0) }
+            let fresh = DeviceCredentials(
+                server: p.server,
+                deviceToken: outcome.deviceToken,
+                deviceId: outcome.deviceId,
+                workspaceId: outcome.workspaceId,
+                meshAssignedIp: outcome.mesh?.assignedIp,
+                wgQuickConfig: wgQuick,
+                wgPrivateKey: outcome.mesh != nil ? keys.privateKeyB64 : nil
+            )
+            CredentialStore.save(fresh)
+            creds = fresh
+            tab = .operatorTab
+        } catch {
+            // Surface failure via PairView's manual flow (left visible).
         }
     }
 }
