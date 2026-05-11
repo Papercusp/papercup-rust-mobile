@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Run the iOS XCTest unit suite. Builds the Papercup app target +
-# the PapercupTests bundle individually (instead of via the scheme's
-# build-for-testing action) because that avoids the Xcode 16.2
-# destination-resolver race that the scheme path trips reliably
-# after Sentry SwiftPM resolution slowed the package init.
+# Run the iOS XCTest unit suite. Splits build-for-testing + test-without-
+# building to dodge the Xcode 16.2 "iOS 18.2 not installed" destination
+# resolver race; retries each step up to 8x with 6s sleeps.
 #
-# PAPERCUP_IOS_SIM_UDID overrides the sim picker; defaults to the
-# first available iPhone 16.
+# After Sentry SwiftPM landed the destination race fires more often
+# (Xcode spends more on package resolution per scheme invocation).
+# Bigger retry budget here. The real fix is Xcode 16.3 which ships
+# the matching SDK + sim runtime.
+#
+# PAPERCUP_IOS_SIM_UDID overrides the default sim picker (first
+# available iPhone 16).
 
 set -euo pipefail
 
@@ -28,56 +31,47 @@ echo "▶ sim: $PAPERCUP_IOS_SIM_UDID"
 xcrun simctl boot "$PAPERCUP_IOS_SIM_UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$PAPERCUP_IOS_SIM_UDID" -b 2>/dev/null || true
 
+# Skip xcodegen if the project already exists — regenerating wipes
+# Xcode's per-scheme destination cache and re-triggers the race.
 if [ ! -d Papercup.xcodeproj ]; then
     xcodegen generate >/dev/null
 fi
 
 DEST="platform=iOS Simulator,id=$PAPERCUP_IOS_SIM_UDID"
-DD="$PWD/build/dd"
 
-# Build the app + test bundle target-by-target. Avoids the scheme's
-# -destination resolution which is flaky under Xcode 16.2 + Sentry
-# SwiftPM init. The build output lands in PROJECT_DIR/build/<config>-iphonesimulator
-# by default when no -derivedDataPath is set.
-PRODUCTS="$PWD/build/Debug-iphonesimulator"
+for i in 1 2 3 4 5 6 7 8; do
+    set +e
+    out=$(xcodebuild build-for-testing \
+        -project Papercup.xcodeproj -scheme Papercup \
+        -destination "$DEST" -sdk iphonesimulator \
+        -derivedDataPath build/dd 2>&1)
+    rc=$?
+    set -e
+    if [ $rc -eq 0 ] && echo "$out" | grep -q "TEST BUILD SUCCEEDED"; then
+        break
+    fi
+    echo "[build retry $i: rc=$rc]"
+    sleep 6
+    if [ "$i" = "8" ]; then
+        echo "ERROR: build-for-testing failed after 8 retries (rc=$rc)" >&2
+        echo "$out" | tail -20 >&2
+        exit 1
+    fi
+done
 
-echo "▶ build Papercup (app target = test host)"
-xcodebuild -project Papercup.xcodeproj \
-    -target Papercup \
-    -sdk iphonesimulator \
-    -destination "$DEST" \
-    -configuration Debug \
-    build
-
-echo "▶ build PapercupTests"
-xcodebuild -project Papercup.xcodeproj \
-    -target PapercupTests \
-    -sdk iphonesimulator \
-    -destination "$DEST" \
-    -configuration Debug \
-    build
-
-APP_BUNDLE="$PRODUCTS/Papercup.app"
-# Test bundle gets embedded under the app's PlugIns directory.
-TEST_BUNDLE="$APP_BUNDLE/PlugIns/PapercupTests.xctest"
-if [ ! -d "$TEST_BUNDLE" ] || [ ! -d "$APP_BUNDLE" ]; then
-    echo "ERROR: build outputs missing" >&2
-    echo "  expected: $TEST_BUNDLE" >&2
-    echo "  expected: $APP_BUNDLE" >&2
-    ls -la "$PRODUCTS" >&2
-    exit 1
-fi
-
-echo "▶ xcrun simctl install + xctest"
-xcrun simctl install "$PAPERCUP_IOS_SIM_UDID" "$APP_BUNDLE"
-# `xctest` lives under the runtime root, not /usr/bin in the simulator.
-# Locate it dynamically rather than hard-coding the iOS version.
-SIM_RUNTIME=$(find /Library/Developer/CoreSimulator/Volumes -name xctest -path '*RuntimeRoot/Developer/usr/bin/xctest' 2>/dev/null | head -1)
-if [ -z "$SIM_RUNTIME" ]; then
-    echo "ERROR: couldn't find sim's xctest binary" >&2
-    exit 1
-fi
-# simctl spawn invokes xctest in the sim's environment. The bundle
-# path is interpreted relative to the sim's filesystem; xctest takes
-# the absolute path on the host as long as it's accessible.
-xcrun simctl spawn "$PAPERCUP_IOS_SIM_UDID" "$SIM_RUNTIME" "$TEST_BUNDLE"
+for i in 1 2 3 4 5 6 7 8; do
+    set +e
+    xcodebuild test-without-building \
+        -project Papercup.xcodeproj -scheme Papercup \
+        -destination "$DEST" -derivedDataPath build/dd \
+        -only-testing PapercupTests
+    rc=$?
+    set -e
+    if [ $rc -eq 0 ]; then
+        exit 0
+    fi
+    echo "[test retry $i: rc=$rc]"
+    sleep 6
+done
+echo "ERROR: test-without-building failed after 8 retries" >&2
+exit 1
