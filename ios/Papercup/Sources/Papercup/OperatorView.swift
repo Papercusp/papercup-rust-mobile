@@ -54,7 +54,11 @@ struct OperatorView: View {
                 do {
                     paused = try await OperatorClient(baseUrl: creds.server, deviceToken: creds.deviceToken)
                         .pauseSet(paused: !p)
-                } catch { /* swallow */ }
+                } catch {
+                    // Surface failures via the error card at the top of
+                    // the screen rather than the previous silent swallow.
+                    self.error = "pause toggle failed: \(error)"
+                }
             }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
