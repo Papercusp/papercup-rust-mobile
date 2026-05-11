@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -150,7 +151,7 @@ class VoiceManager(
                         Log.d(TAG, "user: $transcript")
                     },
                     onUnhandledClientToolCall = { call ->
-                        Log.w(TAG, "agent invoked unhandled client tool: $call")
+                        Log.w(TAG, "agent invoked unhandled client tool: ${call.toolName}")
                     },
                     clientTools = buildClientTools(),
                 )
@@ -303,7 +304,66 @@ class VoiceManager(
             "delegate_to_claude" to clientTool { _ ->
                 unsupported("Delegation isn't available from phone voice in V1")
             },
+        ) + proxyTools()
+    }
+
+    /// The EL agent has ~37 client tools configured at agent-creation
+    /// time. The navigation / UI-mutation set is handled natively
+    /// above so taps + route changes happen sub-100ms. The remaining
+    /// query+brain tools (harness_status, harness_list, ask_operator,
+    /// etc.) need server-side data we don't have locally. Each one
+    /// proxies through POST /api/mobile/voice-tool/{name} — operator
+    /// runs runQuery/runCommand server-side and returns JSON the
+    /// agent speaks. Same authority surface as the desktop client
+    /// (same registry, same per-tool schemas).
+    private fun proxyTools(): Map<String, ClientTool> {
+        val proxiedNames = listOf(
+            "ask_operator",
+            "workspace_list",
+            "harness_list", "harness_status", "harness_list_features",
+            "harness_last_scan", "harness_recent_suggestions", "harness_health",
+            "agents_across_workspace",
+            "chat_list",
+            "voice_prefs",
+            "issues_list", "escalations_get", "pending_reviews_list",
+            "actions_recent", "notifications_recent",
+            "scans_list", "scans_get", "scans_search",
+            "delegates_list",
         )
+        return proxiedNames.associateWith { name ->
+            clientTool { params ->
+                runCatching { proxyVoiceTool(name, params) }
+                    .map { ClientToolResult.success(it) }
+                    .getOrElse { ClientToolResult.failure("proxy: ${it.message ?: it.javaClass.simpleName}") }
+            }
+        }
+    }
+
+    /// Synchronous HTTP from inside ClientTool.execute (already a
+    /// suspend context). Posts the EL params + tool name to the
+    /// operator, returns the response body as the tool result. The
+    /// agent reads it back as JSON the LLM can speak from.
+    private fun proxyVoiceTool(name: String, params: Map<String, Any>): String {
+        val http = OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .build()
+        val bodyJson = JSONObject().apply {
+            put("parameters", JSONObject(params))
+        }.toString()
+        val req = Request.Builder()
+            .url("${creds.server}/api/mobile/voice-tool/$name")
+            .header("Authorization", "Bearer ${creds.deviceToken}")
+            .header("content-type", "application/json")
+            .post(okhttp3.RequestBody.create(JSON_MEDIA, bodyJson))
+            .build()
+        http.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                throw RuntimeException("voice-tool $name → ${resp.code}: ${text.take(160)}")
+            }
+            return text
+        }
     }
 
     private inline fun clientTool(crossinline body: suspend (Map<String, Any>) -> ClientToolResult?): ClientTool =
@@ -355,5 +415,6 @@ class VoiceManager(
 
     companion object {
         private const val TAG = "PapercupVoice"
+        private val JSON_MEDIA = "application/json".toMediaTypeOrNull()
     }
 }
