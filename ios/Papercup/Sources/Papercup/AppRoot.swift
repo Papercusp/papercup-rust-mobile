@@ -191,6 +191,12 @@ private struct PairedShell: View {
             }
         }
         .task(id: current.deviceToken) { monitor.start(); await runSync() }
+        .onReceive(cacheHost.$tick) { _ in
+            // Bump the SSE-shared liveTick so existing screens that
+            // observe `invalidationTick: liveTick` refresh when any
+            // cache-tracked query refetches.
+            liveTick += 1
+        }
         .onChange(of: voice.state) { _, new in
             if new == .idle { wakeWord.start() } else { wakeWord.stop() }
         }
