@@ -5,10 +5,15 @@
 # one place.
 
 .PHONY: help build-rust build-android build-ios install-android \
-        bindings-kotlin bindings-swift test clean
+        bindings-kotlin bindings-swift test check fmt fmt-check \
+        clippy clean
 
 help:
 	@echo "Targets:"
+	@echo "  make check              — pre-push gate: fmt-check + clippy -D warnings + tests"
+	@echo "  make fmt                — cargo fmt --all"
+	@echo "  make fmt-check          — cargo fmt --all -- --check (fails on diff)"
+	@echo "  make clippy             — cargo clippy --workspace --all-targets -- -D warnings"
 	@echo "  make build-rust         — cargo build the host (off-device) Rust core + cli"
 	@echo "  make test               — run all Rust tests"
 	@echo "  make bindings-kotlin    — regenerate Kotlin bindings into android/app/src/main/kotlin/uniffi"
@@ -17,6 +22,19 @@ help:
 	@echo "  make install-android    — build-android then adb install -r"
 	@echo "  make build-ios          — build iOS xcframework + Xcode project (macOS only)"
 	@echo "  make clean              — remove all build artifacts"
+
+# Mirror of .github/workflows/ci.yml — run before every push so master
+# stays green even with the org's Actions on workflow_dispatch only.
+check: fmt-check clippy test
+
+fmt:
+	cargo fmt --all
+
+fmt-check:
+	cargo fmt --all -- --check
+
+clippy:
+	cargo clippy --workspace --all-targets -- -D warnings
 
 build-rust:
 	cargo build --workspace
