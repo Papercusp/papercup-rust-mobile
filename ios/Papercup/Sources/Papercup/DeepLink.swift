@@ -120,4 +120,16 @@ final class PapercupAppDelegate: NSObject, UIApplicationDelegate, UNUserNotifica
             await PushManager(creds: creds).register(deviceTokenData: deviceToken)
         }
     }
+
+    /// Required when UIApplicationDelegateAdaptor is wired alongside
+    /// SwiftUI's .onOpenURL — without this, openurl events never reach
+    /// the WindowGroup. We return true after handing the URL off to
+    /// DeepLinkRouter so SwiftUI's .onOpenURL also fires (defence in
+    /// depth).
+    func application(_ app: UIApplication,
+                     open url: URL,
+                     options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        Task { @MainActor in DeepLinkRouter.shared.handle(url: url) }
+        return true
+    }
 }
