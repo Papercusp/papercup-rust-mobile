@@ -2,19 +2,19 @@
 package com.papercuspai.operator.mobile
 
 import android.content.Context
-import android.content.Intent
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
 import android.util.Log
+import io.elevenlabs.ClientTool
+import io.elevenlabs.ClientToolResult
+import io.elevenlabs.ConversationClient
+import io.elevenlabs.ConversationConfig
+import io.elevenlabs.ConversationSession
+import io.elevenlabs.models.ConversationMode
+import io.elevenlabs.models.ConversationStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -22,25 +22,29 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import uniffi.papercup.OperatorClient
-import uniffi.papercup.VoiceClient
-import uniffi.papercup.VoiceEvent
-import uniffi.papercup.VoiceException
-import uniffi.papercup.VoiceStatus
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
-/// Voice coordinator. Owns the WS client, the STT recognizer, the TTS
-/// engine, the lease heartbeat, and the state machine the UI reads.
+/// Voice coordinator — V1 (ElevenLabs Conversational AI).
 ///
-/// Wire protocol mirrors the Tauri-era impl: phone does STT + TTS
-/// locally; only transcripts go up and speak frames come down. Phone
-/// is the lease owner while listening; releases on stop.
+/// Phone is an ElevenLabs Conv AI client of the SAME agent the desktop
+/// uses. Phone fetches a short-lived conversation token from
+/// `/api/mobile/voice-session-init` (operator mints via EL API key),
+/// then starts a WebRTC session via the EL Android SDK. All STT/TTS/
+/// VAD/AEC happen on the EL side. Tools the agent calls fall into:
+///   - browser:'required' → invoked here as clientTools, mapped to a
+///     ClientToolDispatcher which drives the phone's native UI
+///   - browser:'none'/'optional' → webhook → /api/elevenlabs/webhook
+///     → operator runCommand() (server-side, no phone involvement)
 ///
-/// Lifecycle is bound to a `start()` / `stop()` pair. Internally it
-/// owns a SupervisorJob; `stop()` cancels everything cleanly.
+/// State surface preserved across the WSS → EL migration so the rest
+/// of the app didn't have to change: state / intents / micLevel /
+/// start() / stop().
 class VoiceManager(
     private val context: Context,
     private val creds: DeviceCredentials,
-    private val wakeWord: String = "hey papercup",
 ) {
     sealed interface State {
         data object Idle : State
@@ -50,8 +54,9 @@ class VoiceManager(
         data class Failed(val message: String) : State
     }
 
-    /// Phase 4 — local intents dispatched from voice WS Speak frames.
-    /// UI observes via [intents] and reacts (e.g. Navigate → push detail).
+    /// Voice-driven phone intents. These map to client tools the
+    /// agent invokes; they fire onto a SharedFlow the UI subscribes
+    /// to (e.g. Navigate → push detail screen).
     sealed interface Intent {
         data class Navigate(val slug: String) : Intent
         data object Pause : Intent
@@ -62,24 +67,15 @@ class VoiceManager(
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
 
-    private val _intents = kotlinx.coroutines.flow.MutableSharedFlow<Intent>(extraBufferCapacity = 8)
-    val intents: kotlinx.coroutines.flow.SharedFlow<Intent> = _intents.asSharedFlow()
+    private val _intents = MutableSharedFlow<Intent>(extraBufferCapacity = 8)
+    val intents: SharedFlow<Intent> = _intents.asSharedFlow()
 
-    /// Microphone amplitude reported by SpeechRecognizer.onRmsChanged
-    /// while listening. Range observed in practice: ~-2.0 (silence) to
-    /// ~10 (loud); UI normalises to 0..1. Reset to 0 when not listening.
     private val _micLevel = MutableStateFlow(0f)
     val micLevel: StateFlow<Float> = _micLevel.asStateFlow()
 
     private var scope: CoroutineScope? = null
-    private var voice: VoiceClient? = null
-    private var recognizer: SpeechRecognizer? = null
-    private var tts: TextToSpeech? = null
-    private var pumpJob: Job? = null
-    private var heartbeatJob: Job? = null
-    /// We pause the recognizer while TTS plays. Resume after `utt.onDone`.
-    @Volatile
-    private var sttPaused = false
+    private var session: ConversationSession? = null
+    private var sessionJob: Job? = null
 
     fun start() {
         if (scope != null) return
@@ -87,214 +83,160 @@ class VoiceManager(
         scope = s
         _state.value = State.Connecting
 
-        s.launch(Dispatchers.IO) {
+        sessionJob = s.launch(Dispatchers.IO) {
+            val initResult = runCatching { fetchSessionInit() }
+            val init = initResult.getOrElse { err ->
+                Log.w(TAG, "session-init failed: ${err.message}")
+                _state.value = State.Failed("Voice unavailable — ${err.message}")
+                return@launch
+            }
             try {
-                creds.client().voiceLeaseClaim()
+                val config = ConversationConfig(
+                    conversationToken = init.conversationToken,
+                    userId = init.dynamicVariables.deviceId,
+                    onConnect = { _ -> Log.i(TAG, "EL connected") },
+                    onDisconnect = { reason ->
+                        Log.i(TAG, "EL disconnected: $reason")
+                        if (_state.value !is State.Failed) _state.value = State.Idle
+                    },
+                    onStatusChange = { status ->
+                        when (status) {
+                            ConversationStatus.CONNECTED -> if (_state.value is State.Connecting) {
+                                _state.value = State.Listening
+                            }
+                            ConversationStatus.CONNECTING -> _state.value = State.Connecting
+                            ConversationStatus.DISCONNECTED,
+                            ConversationStatus.DISCONNECTING -> {
+                                if (_state.value !is State.Failed) _state.value = State.Idle
+                            }
+                            ConversationStatus.ERROR -> _state.value = State.Failed("Voice error")
+                        }
+                    },
+                    onModeChange = { mode ->
+                        when (mode) {
+                            ConversationMode.SPEAKING -> {
+                                if (_state.value !is State.Speaking) {
+                                    _state.value = State.Speaking("…", "agent")
+                                }
+                            }
+                            ConversationMode.LISTENING -> _state.value = State.Listening
+                        }
+                    },
+                    onAudioLevelChanged = { level -> _micLevel.value = level },
+                    onAgentResponse = { response ->
+                        _state.value = State.Speaking(response, "agent")
+                    },
+                    onUserTranscript = { transcript ->
+                        Log.d(TAG, "user: $transcript")
+                    },
+                    onUnhandledClientToolCall = { call ->
+                        Log.w(TAG, "agent invoked unhandled client tool: $call")
+                    },
+                    clientTools = buildClientTools(),
+                )
+                session = ConversationClient.startSession(config, context)
             } catch (t: Throwable) {
-                Log.w(TAG, "lease claim failed: ${t.message}")
+                Log.w(TAG, "EL startSession failed", t)
+                _state.value = State.Failed("Voice unavailable — ${t.message ?: t.javaClass.simpleName}")
             }
         }
-
-        val client = VoiceClient(creds.server, creds.deviceToken, wakeWord)
-        voice = client
-
-        pumpJob = s.launch(Dispatchers.IO) { pumpEvents(client) }
-        heartbeatJob = s.launch(Dispatchers.IO) {
-            while (true) {
-                delay(5_000)
-                try {
-                    creds.client().voiceLeaseHeartbeat()
-                } catch (_: Throwable) {}
-            }
-        }
-
-        // STT + TTS init has to happen on the main thread.
-        s.launch(Dispatchers.Main) { initTts() }
     }
 
     fun stop() {
         val s = scope ?: return
         scope = null
-        try { recognizer?.cancel() } catch (_: Throwable) {}
-        try { recognizer?.destroy() } catch (_: Throwable) {}
-        recognizer = null
-        try { tts?.stop() } catch (_: Throwable) {}
-        try { tts?.shutdown() } catch (_: Throwable) {}
-        tts = null
-        try { voice?.disconnect() } catch (_: Throwable) {}
-        try { voice?.close() } catch (_: Throwable) {}
-        voice = null
+        val sess = session
+        session = null
+        // endSession() is a suspend fn; fire-and-forget on IO before
+        // we cancel the scope.
+        if (sess != null) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try { sess.endSession() } catch (_: Throwable) {}
+            }
+        }
+        sessionJob?.cancel()
+        sessionJob = null
         _micLevel.value = 0f
-        s.cancel()
-        pumpJob = null
-        heartbeatJob = null
         _state.value = State.Idle
-
-        // Best-effort lease release.
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                creds.client().voiceLeaseRelease()
-            } catch (_: Throwable) {}
-        }
+        s.cancel()
     }
 
-    private suspend fun pumpEvents(client: VoiceClient) {
-        try {
-            while (true) {
-                val ev = try { client.nextEvent() }
-                catch (_: VoiceException) {
-                    _state.value = State.Failed("voice stream closed")
-                    return
-                }
-                when (ev) {
-                    is VoiceEvent.Connected -> {
-                        _state.value = State.Listening
-                        client.sendStatus(VoiceStatus.LISTENING)
-                        startStt()
-                    }
-                    is VoiceEvent.Speak -> {
-                        // Phase 4: parse for local intent. Speak the
-                        // remainder; emit any Navigate/Pause/Resume to
-                        // the intents flow for UI to react.
-                        val parsed = uniffi.papercup.parseIntent(ev.text)
-                        val toSpeak = when (parsed) {
-                            is uniffi.papercup.Intent.Navigate -> {
-                                _intents.tryEmit(Intent.Navigate(parsed.slug))
-                                parsed.speak
-                            }
-                            is uniffi.papercup.Intent.Pause -> {
-                                _intents.tryEmit(Intent.Pause)
-                                parsed.speak
-                            }
-                            is uniffi.papercup.Intent.Resume -> {
-                                _intents.tryEmit(Intent.Resume)
-                                parsed.speak
-                            }
-                            is uniffi.papercup.Intent.ClaimVoice -> {
-                                _intents.tryEmit(Intent.ClaimVoice)
-                                parsed.speak
-                            }
-                            is uniffi.papercup.Intent.Speak -> parsed.text
-                        }
-                        _state.value = State.Speaking(toSpeak, ev.source)
-                        sttPaused = true
-                        try { recognizer?.cancel() } catch (_: Throwable) {}
-                        client.sendStatus(VoiceStatus.SPEAKING)
-                        if (toSpeak.isNotBlank()) speak(toSpeak, ev.format)
-                    }
-                    is VoiceEvent.Closed -> {
-                        if (ev.code == 1008.toUShort()) {
-                            _state.value = State.Failed("auth rejected — re-pair the device")
-                        } else {
-                            // Transient close; the WS task is reconnecting.
-                            _state.value = State.Connecting
-                        }
-                    }
-                }
+    /// Native client-tool table. These are the `browser:'required'`
+    /// commands the desktop registry exposes — phone implementations
+    /// drive native UI for the same command ids. Tools that don't
+    /// need a UI session land server-side via the EL webhook and
+    /// don't appear here.
+    private fun buildClientTools(): Map<String, ClientTool> = mapOf(
+        "nav.openHarness" to clientTool { params ->
+            val slug = params["slug"]?.toString().orEmpty()
+            if (slug.isBlank()) ClientToolResult.failure("missing slug")
+            else {
+                _intents.tryEmit(Intent.Navigate(slug))
+                ClientToolResult.success("ok")
             }
-        } catch (t: Throwable) {
-            _state.value = State.Failed(t.message ?: t::class.simpleName ?: "voice error")
+        },
+        "operator.pause" to clientTool { _ ->
+            _intents.tryEmit(Intent.Pause)
+            ClientToolResult.success("ok")
+        },
+        "operator.resume" to clientTool { _ ->
+            _intents.tryEmit(Intent.Resume)
+            ClientToolResult.success("ok")
+        },
+        "voice.claim" to clientTool { _ ->
+            _intents.tryEmit(Intent.ClaimVoice)
+            ClientToolResult.success("ok")
+        },
+    )
+
+    private inline fun clientTool(crossinline body: suspend (Map<String, Any>) -> ClientToolResult?): ClientTool =
+        object : ClientTool {
+            override suspend fun execute(parameters: Map<String, Any>): ClientToolResult? = body(parameters)
         }
-    }
 
-    // ── STT (SpeechRecognizer) ─────────────────────────────────────────────
-
-    private fun startStt() {
-        if (sttPaused) return
-        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-            _state.value = State.Failed(
-                "Speech recognition not installed on this device.",
+    private fun fetchSessionInit(): SessionInit {
+        val http = OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .build()
+        val req = Request.Builder()
+            .url("${creds.server}/api/mobile/voice-session-init?surface=mobile-android")
+            .header("Authorization", "Bearer ${creds.deviceToken}")
+            .build()
+        http.newCall(req).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                error("session-init ${resp.code}: ${body.take(160)}")
+            }
+            val j = JSONObject(body)
+            val dyn = j.optJSONObject("dynamicVariables") ?: JSONObject()
+            return SessionInit(
+                conversationToken = j.getString("conversationToken"),
+                agentId = j.getString("agentId"),
+                dynamicVariables = DynamicVars(
+                    deviceId = dyn.optString("device_id"),
+                    workspaceId = dyn.optString("workspace_id"),
+                    surface = dyn.optString("surface", "mobile-android"),
+                    desktopHost = dyn.optString("desktop_host", ""),
+                ),
             )
-            return
-        }
-        // Recognizer must run on the main thread.
-        CoroutineScope(Dispatchers.Main).launch {
-            recognizer?.destroy()
-            val r = SpeechRecognizer.createSpeechRecognizer(context)
-            r.setRecognitionListener(SttListener())
-            recognizer = r
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.US.toLanguageTag())
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
-            }
-            r.startListening(intent)
         }
     }
 
-    private inner class SttListener : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) {}
-        override fun onBeginningOfSpeech() {}
-        override fun onRmsChanged(rmsdB: Float) {
-            // Normalise to 0..1. SpeechRecognizer's rms is in dB and ranges
-            // roughly -2..10 across silence-to-loud on the Fold5; clamp.
-            val normalised = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
-            _micLevel.value = normalised
-        }
-        override fun onBufferReceived(buffer: ByteArray?) {}
-        override fun onEndOfSpeech() {}
-        override fun onPartialResults(partialResults: Bundle?) {}
-        override fun onEvent(eventType: Int, params: Bundle?) {}
+    private data class SessionInit(
+        val conversationToken: String,
+        val agentId: String,
+        val dynamicVariables: DynamicVars,
+    )
 
-        override fun onError(error: Int) {
-            Log.d(TAG, "stt error code=$error")
-            // Most errors mean "no speech / silence / network" — just restart.
-            if (!sttPaused && scope != null) startStt()
-        }
+    private data class DynamicVars(
+        val deviceId: String,
+        val workspaceId: String,
+        val surface: String,
+        val desktopHost: String,
+    )
 
-        override fun onResults(results: Bundle?) {
-            val texts = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-            val text = texts.firstOrNull()?.trim().orEmpty()
-            if (text.isNotEmpty()) {
-                Log.i(TAG, "transcript: $text")
-                CoroutineScope(Dispatchers.IO).launch {
-                    voice?.sendTranscript(text)
-                }
-            }
-            // Restart listening for the next utterance.
-            if (!sttPaused && scope != null) startStt()
-        }
-    }
-
-    // ── TTS ────────────────────────────────────────────────────────────────
-
-    private fun initTts() {
-        tts = TextToSpeech(context.applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = java.util.Locale.US
-                tts?.setOnUtteranceProgressListener(object :
-                    android.speech.tts.UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
-                    override fun onError(utteranceId: String?) { onUtteranceDone() }
-                    override fun onDone(utteranceId: String?) { onUtteranceDone() }
-                })
-            }
-        }
-    }
-
-    private fun onUtteranceDone() {
-        sttPaused = false
-        CoroutineScope(Dispatchers.IO).launch {
-            voice?.sendStatus(VoiceStatus.LISTENING)
-        }
-        if (scope != null) startStt()
-        _state.value = State.Listening
-    }
-
-    private fun speak(text: String, format: String?) {
-        val cleaned = if (format == "ssml") {
-            // Web Speech doesn't grok SSML; Android's TTS needs <speak> wrapping
-            // or no markup. Strip tags as a stub like the Tauri impl did.
-            text.replace(Regex("<[^>]+>"), "")
-        } else {
-            text
-        }
-        val id = "papercup-${System.currentTimeMillis()}"
-        tts?.speak(cleaned, TextToSpeech.QUEUE_FLUSH, null, id)
-    }
-
-    private companion object {
-        const val TAG = "PapercupVoice"
+    companion object {
+        private const val TAG = "PapercupVoice"
     }
 }

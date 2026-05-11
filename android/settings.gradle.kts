@@ -11,6 +11,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // LiveKit Android (transitive of io.elevenlabs:elevenlabs-android)
+        // depends on com.github.davidliu:audioswitch, which only lives on
+        // JitPack.
+        maven("https://jitpack.io")
     }
 }
 rootProject.name = "Papercup"

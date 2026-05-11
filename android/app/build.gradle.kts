@@ -108,6 +108,9 @@ dependencies {
     // android/local.properties (or BuildConfig.PICOVOICE_ACCESS_KEY at
     // build time); WakeWordEngine.kt early-returns otherwise.
     implementation("ai.picovoice:porcupine-android:3.0.1")
+    // ElevenLabs Conversational AI SDK — voice transport for V1.
+    // Pulls LiveKit Android as the WebRTC layer. See docs/VOICE_V1_PLAN.md.
+    implementation("io.elevenlabs:elevenlabs-android:0.9.0")
 
     // Phase 11: OkHttp + okhttp-sse for the RunLog SSE tail of
     // /api/harness/{slug}/log/stream.
