@@ -7,37 +7,29 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import com.papercuspai.operator.mobile.theme.PapercupCard
-import com.papercuspai.operator.mobile.theme.PapercupCardHeader
-import com.papercuspai.operator.mobile.theme.PapercupColors
-import com.papercuspai.operator.mobile.theme.PapercupMetaText
-import com.papercuspai.operator.mobile.theme.PapercupPanel
-import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
-import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupChipRow
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupPanel
+import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
-import uniffi.papercup.Harness
-import uniffi.papercup.Running
-import uniffi.papercup.Toast as ToastEntry
-import uniffi.papercup.VoiceLease
+import uniffi.papercup.OperatorCard
 
-/// Tauri-parity landing surface. Aggregates the things you'd want at
-/// a glance — pause status, current voice lease holder, top recent
-/// harnesses, and the most recent operator notifications. Each card
-/// taps through to the appropriate full-tab view.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OperatorScreen(
@@ -46,45 +38,53 @@ fun OperatorScreen(
     liveTick: Int,
     onSelectHarness: (String) -> Unit,
 ) {
-    var paused by remember { mutableStateOf<Boolean?>(null) }
-    var lease by remember { mutableStateOf<VoiceLease?>(null) }
-    var leaseUnknown by remember { mutableStateOf(true) }
-    var running by remember { mutableStateOf<List<Running>>(emptyList()) }
-    var harnesses by remember { mutableStateOf<List<Harness>>(emptyList()) }
-    var toasts by remember { mutableStateOf<List<ToastEntry>>(emptyList()) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var cards by remember { mutableStateOf<List<OperatorCard>>(emptyList()) }
+    var fetchError by remember { mutableStateOf<String?>(null) }
+    var actionError by remember { mutableStateOf<String?>(null) }
+    var pendingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var hiddenIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     val scope = rememberCoroutineScope()
 
-    // Each call is independent so a transient failure on one (e.g. operator
-    // mid-restart, route 404) doesn't blank the rest of the surface. The
-    // last successful values for each card persist; the error banner shows
-    // only when nothing succeeded.
     LaunchedEffect(creds.deviceToken, liveTick) {
-        val client = creds.client()
-        var anyOk = false
-        var lastErr: String? = null
-        suspend fun <T> tryFetch(label: String, block: suspend () -> T): T? = try {
-            val v = block()
-            anyOk = true
-            v
-        } catch (e: ApiException) { lastErr = "$label: ${e::class.simpleName}"; null }
-          catch (t: Throwable)   { lastErr = "$label: ${t::class.simpleName}"; null }
+        loading = true
+        try {
+            cards = creds.client().listOperatorCards()
+            fetchError = null
+        } catch (t: Throwable) {
+            fetchError = t.toOperatorMessage()
+        } finally {
+            loading = false
+        }
+    }
 
-        tryFetch("pause") { client.pauseGet() }?.let { paused = it.paused }
-        tryFetch("lease") { client.voiceLeaseGet() }.also { leaseUnknown = !anyOk }?.let { lease = it }
-        tryFetch("running") { client.listRunning() }?.let { running = it }
-        tryFetch("harnesses") { client.listHarnesses() }
-            ?.sortedByDescending { it.lastActiveTs ?: Long.MIN_VALUE }
-            ?.let { harnesses = it }
-        tryFetch("notifs") { client.recentNotifications() }?.let { toasts = it }
-        error = if (anyOk) null else lastErr
+    val visibleCards = remember(cards, hiddenIds) {
+        cards.filterNot { hiddenIds.contains(it.id) }
+    }
+    val subtitle = if (loading) "Loading…" else "${visibleCards.size} pending"
+    val error = fetchError ?: actionError
+
+    fun actOnCard(cardId: String, action: suspend (String) -> String) {
+        actionError = null
+        pendingIds = pendingIds + cardId
+        hiddenIds = hiddenIds + cardId
+        scope.launch {
+            try {
+                action(cardId)
+            } catch (t: Throwable) {
+                actionError = t.toOperatorMessage()
+                hiddenIds = hiddenIds - cardId
+            } finally {
+                pendingIds = pendingIds - cardId
+            }
+        }
     }
 
     Scaffold(
         topBar = {
             PapercupScreenHeader(
                 title = stringResource(R.string.operator_screen_title),
-                subtitle = "core ${uniffi.papercup.version()} · ${creds.server}",
+                subtitle = subtitle,
             )
         },
         containerColor = PapercupColors.Ink,
@@ -96,48 +96,36 @@ fun OperatorScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Spacer(Modifier.height(8.dp))
             error?.let { ErrorCard(it) }
 
-            // Pause + voice-lease status row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                PauseCard(
-                    paused = paused,
-                    onToggle = { target ->
-                        scope.launch {
-                            try {
-                                paused = creds.client().pauseSet(target)
-                            } catch (_: Throwable) {}
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                VoiceLeaseCard(
-                    lease = lease,
-                    leaseUnknown = leaseUnknown,
-                    selfDeviceId = creds.deviceId,
-                    modifier = Modifier.weight(1f),
+            if (!loading && visibleCards.isEmpty()) {
+                EmptyStateCard()
+            }
+
+            visibleCards.forEachIndexed { index, card ->
+                OperatorSuggestionCard(
+                    index = index,
+                    card = card,
+                    busy = pendingIds.contains(card.id),
+                    onSelectHarness = onSelectHarness,
+                    onDispatch = { actOnCard(card.id) { creds.client().dispatchOperatorCard(it) } },
+                    onDismiss = { actOnCard(card.id) { creds.client().dismissOperatorCard(it) } },
                 )
             }
 
-            RunningCard(running, onSelectHarness)
-            RecentHarnessesCard(harnesses, onSelectHarness)
-            RecentNotificationsCard(toasts, onSelectHarness)
-            IdentityCard(creds)
+            Spacer(Modifier.height(12.dp))
         }
     }
 }
 
 @Composable
 private fun ErrorCard(message: String) {
-    PapercupCard(accent = PapercupColors.ErrorSoft) {
+    PapercupCard(accent = PapercupColors.ErrorSoft, contentPadding = PaddingValues(12.dp)) {
         Text(
-            message,
+            text = message,
             color = PapercupColors.Error,
             fontFamily = FontFamily.Monospace,
             style = MaterialTheme.typography.bodySmall,
@@ -146,204 +134,201 @@ private fun ErrorCard(message: String) {
 }
 
 @Composable
-private fun PauseCard(
-    paused: Boolean?,
-    onToggle: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val isPaused = paused == true
+private fun EmptyStateCard() {
     PapercupCard(
-        modifier = modifier
-            .clickable(enabled = paused != null) { onToggle(!isPaused) }
-            .semantics {
-                contentDescription = when (paused) {
-                    true -> "Operator paused. Double-tap to resume."
-                    false -> "Operator running. Double-tap to pause."
-                    null -> "Operator state loading."
-                }
-                role = Role.Button
-            },
-        accent = if (isPaused) PapercupColors.ErrorSoft else PapercupColors.SuccessSoft,
+        accent = PapercupColors.AccentSoft,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 16.dp),
+    ) {
+        Text(
+            text = "No pending suggestions.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = PapercupColors.TextMuted,
+        )
+    }
+}
+
+@Composable
+private fun OperatorSuggestionCard(
+    index: Int,
+    card: OperatorCard,
+    busy: Boolean,
+    onSelectHarness: (String) -> Unit,
+    onDispatch: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    PapercupCard(
+        accent = cardAccent(card),
         contentPadding = PaddingValues(12.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            PapercupMetaText(stringResource(R.string.operator_label))
-            Text(
-                when (paused) {
-                    true -> "PAUSED"
-                    false -> "RUNNING"
-                    null -> "…"
-                },
-                style = MaterialTheme.typography.titleMedium,
-                color = if (isPaused) PapercupColors.Error else PapercupColors.Success,
-            )
-            PapercupMetaText("tap to ${if (isPaused) "resume" else "pause"}")
-        }
-    }
-}
-
-@Composable
-private fun VoiceLeaseCard(
-    lease: VoiceLease?,
-    leaseUnknown: Boolean,
-    selfDeviceId: String,
-    modifier: Modifier = Modifier,
-) {
-    val (label, sub) = when {
-        leaseUnknown -> "…" to ""
-        lease == null -> "IDLE" to "no listener"
-        lease.ownerId == selfDeviceId -> "THIS PHONE" to "active listener"
-        lease.ownerKind == "mobile" -> "OTHER PHONE" to lease.ownerId.take(8) + "…"
-        else -> "DESKTOP" to lease.ownerId.take(8) + "…"
-    }
-    PapercupCard(
-        modifier = modifier.semantics {
-            contentDescription = "Voice lease: $label. $sub"
-        },
-        accent = PapercupColors.InfoSoft,
-        contentPadding = PaddingValues(12.dp),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            PapercupMetaText(stringResource(R.string.voice_label))
-            Text(label, style = MaterialTheme.typography.titleMedium, color = PapercupColors.AccentStrong)
-            PapercupMetaText(sub)
-        }
-    }
-}
-
-@Composable
-private fun RunningCard(running: List<Running>, onSelect: (String) -> Unit) {
-    PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PapercupCardHeader(stringResource(R.string.currently_running), meta = running.size.toString())
-            if (running.isEmpty()) {
-                PapercupMetaText(stringResource(R.string.no_active_runs))
-            } else {
-                running.forEach { r ->
-                    PapercupPanel(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(r.harnessSlug) },
-                        contentPadding = PaddingValues(10.dp),
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(r.harnessSlug, style = MaterialTheme.typography.titleSmall)
-                                PapercupStatusChip(text = "${r.phase} · ${r.status}")
-                            }
-                            val counts = "✓${r.passedCount} · ☐${r.todoCount}" +
-                                (if (r.blockedCount > 0) " · ⚠${r.blockedCount}" else "")
-                            PapercupMetaText("$counts · iter ${r.iteration}", monospace = true)
-                            if (r.activeRoles.isNotEmpty()) {
-                                PapercupMetaText("roles: ${r.activeRoles.joinToString(", ")}")
-                            }
-                        }
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    PapercupChipRow {
+                        PapercupStatusChip(
+                            text = "#${index + 1} · ${card.action.operatorLabel()}",
+                            containerColor = PapercupColors.AccentSoft,
+                            contentColor = PapercupColors.AccentCool,
+                        )
                     }
+                    Text(
+                        text = card.directiveSubject?.takeIf { it.isNotBlank() } ?: card.action.operatorTitle(),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = PapercupColors.Text,
+                    )
                 }
+                Spacer(Modifier.width(8.dp))
+                PapercupStatusChip(
+                    text = card.status.operatorLabel(),
+                    containerColor = statusContainer(card.status),
+                    contentColor = statusContent(card.status),
+                    borderColor = statusContent(card.status).copy(alpha = 0.45f),
+                )
             }
-        }
-    }
-}
 
-@Composable
-private fun RecentHarnessesCard(harnesses: List<Harness>, onSelect: (String) -> Unit) {
-    PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PapercupCardHeader(stringResource(R.string.recent_harnesses), meta = harnesses.size.toString())
-            if (harnesses.isEmpty()) {
-                PapercupMetaText(stringResource(R.string.no_harnesses_yet))
-            } else {
-                harnesses.take(5).forEach { h ->
-                    PapercupPanel(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(h.slug) },
-                        contentPadding = PaddingValues(10.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
-                                Text(h.slug, style = MaterialTheme.typography.titleSmall)
-                                val meta = buildList {
-                                    h.harnessKind?.let { add("kind=$it") }
-                                    h.iteration?.let { add("iter=$it") }
-                                    if (!h.hasState) add("no-state")
-                                }.joinToString(" · ")
-                                if (meta.isNotEmpty()) {
-                                    PapercupMetaText(meta)
-                                }
-                            }
-                            h.status?.let { PapercupStatusChip(text = it) }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecentNotificationsCard(toasts: List<ToastEntry>, onSelectHarness: (String) -> Unit) {
-    if (toasts.isEmpty()) return
-    PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PapercupCardHeader(stringResource(R.string.recent_activity), meta = toasts.size.toString())
-            toasts.take(3).forEach { t ->
-                PapercupPanel(
+            card.targetHarness?.takeIf { it.isNotBlank() }?.let { target ->
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .let { mod ->
-                            t.harnessSlug?.let { slug -> mod.clickable { onSelectHarness(slug) } } ?: mod
+                        .clickable { onSelectHarness(target) }
+                        .semantics {
+                            contentDescription = "Target harness $target"
+                            role = Role.Button
                         },
-                    contentPadding = PaddingValues(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text(t.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            PapercupMetaText(FMT.format(Date(t.createdAt * 1000)), monospace = true)
-                        }
-                        t.harnessSlug?.let {
-                            PapercupMetaText(it, monospace = true)
-                        }
-                    }
+                    PapercupMetaText("→", monospace = true)
+                    Text(
+                        text = target,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PapercupColors.TextMuted,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
+            }
+
+            card.reason?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = PapercupColors.TextMuted,
+                )
+            }
+
+            card.directiveBody?.takeIf { it.isNotBlank() }?.let {
+                PapercupPanel(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                    Text(
+                        text = it,
+                        color = PapercupColors.TextMuted,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+
+            OperatorActionTray(
+                sendDirective = card.action == "send_directive",
+                busy = busy,
+                onDispatch = onDispatch,
+                onDismiss = onDismiss,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OperatorActionTray(
+    sendDirective: Boolean,
+    busy: Boolean,
+    onDispatch: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (sendDirective) {
+            Button(
+                onClick = onDispatch,
+                enabled = !busy,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = PapercupColors.AccentStrong,
+                    contentColor = PapercupColors.ButtonInk,
+                    disabledContainerColor = PapercupColors.AccentStrong.copy(alpha = 0.36f),
+                    disabledContentColor = PapercupColors.ButtonInk.copy(alpha = 0.7f),
+                ),
+            ) {
+                Text(if (busy) "…" else "Dispatch")
+            }
+            OutlinedButton(
+                onClick = onDismiss,
+                enabled = !busy,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = PapercupColors.TextMuted,
+                    disabledContentColor = PapercupColors.TextFaint,
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (busy) PapercupColors.StrokeSoft else PapercupColors.StrokeStrong,
+                ),
+            ) {
+                Text("Dismiss")
+            }
+        } else {
+            OutlinedButton(
+                onClick = onDismiss,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = PapercupColors.Success,
+                    disabledContentColor = PapercupColors.TextFaint,
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (busy) PapercupColors.StrokeSoft else PapercupColors.Success.copy(alpha = 0.45f),
+                ),
+            ) {
+                Text(if (busy) "…" else "Acknowledge")
             }
         }
     }
 }
 
-@Composable
-private fun IdentityCard(creds: DeviceCredentials) {
-    PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PapercupCardHeader(stringResource(R.string.this_device), meta = creds.workspaceId)
-            KvLine("workspace", creds.workspaceId)
-            KvLine("device", creds.deviceId.take(12) + "…")
-            creds.meshAssignedIp?.let { KvLine("mesh", it) }
-        }
-    }
+private fun cardAccent(card: OperatorCard): Color = when {
+    card.action == "send_directive" -> PapercupColors.AccentSoft
+    card.status.equals("failed", ignoreCase = true) -> PapercupColors.ErrorSoft
+    else -> PapercupColors.TealSoft
 }
 
-@Composable
-private fun KvLine(key: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PapercupMetaText(key)
-        PapercupMetaText(value, monospace = true)
-    }
+private fun statusContainer(status: String): Color = when {
+    status.equals("failed", ignoreCase = true) -> PapercupColors.ErrorSoft
+    status.equals("pending", ignoreCase = true) -> PapercupColors.WarningSoft
+    else -> PapercupColors.AccentSoft
 }
 
-private val FMT = SimpleDateFormat("MMM d HH:mm", Locale.US)
+private fun statusContent(status: String): Color = when {
+    status.equals("failed", ignoreCase = true) -> PapercupColors.Error
+    status.equals("pending", ignoreCase = true) -> PapercupColors.Warning
+    else -> PapercupColors.AccentStrong
+}
+
+private fun String.operatorLabel(): String = replace('_', ' ').uppercase()
+
+private fun String.operatorTitle(): String = split('_')
+    .joinToString(" ") { part -> part.lowercase().replaceFirstChar { c -> c.titlecase() } }
+
+private fun Throwable.toOperatorMessage(): String = when (this) {
+    is ApiException -> message ?: this::class.simpleName ?: "Operator request failed"
+    else -> message ?: this::class.simpleName ?: "Operator request failed"
+}
