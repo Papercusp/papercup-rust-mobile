@@ -59,12 +59,12 @@ final class PairFlowUITests: XCTestCase {
         ]
         app.launch()
 
-        let operatorTab = app.tabBars.buttons["Operator"]
+        let operatorTab = app.buttons["Operator"]
         XCTAssertTrue(operatorTab.waitForExistence(timeout: 20),
                       "Operator tab should appear after launch-arg pair backdoor")
 
         // Hop to Settings, scroll to find the new nav rows, open each.
-        let settingsTab = app.tabBars.buttons["Settings"]
+        let settingsTab = app.buttons["Settings"]
         XCTAssertTrue(settingsTab.waitForExistence(timeout: 5))
         settingsTab.tap()
 

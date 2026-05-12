@@ -60,7 +60,7 @@ fun ActivityScreen(
     Scaffold(
         topBar = {
             Column {
-                PapercupScreenHeader(title = stringResource(R.string.tab_activity))
+                PapercupScreenHeader(title = "Notifications")
                 TabRow(
                     selectedTabIndex = tab,
                     containerColor = PapercupColors.InkRaised.copy(alpha = 0.96f),

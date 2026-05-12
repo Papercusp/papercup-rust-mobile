@@ -31,12 +31,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
@@ -45,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -326,7 +321,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         Route.StandingApprovals -> StandingApprovalsScreen(creds = current, onBack = { route = Route.Settings })
         Route.VoiceSettings -> VoiceSettingsScreen(onBack = { route = Route.Settings })
         Route.Diagnostics -> DiagnosticsScreen(creds = current, monitor = monitor, onBack = { route = Route.Settings })
-        Route.Operator, Route.List, Route.Activity, Route.Settings -> PairedShell(
+        Route.Operator, Route.List, Route.Running, Route.Activity, Route.Settings -> PairedShell(
             current = current,
             voice = voice,
             liveTick = liveTick,
@@ -379,38 +374,13 @@ private fun PairedShell(
             }
         },
         bottomBar = {
-            NavigationBar(
-                modifier = Modifier.border(1.dp, PapercupColors.StrokeSoft),
-                containerColor = PapercupColors.InkRaised.copy(alpha = 0.96f),
-                contentColor = PapercupColors.Text,
-                tonalElevation = 0.dp,
-            ) {
-                val items = listOf(
-                    Triple(Route.Operator, Icons.Default.Dashboard, stringResource(R.string.tab_operator)),
-                    Triple(Route.List, Icons.Default.Apps, stringResource(R.string.tab_harnesses)),
-                    Triple(Route.Activity, Icons.Default.Notifications, stringResource(R.string.tab_activity)),
-                    Triple(Route.Settings, Icons.Default.Settings, stringResource(R.string.tab_settings)),
-                )
-                items.forEach { (r, icon, label) ->
-                    NavigationBarItem(
-                        selected = route == r,
-                        onClick = { onRouteChange(r) },
-                        icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label.uppercase(), style = MaterialTheme.typography.labelSmall) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = PapercupColors.AccentStrong,
-                            selectedTextColor = PapercupColors.AccentStrong,
-                            indicatorColor = PapercupColors.AccentSoft,
-                            unselectedIconColor = PapercupColors.TextFaint,
-                            unselectedTextColor = PapercupColors.TextFaint,
-                        ),
-                    )
-                }
-            }
+            MobileBottomNav(
+                selected = route,
+                onRouteChange = onRouteChange,
+            )
         },
-        // Voice FAB shown on every top-level tab (Operator/Harnesses/
-        // Activity/Settings). Previously was nested inside the
-        // HarnessListScreen Scaffold, so other tabs lost it.
+        // Voice FAB shown on every top-level tab, matching the retired
+        // Tauri mobile shell's fixed right-side voice pill.
         floatingActionButton = { VoiceFab(voice) },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -427,6 +397,11 @@ private fun PairedShell(
                     lastInvalidate = lastInvalidate,
                     voice = voice,
                     onSelect = onSelectHarness,
+                )
+                Route.Running -> RunningScreen(
+                    creds = current,
+                    liveTick = liveTick,
+                    onSelectHarness = onSelectHarness,
                 )
                 Route.Activity -> ActivityScreen(
                     creds = current,
@@ -447,10 +422,64 @@ private fun PairedShell(
     }
 }
 
+@Composable
+private fun MobileBottomNav(
+    selected: Route,
+    onRouteChange: (Route) -> Unit,
+) {
+    val items = listOf(
+        Triple(Route.Operator, "●", stringResource(R.string.tab_operator)),
+        Triple(Route.List, "⌘", stringResource(R.string.tab_harnesses)),
+        Triple(Route.Running, "▶", stringResource(R.string.tab_running)),
+        Triple(Route.Activity, "◆", stringResource(R.string.tab_activity)),
+        Triple(Route.Settings, "⚙", stringResource(R.string.tab_settings)),
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PapercupColors.HeaderGradient)
+            .border(1.dp, PapercupColors.StrokeSoft)
+            .padding(bottom = 4.dp, top = 6.dp, start = 6.dp, end = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items.forEach { (route, glyph, label) ->
+            val active = selected == route
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (active) PapercupColors.AccentSoft else Color.Transparent)
+                    .clickable { onRouteChange(route) }
+                    .semantics {
+                        contentDescription = label
+                        role = androidx.compose.ui.semantics.Role.Button
+                    }
+                    .padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+            ) {
+                Text(
+                    text = glyph,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (active) PapercupColors.AccentStrong else PapercupColors.TextFaint,
+                )
+                Text(
+                    text = label.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (active) PapercupColors.AccentStrong else PapercupColors.TextFaint,
+                )
+            }
+        }
+    }
+}
+
 private sealed interface Route {
     /// Bottom-nav primary destinations.
     data object Operator : Route
     data object List : Route
+    data object Running : Route
     data object Activity : Route
     data object Settings : Route
 
@@ -496,8 +525,12 @@ fun HarnessListScreen(
         // top-level tab — not just this one.
         topBar = {
             PapercupScreenHeader(
-                title = stringResource(R.string.app_brand),
-                subtitle = "core ${version()} · ${creds.server}",
+                title = "Harnesses",
+                subtitle = when (val currentState = state) {
+                    ScreenState.Loading -> "Loading…"
+                    is ScreenState.Ready -> currentState.harnesses.size.toString()
+                    is ScreenState.Failed -> "error"
+                },
             )
         },
         containerColor = PapercupColors.Ink,
@@ -579,6 +612,13 @@ fun HarnessListScreen(
     }
 }
 
+private data class VoiceFabStyle(
+    val glyph: String,
+    val label: String,
+    val container: Color,
+    val content: Color,
+)
+
 @Composable
 private fun VoiceFab(voice: VoiceManager) {
     val state by voice.state.collectAsState()
@@ -594,12 +634,12 @@ private fun VoiceFab(voice: VoiceManager) {
     }
 
     val current = state
-    val (label, container, content) = when (current) {
-        is VoiceManager.State.Idle -> Triple("Listen", PapercupColors.Accent, PapercupColors.Ink)
-        is VoiceManager.State.Connecting -> Triple("Connecting", PapercupColors.InfoSoft, PapercupColors.Info)
-        is VoiceManager.State.Listening -> Triple("Listening", PapercupColors.Warning, PapercupColors.Ink)
-        is VoiceManager.State.Speaking -> Triple("Speaking · ${current.source}", PapercupColors.Success, PapercupColors.Ink)
-        is VoiceManager.State.Failed -> Triple("Voice (failed)", PapercupColors.Error, PapercupColors.Ink)
+    val (glyph, label, container, content) = when (current) {
+        is VoiceManager.State.Idle -> VoiceFabStyle("◉", "Listen", PapercupColors.InkRaised, PapercupColors.AccentStrong)
+        is VoiceManager.State.Connecting -> VoiceFabStyle("⋯", "Connecting", PapercupColors.InkRaised, PapercupColors.Warning)
+        is VoiceManager.State.Listening -> VoiceFabStyle("◼", "Listening", PapercupColors.Accent, PapercupColors.ButtonInk)
+        is VoiceManager.State.Speaking -> VoiceFabStyle("◼", "Speaking", PapercupColors.AccentStrong, PapercupColors.ButtonInk)
+        is VoiceManager.State.Failed -> VoiceFabStyle("!", "Error", PapercupColors.Error, Color.White)
     }
 
     val isListening = current is VoiceManager.State.Listening
@@ -638,15 +678,31 @@ private fun VoiceFab(voice: VoiceManager) {
                     ),
             )
         }
-        ExtendedFloatingActionButton(
-            onClick = onTap,
-            modifier = Modifier.border(1.dp, content.copy(alpha = 0.48f), RoundedCornerShape(999.dp)),
-            icon = { Icon(Icons.Default.Mic, contentDescription = "Voice") },
-            text = { Text(label) },
-            containerColor = container,
-            contentColor = content,
+        val voiceDescription = "Voice: $label" +
+            if (current is VoiceManager.State.Idle || current is VoiceManager.State.Failed) "" else " (tap to stop)"
+        Surface(
+            modifier = Modifier
+                .size(width = 80.dp, height = 56.dp)
+                .border(1.dp, content.copy(alpha = 0.48f), RoundedCornerShape(999.dp))
+                .clip(RoundedCornerShape(999.dp))
+                .clickable(onClick = onTap)
+                .semantics {
+                    contentDescription = voiceDescription
+                    role = androidx.compose.ui.semantics.Role.Button
+                },
             shape = RoundedCornerShape(999.dp),
-        )
+            color = container,
+            contentColor = content,
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(glyph, style = MaterialTheme.typography.titleMedium)
+                Text(label.uppercase(), style = MaterialTheme.typography.labelSmall)
+            }
+        }
     }
 }
 

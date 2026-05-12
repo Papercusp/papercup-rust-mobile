@@ -12,8 +12,9 @@
 "app.name" = "Papercup";
 
 "tab.operator" = "Operator";
-"tab.harnesses" = "Harnesses";
-"tab.activity" = "Activity";
+"tab.harnesses" = "Harness";
+"tab.running" = "Running";
+"tab.activity" = "Inbox";
 "tab.settings" = "Settings";
 
 "settings.standingApprovals" = "Standing approvals";
@@ -45,6 +46,8 @@
 /* Activity */
 "activity.notifications" = "Notifications";
 "activity.actions" = "Actions";
+"activity.noNotifications" = "No recent notifications";
+"activity.noActions" = "No recent actions";
 
 /* Diagnostics */
 "diagnostics.title" = "Diagnostics";

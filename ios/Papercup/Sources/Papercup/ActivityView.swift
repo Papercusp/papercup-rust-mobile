@@ -47,7 +47,7 @@ struct ActivityView: View {
                     }
                 }
             }
-            .navigationTitle("Activity")
+            .navigationTitle("Notifications")
             .task(id: "\(creds.deviceToken)|\(invalidationTick)") { await load() }
         }
     }

@@ -13,8 +13,9 @@
 
     <!-- Tab nav (MainActivity bottom bar) -->
     <string name="tab_operator">Operator</string>
-    <string name="tab_harnesses">Harnesses</string>
-    <string name="tab_activity">Activity</string>
+    <string name="tab_harnesses">Harness</string>
+    <string name="tab_running">Running</string>
+    <string name="tab_activity">Inbox</string>
     <string name="tab_settings">Settings</string>
 
     <!-- Settings nav rows -->

@@ -2,8 +2,8 @@
 import SwiftUI
 import os.log
 
-/// Mirrors Android's PairedShell — tab-nav (Operator / Harnesses /
-/// Activity / Settings) plus pushed routes (Detail / RunLog).
+/// Mirrors Android's PairedShell — Tauri-style tab nav (Operator /
+/// Harness / Running / Inbox / Settings) plus pushed routes.
 struct AppRoot: View {
     @State private var creds: DeviceCredentials? = CredentialStore.load()
     @State private var liveTick: Int = 0
@@ -11,7 +11,7 @@ struct AppRoot: View {
     @State private var pushedDetailSlug: String? = nil
     @EnvironmentObject private var deepLink: DeepLinkRouter
 
-    enum Tab: Hashable { case operatorTab, harnesses, activity, settings }
+    enum Tab: Hashable { case operatorTab, harnesses, running, activity, settings }
     @State private var tab: Tab = .operatorTab
 
     var body: some View {
@@ -142,45 +142,43 @@ private struct PairedShell: View {
                     .background(Color.red)
             }
             ZStack {
-                TabView(selection: $tab) {
-                    OperatorView(
-                        creds: current,
-                        invalidationTick: liveTick,
-                        onSelectHarness: onSelectHarness,
-                        voice: voice
-                    )
-                    .tabItem { Label(NSLocalizedString("tab.operator", comment: ""), systemImage: "rectangle.grid.2x2.fill") }
-                    .tag(AppRoot.Tab.operatorTab)
-
-                    HarnessListView(
-                        creds: current,
-                        liveTick: liveTick,
-                        lastInvalidate: lastInvalidate,
-                        onSelect: onSelectHarness
-                    )
-                    .tabItem { Label(NSLocalizedString("tab.harnesses", comment: ""), systemImage: "square.stack.3d.up.fill") }
-                    .tag(AppRoot.Tab.harnesses)
-
-                    ActivityView(
-                        creds: current,
-                        invalidationTick: liveTick,
-                        onSelectHarness: onSelectHarness
-                    )
-                    .tabItem { Label(NSLocalizedString("tab.activity", comment: ""), systemImage: "bell.fill") }
-                    .tag(AppRoot.Tab.activity)
-
-                    SettingsView(
-                        creds: current,
-                        monitor: monitor,
-                        onForget: onForget,
-                        onWorkspaceSwitched: onWorkspaceSwitched
-                    )
-                    .tabItem { Label(NSLocalizedString("tab.settings", comment: ""), systemImage: "gearshape.fill") }
-                    .tag(AppRoot.Tab.settings)
+                Group {
+                    switch tab {
+                    case .operatorTab:
+                        OperatorView(
+                            creds: current,
+                            invalidationTick: liveTick,
+                            onSelectHarness: onSelectHarness,
+                            voice: voice
+                        )
+                    case .harnesses:
+                        HarnessListView(
+                            creds: current,
+                            liveTick: liveTick,
+                            lastInvalidate: lastInvalidate,
+                            onSelect: onSelectHarness
+                        )
+                    case .running:
+                        RunningView(
+                            creds: current,
+                            invalidationTick: liveTick,
+                            onSelectHarness: onSelectHarness
+                        )
+                    case .activity:
+                        ActivityView(
+                            creds: current,
+                            invalidationTick: liveTick,
+                            onSelectHarness: onSelectHarness
+                        )
+                    case .settings:
+                        SettingsView(
+                            creds: current,
+                            monitor: monitor,
+                            onForget: onForget,
+                            onWorkspaceSwitched: onWorkspaceSwitched
+                        )
+                    }
                 }
-                .tint(PapercupTheme.accentStrong)
-                .toolbarBackground(PapercupTheme.inkRaised, for: .tabBar)
-                .toolbarColorScheme(.dark, for: .tabBar)
 
                 if let slug = pushedDetailSlug {
                     HarnessDetailView(
@@ -191,7 +189,13 @@ private struct PairedShell: View {
                     )
                     .transition(.move(edge: .trailing))
                 }
+
+                VoicePill(voice: voice)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 76)
             }
+            MobileBottomNav(tab: $tab)
         }
         .task(id: current.deviceToken) { monitor.start(); await runSync() }
         .onReceive(cacheHost.$tick) { _ in
@@ -206,9 +210,9 @@ private struct PairedShell: View {
         .onChange(of: voice.pendingIntent) { _, new in
             // Voice intent dispatch — every `browser: 'required'` client-
             // tool call from the EL agent surfaces here and maps to a
-            // native action. iOS uses TabView's binding plus
-            // pushedDetailSlug; voice-settings + standing-approvals are
-            // sub-screens of the Settings tab, so we tab-switch to
+            // native action. iOS uses the custom Tauri-style tab binding
+            // plus pushedDetailSlug; voice-settings + standing-approvals
+            // are sub-screens of the Settings tab, so we tab-switch to
             // Settings for those (user drills in one tap).
             guard let intent = new else { return }
             switch intent {
@@ -273,5 +277,116 @@ private struct PairedShell: View {
                 break
             }
         }
+    }
+}
+
+private struct MobileBottomNav: View {
+    @Binding var tab: AppRoot.Tab
+
+    private var items: [(AppRoot.Tab, String, String)] {
+        [
+            (.operatorTab, "●", NSLocalizedString("tab.operator", comment: "")),
+            (.harnesses, "⌘", NSLocalizedString("tab.harnesses", comment: "")),
+            (.running, "▶", NSLocalizedString("tab.running", comment: "")),
+            (.activity, "◆", NSLocalizedString("tab.activity", comment: "")),
+            (.settings, "⚙", NSLocalizedString("tab.settings", comment: "")),
+        ]
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(items, id: \.0) { item in
+                let selected = tab == item.0
+                let background = selected ? PapercupTheme.accent.opacity(0.10) : Color.clear
+                Button {
+                    tab = item.0
+                } label: {
+                    VStack(spacing: 1) {
+                        Text(item.1)
+                            .font(.system(size: 18, weight: .semibold))
+                        Text(item.2.uppercased())
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(0.8)
+                    }
+                    .foregroundStyle(selected ? PapercupTheme.accentStrong : PapercupTheme.textMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background(
+                        background,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(item.2))
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : [.isButton])
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+        .background(
+            LinearGradient(
+                colors: [PapercupTheme.inkRaised.opacity(0.96), PapercupTheme.ink.opacity(0.98)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(PapercupTheme.accentStrong.opacity(0.16))
+                .frame(height: 1)
+        }
+    }
+}
+
+private struct VoicePill: View {
+    @ObservedObject var voice: VoiceManager
+
+    private var style: (glyph: String, label: String, background: Color, foreground: Color) {
+        switch voice.state {
+        case .idle:
+            return ("◉", "Listen", PapercupTheme.inkRaised, PapercupTheme.accentStrong)
+        case .connecting:
+            return ("⋯", "Connecting", PapercupTheme.inkRaised, PapercupTheme.warning)
+        case .listening:
+            return ("◼", "Listening", PapercupTheme.accent, PapercupTheme.ink)
+        case .speaking:
+            return ("◼", "Speaking", PapercupTheme.accentStrong, PapercupTheme.ink)
+        case .failed:
+            return ("!", "Error", PapercupTheme.error, Color.white)
+        }
+    }
+
+    private var isActive: Bool {
+        switch voice.state {
+        case .idle, .failed: return false
+        case .connecting, .listening, .speaking: return true
+        }
+    }
+
+    var body: some View {
+        let s = style
+        Button {
+            if isActive {
+                voice.stop()
+            } else {
+                voice.start()
+            }
+        } label: {
+            VStack(spacing: 0) {
+                Text(s.glyph)
+                    .font(.system(size: 18, weight: .semibold))
+                Text(s.label.uppercased())
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(0.8)
+            }
+            .foregroundStyle(s.foreground)
+            .frame(width: 80, height: 56)
+            .background(s.background, in: Capsule())
+            .overlay(Capsule().stroke(s.foreground.opacity(0.48), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.38), radius: 18, x: 0, y: 10)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Voice: \(s.label)\(isActive ? " (tap to stop)" : "")"))
     }
 }

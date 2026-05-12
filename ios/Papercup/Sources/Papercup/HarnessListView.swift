@@ -19,7 +19,7 @@ struct HarnessListView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Papercup")
+                .navigationTitle("Harnesses")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(PapercupTheme.inkRaised, for: .navigationBar)
                 .toolbarColorScheme(.dark, for: .navigationBar)
