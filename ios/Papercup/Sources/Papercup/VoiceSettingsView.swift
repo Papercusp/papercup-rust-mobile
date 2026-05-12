@@ -11,6 +11,8 @@ struct VoiceSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 screenHeader
+                conversationModeSection
+                timersSection
                 wakeWordSection
                 speechRateSection
                 pitchSection
@@ -42,6 +44,83 @@ struct VoiceSettingsView: View {
                 .foregroundStyle(PapercupTheme.textMuted)
         }
         .padding(.vertical, 10)
+    }
+
+    private var conversationModeSection: some View {
+        sectionShell("Conversation mode") {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(VoiceMode.allCases, id: \.self) { mode in
+                    Button {
+                        prefs.voiceMode = mode
+                    } label: {
+                        HStack(alignment: .center, spacing: 12) {
+                            Image(systemName: prefs.voiceMode == mode ? "largecircle.fill.circle" : "circle")
+                                .foregroundStyle(prefs.voiceMode == mode ? PapercupTheme.accentStrong : PapercupTheme.textMuted)
+                            Text(mode.label)
+                                .font(.body)
+                                .foregroundStyle(PapercupTheme.text)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    if mode != VoiceMode.allCases.last { dividerLine() }
+                }
+                dividerLine()
+                Text(prefs.voiceMode.blurb)
+                    .font(.caption)
+                    .foregroundStyle(PapercupTheme.textMuted)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+            }
+        }
+    }
+
+    private var timersSection: some View {
+        sectionShell("Timers") {
+            VStack(alignment: .leading, spacing: 0) {
+                intInputRow(
+                    label: "Auto-disconnect (min)",
+                    helper: "User-silence cap. 0 uses workspace default.",
+                    value: $prefs.idleTimeoutMin
+                )
+                dividerLine()
+                intInputRow(
+                    label: "Session max (min)",
+                    helper: "Hard ceiling regardless of activity. 0 uses workspace default.",
+                    value: $prefs.sessionMaxMin
+                )
+            }
+        }
+    }
+
+    private func intInputRow(label: String, helper: String, value: Binding<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(PapercupTheme.text)
+            TextField(
+                "default",
+                text: Binding(
+                    get: { value.wrappedValue == 0 ? "" : String(value.wrappedValue) },
+                    set: { s in
+                        let v = Int(s).map { max(0, min(240, $0)) } ?? 0
+                        value.wrappedValue = v
+                    }
+                )
+            )
+            .keyboardType(.numberPad)
+            .textInputAutocapitalization(.never)
+            .font(.body)
+            .foregroundStyle(PapercupTheme.text)
+            Text(helper)
+                .font(.caption)
+                .foregroundStyle(PapercupTheme.textMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private var wakeWordSection: some View {

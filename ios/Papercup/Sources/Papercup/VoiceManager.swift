@@ -302,6 +302,16 @@ final class VoiceManager: ObservableObject {
         case "delegate_to_claude":
             await unsupported("Delegation isn't available from phone voice in V1")
 
+        // ── end_conversation — agent ends session in hybrid /
+        //    single-utterance mode. Ack EL first, then tear down
+        //    after a short delay so the result lands.
+        case "end_conversation":
+            await ok()
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                self?.stop()
+            }
+
         default:
             // Every remaining EL-registered tool (~26: harness_*,
             // ask_operator, agents_across_workspace, chat_list,
@@ -364,7 +374,15 @@ final class VoiceManager: ObservableObject {
     }
 
     private func fetchSessionInit() async throws -> SessionInit {
-        guard let url = URL(string: "\(creds.server)/api/mobile/voice-session-init?surface=mobile-ios") else {
+        // Pass device-local prefs as query params. Server resolves
+        // device override > workspace default and clamps single-utterance
+        // mode to idle ≤1 regardless of what we ask. Zero values are
+        // omitted so the server's PG default applies.
+        let prefs = VoicePrefsStore.load()
+        var params = "?surface=mobile-ios&mode=\(prefs.voiceMode.rawValue)"
+        if prefs.idleTimeoutMin > 0 { params += "&idleMin=\(prefs.idleTimeoutMin)" }
+        if prefs.sessionMaxMin > 0 { params += "&sessionMaxMin=\(prefs.sessionMaxMin)" }
+        guard let url = URL(string: "\(creds.server)/api/mobile/voice-session-init\(params)") else {
             throw URLError(.badURL)
         }
         var req = URLRequest(url: url)

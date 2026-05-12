@@ -76,6 +76,36 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Spacer(Modifier.height(12.dp))
+
+            SectionShell(title = "Conversation mode") {
+                VoiceModeRow(prefs.voiceMode) { mode -> update(prefs.copy(voiceMode = mode)) }
+                HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
+                PapercupMetaText(
+                    text = when (prefs.voiceMode) {
+                        VoiceMode.Continuous -> "Hands-free conversation, ChatGPT-style. Session stays open until you tap to end or it idles out."
+                        VoiceMode.Hybrid -> "Continuous, but the agent hangs up after definitive answers (\"marked done\"). Best of both."
+                        VoiceMode.SingleUtterance -> "One question, one answer, then disconnect. Cheapest. Best on cellular."
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+
+            SectionShell(title = "Timers") {
+                IntInputRow(
+                    label = "Auto-disconnect (min)",
+                    helper = "User-silence cap. 0 uses workspace default.",
+                    value = prefs.idleTimeoutMin,
+                    onChange = { update(prefs.copy(idleTimeoutMin = it)) },
+                )
+                HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
+                IntInputRow(
+                    label = "Session max (min)",
+                    helper = "Hard ceiling regardless of activity. 0 uses workspace default.",
+                    value = prefs.sessionMaxMin,
+                    onChange = { update(prefs.copy(sessionMaxMin = it)) },
+                )
+            }
+
             SectionShell(title = "Wake word") {
                 OutlinedTextField(
                     value = prefs.wakeWord,
@@ -253,6 +283,55 @@ private fun SliderRow(
             color = PapercupColors.Text,
             fontFamily = FontFamily.Monospace,
         )
+    }
+}
+
+@Composable
+private fun VoiceModeRow(current: VoiceMode, onPick: (VoiceMode) -> Unit) {
+    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+        VoiceMode.values().forEach { mode ->
+            val label = when (mode) {
+                VoiceMode.Continuous -> "Continuous"
+                VoiceMode.Hybrid -> "Hybrid"
+                VoiceMode.SingleUtterance -> "Single utterance"
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(
+                    selected = current == mode,
+                    onClick = { onPick(mode) },
+                    colors = RadioButtonDefaults.colors(
+                        selectedColor = PapercupColors.AccentStrong,
+                        unselectedColor = PapercupColors.StrokeSoft,
+                    ),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(label, color = PapercupColors.Text, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun IntInputRow(label: String, helper: String, value: Int, onChange: (Int) -> Unit) {
+    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+        Text(label, color = PapercupColors.Text, style = MaterialTheme.typography.labelMedium)
+        OutlinedTextField(
+            value = if (value == 0) "" else value.toString(),
+            onValueChange = { s ->
+                val v = s.toIntOrNull()?.coerceIn(0, 240) ?: 0
+                onChange(v)
+            },
+            placeholder = { Text("default") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = outlinedFieldColors(),
+        )
+        PapercupMetaText(text = helper, modifier = Modifier.padding(top = 4.dp))
     }
 }
 

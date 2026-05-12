@@ -366,6 +366,21 @@ class VoiceManager(
             "delegate_to_claude" to clientTool { _ ->
                 unsupported("Delegation isn't available from phone voice in V1")
             },
+
+            // ── end_conversation — agent tears down session after a
+            //    definitive answer in hybrid / single-utterance mode.
+            //    Returns ok BEFORE tearing down so EL receives the ack.
+            //    teardown() runs the same path as user tap, idle, or
+            //    session-max.
+            "end_conversation" to clientTool { _ ->
+                // Defer the actual teardown so EL has time to receive
+                // this tool result. 500ms is more than enough.
+                scope?.launch {
+                    delay(500)
+                    teardown(reason = "agent-end")
+                }
+                ok
+            },
         ) + proxyTools()
     }
 
@@ -453,8 +468,19 @@ class VoiceManager(
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(8, TimeUnit.SECONDS)
             .build()
+        // Pass device-local prefs as query params. Server resolves
+        // device override > workspace default and clamps single-utterance
+        // mode to idle ≤1 regardless of what we ask. Empty/zero values
+        // omitted so the server falls back to PG defaults.
+        val prefs = VoicePrefsStore(context).load()
+        val params = buildString {
+            append("?surface=mobile-android")
+            append("&mode=").append(prefs.voiceMode.wire)
+            if (prefs.idleTimeoutMin > 0) append("&idleMin=").append(prefs.idleTimeoutMin)
+            if (prefs.sessionMaxMin > 0) append("&sessionMaxMin=").append(prefs.sessionMaxMin)
+        }
         val req = Request.Builder()
-            .url("${creds.server}/api/mobile/voice-session-init?surface=mobile-android")
+            .url("${creds.server}/api/mobile/voice-session-init$params")
             .header("Authorization", "Bearer ${creds.deviceToken}")
             .build()
         http.newCall(req).execute().use { resp ->
