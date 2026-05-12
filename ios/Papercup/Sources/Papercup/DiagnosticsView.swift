@@ -6,6 +6,7 @@ import UserNotifications
 struct DiagnosticsView: View {
     let creds: DeviceCredentials
     @ObservedObject var monitor: ConnectionMonitor
+    let onOpenPushRoute: (PushTapTestRoute) -> Void
     @State private var pinging: Bool = false
     @State private var pushAuth: String = "checking…"
 
@@ -44,7 +45,7 @@ struct DiagnosticsView: View {
             Text("Diagnostics")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(PapercupTheme.text)
-            Text("Connection, pairing, mesh, and build state for this device.")
+            Text("Connection, pairing, mesh, push, and build state for this device.")
                 .font(.caption)
                 .foregroundStyle(PapercupTheme.textMuted)
         }
@@ -114,7 +115,18 @@ struct DiagnosticsView: View {
 
     private var pushSection: some View {
         sectionShell("Push") {
-            pillRow("Authorization", label: pushAuth.uppercased(), role: pushRole(pushAuth), isLast: true)
+            pillRow("Authorization", label: pushAuth.uppercased(), role: pushRole(pushAuth))
+            dividerLine()
+            NavigationLink {
+                PushTapTestView(onNavigate: onOpenPushRoute)
+            } label: {
+                navRow(
+                    title: "Push tap test",
+                    detail: "Simulate notification taps against the native route model."
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Opens the push tap-routing test screen."))
         }
     }
 
@@ -180,6 +192,26 @@ struct DiagnosticsView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("\(label): \(pillLabel)"))
+    }
+
+    private func navRow(title: String, detail: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(PapercupTheme.text)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(PapercupTheme.textMuted)
+            }
+            Spacer(minLength: 12)
+            Text("›")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PapercupTheme.textMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
     }
 
     private func actionRow(title: String, detail: String, role: PapercupChipRole, isLast: Bool) -> some View {

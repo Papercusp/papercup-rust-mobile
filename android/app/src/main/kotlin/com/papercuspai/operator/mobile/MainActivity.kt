@@ -43,12 +43,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
 import uniffi.papercup.Harness
 import uniffi.papercup.SyncException
 import uniffi.papercup.SyncStream
 import uniffi.papercup.version
+import java.time.Duration
+import java.time.Instant
+import java.time.format.DateTimeParseException
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
     private val deepLinkSlug = mutableStateOf<String?>(null)
@@ -321,7 +326,19 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         )
         Route.StandingApprovals -> StandingApprovalsScreen(creds = current, onBack = { route = Route.Settings })
         Route.VoiceSettings -> VoiceSettingsScreen(onBack = { route = Route.Settings })
-        Route.Diagnostics -> DiagnosticsScreen(creds = current, monitor = monitor, onBack = { route = Route.Settings })
+        Route.Diagnostics -> DiagnosticsScreen(
+            creds = current,
+            monitor = monitor,
+            onBack = { route = Route.Settings },
+            onOpenPushTapTest = { route = Route.PushTapTest },
+        )
+        Route.PushTapTest -> PushTapTestScreen(
+            onBack = { route = Route.Diagnostics },
+            onOpenHarnessDetail = { slug -> route = Route.Detail(slug) },
+            onOpenRunLog = { slug -> route = Route.RunLog(slug) },
+            onOpenOperator = { route = Route.Operator },
+            onOpenInbox = { route = Route.Activity },
+        )
         Route.WorkspaceSelector -> WorkspaceSelectorScreen(
             creds = current,
             onBack = { route = Route.Settings },
@@ -383,6 +400,7 @@ private fun PairedShell(
     Scaffold(
         topBar = {
             Column {
+                GlobalPausedBanner(creds = current, liveTick = liveTick)
                 if (connState.status == ConnStatus.Offline) {
                     Surface(
                         color = MaterialTheme.colorScheme.errorContainer,
@@ -458,6 +476,116 @@ private fun PairedShell(
 }
 
 @Composable
+private fun GlobalPausedBanner(creds: DeviceCredentials, liveTick: Int) {
+    var info by remember { mutableStateOf<uniffi.papercup.PauseInfo?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun refreshPauseInfo() {
+        try {
+            info = creds.client().pauseGet()
+        } catch (_: Throwable) {
+        }
+    }
+
+    LaunchedEffect(creds.deviceToken, liveTick) {
+        refreshPauseInfo()
+    }
+    LaunchedEffect(creds.deviceToken) {
+        while (isActive) {
+            delay(8_000)
+            refreshPauseInfo()
+        }
+    }
+
+    val pauseInfo = info ?: return
+    if (!pauseInfo.paused) return
+
+    val detail = listOfNotNull(
+        shortPauseActor(pauseInfo.by)?.let { "by $it" },
+        pauseInfo.at?.let(::formatPauseAge),
+    ).joinToString(" · ")
+
+    Surface(
+        color = PapercupColors.WarningSoft,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "⏸",
+                style = MaterialTheme.typography.titleMedium,
+                color = PapercupColors.Warning,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "Operator paused",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = PapercupColors.Warning,
+                )
+                if (detail.isNotEmpty()) {
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PapercupColors.Warning.copy(alpha = 0.82f),
+                    )
+                }
+            }
+            TextButton(
+                onClick = {
+                    if (busy) return@TextButton
+                    busy = true
+                    scope.launch {
+                        try {
+                            creds.client().pauseSet(false)
+                            refreshPauseInfo()
+                        } catch (_: Throwable) {
+                        } finally {
+                            busy = false
+                        }
+                    }
+                },
+                enabled = !busy,
+                colors = ButtonDefaults.textButtonColors(contentColor = PapercupColors.Warning),
+            ) {
+                Text(if (busy) "…" else "Resume")
+            }
+        }
+    }
+}
+
+private fun shortPauseActor(by: String?): String? {
+    if (by.isNullOrBlank()) return null
+    if (by.startsWith("device:")) return "phone"
+    val at = by.indexOf('@')
+    return if (at > 0) by.slice(0 until at) else by
+}
+
+private fun formatPauseAge(iso: String): String {
+    val instant = try {
+        Instant.parse(iso)
+    } catch (_: DateTimeParseException) {
+        return iso
+    }
+    val seconds = Duration.between(instant, Instant.now()).seconds
+    if (seconds < 0) return iso
+    return when {
+        seconds < 60 -> "${seconds}s ago"
+        seconds < 3_600 -> "${seconds / 60}m ago"
+        seconds < 86_400 -> "${seconds / 3_600}h ago"
+        else -> "${seconds / 86_400}d ago"
+    }
+}
+
+@Composable
 private fun MobileBottomNav(
     selected: Route,
     onRouteChange: (Route) -> Unit,
@@ -524,6 +652,7 @@ private sealed interface Route {
     data object StandingApprovals : Route
     data object VoiceSettings : Route
     data object Diagnostics : Route
+    data object PushTapTest : Route
     data object WorkspaceSelector : Route
     data object NotificationHistory : Route
     data object RecentActions : Route

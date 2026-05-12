@@ -6,6 +6,7 @@ struct SettingsView: View {
     let monitor: ConnectionMonitor
     let onForget: () -> Void
     let onWorkspaceSwitched: (DeviceCredentials) -> Void
+    let onOpenPushRoute: (PushTapTestRoute) -> Void
 
     @State private var workspaces: [Workspace]? = nil
     @State private var devices: [Device]? = nil
@@ -138,7 +139,11 @@ struct SettingsView: View {
             infoRow("Version", value: version())
             dividerLine()
             NavigationLink {
-                DiagnosticsView(creds: creds, monitor: monitor)
+                DiagnosticsView(
+                    creds: creds,
+                    monitor: monitor,
+                    onOpenPushRoute: onOpenPushRoute
+                )
             } label: {
                 navRow(
                     title: NSLocalizedString("settings.diagnostics", comment: ""),

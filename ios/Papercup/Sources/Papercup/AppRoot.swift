@@ -139,6 +139,27 @@ private struct PairedShell: View {
             pushedRunLogSlug = nil
             pushedDetailSlug = slug
         }
+        let onOpenPushRoute: (PushTapTestRoute) -> Void = { route in
+            switch route {
+            case .harnessDetail(let slug):
+                tab = .harnesses
+                pushedRunLogSlug = nil
+                pushedDetailSlug = slug
+            case .runLog(let slug):
+                tab = .running
+                pushedDetailSlug = nil
+                pushedRunLogSlug = slug
+            case .operatorTab:
+                pushedDetailSlug = nil
+                pushedRunLogSlug = nil
+                tab = .operatorTab
+            case .inbox:
+                pushedDetailSlug = nil
+                pushedRunLogSlug = nil
+                tab = .activity
+            }
+        }
+
 
         VStack(spacing: 0) {
             if monitor.state.status == .offline {
@@ -149,6 +170,7 @@ private struct PairedShell: View {
                     .padding(.vertical, 6)
                     .background(Color.red)
             }
+            PausedBanner(creds: current)
             VoiceErrorBanner(voice: voice)
             ZStack {
                 Group {
@@ -184,7 +206,8 @@ private struct PairedShell: View {
                             creds: current,
                             monitor: monitor,
                             onForget: onForget,
-                            onWorkspaceSwitched: onWorkspaceSwitched
+                            onWorkspaceSwitched: onWorkspaceSwitched,
+                            onOpenPushRoute: onOpenPushRoute
                         )
                     }
                 }
@@ -301,6 +324,137 @@ private struct PairedShell: View {
     }
 }
 
+private struct PausedBanner: View {
+    let creds: DeviceCredentials
+
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var info = PauseInfo(paused: false, at: nil, by: nil)
+    @State private var busy: Bool = false
+
+    var body: some View {
+        Group {
+            if info.paused {
+                HStack(alignment: .center, spacing: 10) {
+                    Text("⏸")
+                        .font(.system(size: 17, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Operator paused")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PapercupTheme.warning)
+                        if let detail = detailText {
+                            Text(detail)
+                                .font(.caption2)
+                                .foregroundStyle(PapercupTheme.warning.opacity(0.82))
+                        }
+                    }
+                    Spacer(minLength: 12)
+                    Button {
+                        busy = true
+                        Task { @MainActor in
+                            defer { busy = false }
+                            do {
+                                let paused = try await creds.client().pauseSet(paused: false)
+                                info.paused = paused
+                                if !paused {
+                                    info.at = nil
+                                    info.by = nil
+                                }
+                            } catch {
+                            }
+                        }
+                    } label: {
+                        Text(busy ? "…" : "Resume")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PapercupTheme.ink)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(PapercupTheme.warning, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(Color(red: 0.28, green: 0.17, blue: 0.02).opacity(0.96))
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(PapercupTheme.warning.opacity(0.28))
+                        .frame(height: 1)
+                }
+            }
+        }
+        .task(id: creds.deviceToken) {
+            await refresh()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                if Task.isCancelled { break }
+                await refresh()
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await refresh() }
+        }
+    }
+
+    private var detailText: String? {
+        [shortActor(info.by), relativePauseTime(info.at)]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+            .nilIfEmpty
+    }
+
+    @MainActor
+    private func refresh() async {
+        do {
+            info = try await creds.client().pauseGet()
+        } catch {
+        }
+    }
+
+    private func shortActor(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if raw.hasPrefix("device:") { return "by phone" }
+        if let at = raw.firstIndex(of: "@"), at > raw.startIndex {
+            return "by \(String(raw[..<at]))"
+        }
+        return "by \(raw)"
+    }
+
+    private func relativePauseTime(_ iso: String?) -> String? {
+        guard let iso, let when = Self.parseDate(iso) else { return nil }
+        let diff = Int(Date().timeIntervalSince(when))
+        guard diff >= 0 else { return nil }
+        if diff < 60 { return "\(diff)s ago" }
+        let minutes = diff / 60
+        if minutes < 60 { return "\(minutes)m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h ago" }
+        return "\(hours / 24)d ago"
+    }
+
+    private static func parseDate(_ raw: String) -> Date? {
+        if let exact = fractionalDateFormatter.date(from: raw) { return exact }
+        return plainDateFormatter.date(from: raw)
+    }
+
+    private static let fractionalDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let plainDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
 private struct MobileBottomNav: View {
     @Binding var tab: AppRoot.Tab
 

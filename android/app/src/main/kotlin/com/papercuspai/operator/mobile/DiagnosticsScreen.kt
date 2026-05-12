@@ -34,6 +34,7 @@ fun DiagnosticsScreen(
     creds: DeviceCredentials,
     monitor: ConnectionMonitor,
     onBack: () -> Unit,
+    onOpenPushTapTest: () -> Unit,
 ) {
     val state by monitor.state.collectAsState()
     val meshState by MeshState.state.collectAsState()
@@ -150,10 +151,16 @@ fun DiagnosticsScreen(
                     fcmError != null -> "error: ${fcmError}"
                     else -> "fetching…"
                 }
-                ValueRow(label = "FCM status", value = pushLabel, last = fcmToken == null)
+                ValueRow(label = "FCM status", value = pushLabel, last = false)
                 fcmToken?.let {
-                    ValueRow(label = "FCM token (first 12)", value = it.take(12) + "…", mono = true, last = true)
+                    ValueRow(label = "FCM token (first 12)", value = it.take(12) + "…", mono = true, last = false)
                 }
+                ActionRow(
+                    title = "Push tap test",
+                    subtitle = "Simulate tapped notification routes without APNs / FCM delivery.",
+                    onClick = onOpenPushTapTest,
+                    last = true,
+                )
             }
             Spacer(Modifier.height(12.dp))
         }
@@ -208,6 +215,42 @@ private fun ValueRow(
             color = PapercupColors.Text,
             fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
         )
+    }
+    if (!last) {
+        HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
+    }
+}
+
+@Composable
+private fun ActionRow(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    last: Boolean = false,
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = PapercupColors.Text,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = PapercupColors.TextMuted,
+            )
+        }
     }
     if (!last) {
         HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
