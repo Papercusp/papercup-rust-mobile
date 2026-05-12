@@ -28,11 +28,13 @@ echo "▶ sim: $PAPERCUP_IOS_SIM_UDID"
 xcrun simctl boot "$PAPERCUP_IOS_SIM_UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$PAPERCUP_IOS_SIM_UDID" -b 2>/dev/null || true
 
-# Skip xcodegen if the project already exists — regenerating wipes
-# Xcode's destination cache and re-triggers the race.
-if [ ! -d Papercup.xcodeproj ]; then
-    xcodegen generate >/dev/null
-fi
+# Always regenerate the xcodeproj. The previous skip-if-exists shortcut
+# missed new Swift files that landed after the first generation
+# (e.g. RunningView.swift) and produced "cannot find X in scope"
+# build errors. xcodegen is fast (~1s); the destination-cache race
+# the comment used to worry about is moot now that we pass
+# `-destination` explicitly below.
+xcodegen generate >/dev/null
 
 # Per-target build, NOT -scheme. -scheme trips the destination-
 # resolver race; -target talks straight to the build system and
