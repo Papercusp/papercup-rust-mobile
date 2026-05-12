@@ -25,6 +25,15 @@ packages:
   ElevenLabsSDK:
     url: https://github.com/elevenlabs/elevenlabs-swift-sdk
     from: 3.1.4
+  # Picovoice Porcupine for wake-word "hey papercup".
+  # Activation steps when AccessKey arrives:
+  #   1. Uncomment this block + the dependency entry under Papercup.dependencies
+  #   2. Set PICOVOICE_ACCESS_KEY in Papercup/Info.plist
+  #   3. (Optional) Drop hey-papercup.ppn into Papercup/Resources/wake-words/
+  #   4. Run `make build-ios` — WakeWordEngine.swift activates via canImport(Porcupine)
+  # Porcupine:
+  #   url: https://github.com/Picovoice/porcupine
+  #   from: 3.0.0
 
 settings:
   base:
