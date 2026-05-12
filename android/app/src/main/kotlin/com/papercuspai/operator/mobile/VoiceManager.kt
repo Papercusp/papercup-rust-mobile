@@ -377,6 +377,27 @@ class VoiceManager(
                     "Another device has voice. Pre-empt?",
                     FailureKind.ConcurrentLimit,
                 )
+            // 500/502/503/504 with no body or with PG/ECONNREFUSED markers =
+            // operator desktop is offline (embedded-pg not reachable). Most
+            // common cause of "server 500: unknown" the user actually sees.
+            // Distinct UX from a generic transient error: user needs to
+            // launch the desktop, not just retry.
+            msg.contains("session-init 500") || msg.contains("session-init 502") ||
+                msg.contains("session-init 504") -> {
+                val looksDownstream = msg.contains("ECONNREFUSED", ignoreCase = true) ||
+                    msg.contains("pg", ignoreCase = true) ||
+                    msg.contains("postgres", ignoreCase = true) ||
+                    msg.contains("desktop", ignoreCase = true) ||
+                    msg.endsWith("unknown") || // server returned empty body
+                    msg.endsWith(":") // even emptier
+                if (looksDownstream)
+                    State.Failed(
+                        "Voice unavailable — operator desktop is offline. Launch Papercup on your computer, then tap retry.",
+                        FailureKind.NetworkUnreachable,
+                    )
+                else
+                    State.Failed("Voice service error — tap to retry.", FailureKind.NetworkUnreachable)
+            }
             msg.contains("session-init") ->
                 State.Failed("Voice service error — tap to retry.", FailureKind.NetworkUnreachable)
             msg.contains("permission", ignoreCase = true) &&

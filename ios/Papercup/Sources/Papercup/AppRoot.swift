@@ -106,6 +106,7 @@ private struct PairedShell: View {
     @StateObject private var cacheHost: CacheHost
     @StateObject private var badgeHost: ShellBadgeHost
     private let wakeWord: WakeWordEngine
+    @Environment(\.scenePhase) private var pairedScenePhase
 
     init(current: DeviceCredentials,
          tab: Binding<AppRoot.Tab>,
@@ -314,6 +315,17 @@ private struct PairedShell: View {
             }
         }
         .onDisappear { monitor.stop(); voice.stop(); wakeWord.stop() }
+        // End any active voice session when the app backgrounds.
+        // Mirrors Android lifecycle ON_STOP handling — EL bills by
+        // session duration so we shouldn't keep burning minutes when
+        // the user has navigated away.
+        .onChange(of: pairedScenePhase) { _, newPhase in
+            guard newPhase == .background else { return }
+            switch voice.state {
+            case .idle, .failed: break
+            default: voice.stop()
+            }
+        }
     }
 
     private func openToast(_ toast: Toast) {

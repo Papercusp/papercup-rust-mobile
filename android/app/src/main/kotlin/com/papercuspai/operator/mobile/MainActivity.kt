@@ -202,6 +202,26 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
     val voice = remember(current.deviceToken) { VoiceManager(context, current) }
     DisposableEffect(current.deviceToken) { onDispose { voice.stop() } }
 
+    // End any active voice session when the app backgrounds. EL charges
+    // by session duration; users who lock the screen / switch apps mid-
+    // conversation shouldn't keep burning minutes. Re-tapping FAB after
+    // returning starts a fresh session. (Wake-word path is separate —
+    // WakeWordService FGS keeps the mic listener alive when configured.)
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, voice) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                val s = voice.state.value
+                if (s !is VoiceManager.State.Idle && s !is VoiceManager.State.Failed) {
+                    Log.i("PapercupVoice", "lifecycle ON_STOP — ending active voice session")
+                    voice.stop()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // Voice intent dispatch — every `browser: 'required'` client-tool
     // call from the EL agent surfaces here and maps to native action.
     LaunchedEffect(voice) {

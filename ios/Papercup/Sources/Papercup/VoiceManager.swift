@@ -228,6 +228,23 @@ final class VoiceManager: ObservableObject {
                 return .failed(message: "Another device has voice. Pre-empt?", kind: .concurrentLimit)
             }
             return .failed(message: "Voice service error — tap to retry.", kind: .networkUnreachable)
+        case 500, 502, 504:
+            // 5xx with no body or with downstream markers = operator
+            // desktop is offline (embedded-pg unreachable). Distinct
+            // UX from a generic transient: user needs to launch
+            // desktop, not just retry.
+            let lower = msg.lowercased()
+            let looksDownstream = lower.contains("econnrefused") ||
+                lower.contains("postgres") || lower.contains("pg ") ||
+                lower.contains("desktop") ||
+                lower.hasSuffix("unknown") || lower.hasSuffix(":")
+            if looksDownstream {
+                return .failed(
+                    message: "Voice unavailable — operator desktop is offline. Launch Papercup on your computer, then tap retry.",
+                    kind: .networkUnreachable
+                )
+            }
+            return .failed(message: "Voice service error — tap to retry.", kind: .networkUnreachable)
         default:
             let lower = msg.lowercased()
             if lower.contains("permission") && lower.contains("mic") {
