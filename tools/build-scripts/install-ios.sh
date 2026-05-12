@@ -54,8 +54,25 @@ echo "▶ building Papercup target (Debug, iphonesimulator, ARCHS=$SIM_ARCH, no-
 # disk-pressured or x86 macOS VMs, surfacing as
 # "module file 'Foundation-…pcm' not found".
 # The implicit-modules path (pre-Xcode-16 default) is slower but works.
-xcodebuild -project Papercup.xcodeproj -target Papercup \
+# Use -scheme (not -target) so xcodebuild resolves the SwiftPM binary
+# dependency graph and builds LiveKitUniFFI before LiveKit.swift tries
+# to import it. With -target, fresh DerivedData hits
+# "no such module 'LiveKitUniFFI'".
+#
+# -clonedSourcePackagesDirPath isolates SwiftPM checkouts outside of
+# DerivedData so blowing away DerivedData doesn't force a re-clone.
+# Critical on disk-pressured VMs where the LiveKit fork (1.3 GB)
+# would otherwise need re-fetching on every retry.
+#
+# -derivedDataPath ios/build/dd keeps build products inside the repo
+# (older script convention) so the APP-path resolve below still works.
+SPM_CACHE="${PAPERCUP_IOS_SPM_CACHE:-$HOME/spm-cache}"
+mkdir -p "$SPM_CACHE"
+xcodebuild -project Papercup.xcodeproj -scheme Papercup \
     -sdk iphonesimulator -configuration Debug \
+    -destination "platform=iOS Simulator,id=$PAPERCUP_IOS_SIM_UDID" \
+    -derivedDataPath build/dd \
+    -clonedSourcePackagesDirPath "$SPM_CACHE" \
     ARCHS="$SIM_ARCH" VALID_ARCHS="$SIM_ARCH" ONLY_ACTIVE_ARCH=NO \
     CLANG_ENABLE_EXPLICIT_MODULES=NO \
     SWIFT_ENABLE_EXPLICIT_MODULES=NO \
@@ -66,7 +83,7 @@ xcodebuild -project Papercup.xcodeproj -target Papercup \
     exit 1
 }
 
-APP="$REPO_ROOT/ios/build/Debug-iphonesimulator/Papercup.app"
+APP="$REPO_ROOT/ios/build/dd/Build/Products/Debug-iphonesimulator/Papercup.app"
 if [ ! -d "$APP" ]; then
     echo "ERROR: built app not at $APP" >&2
     exit 1
