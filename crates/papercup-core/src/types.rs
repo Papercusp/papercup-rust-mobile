@@ -288,6 +288,37 @@ pub struct StandingCandidate {
     pub first_shown_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperatorCardsResp {
+    pub cards: Vec<OperatorCard>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperatorCard {
+    pub id: String,
+    pub action: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub target_harness: Option<String>,
+    #[serde(default)]
+    pub directive_kind: Option<String>,
+    #[serde(default)]
+    pub directive_subject: Option<String>,
+    #[serde(default)]
+    pub directive_body: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperatorCardActionResp {
+    pub ok: bool,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct StandingDecisionBody {
     pub capability: String,

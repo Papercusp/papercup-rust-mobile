@@ -13,10 +13,10 @@
 
 use crate::types::{
     AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
-    ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, RunningHarnessPhase, RunningResp,
-    StandingCandidate, StandingCandidatesResp, StandingDecisionBody, ToastRow, ToastsResp,
-    VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem, WorkspaceSwitchBody, WorkspaceSwitchResp,
-    WorkspacesResp,
+    ListResp, OperatorCard, OperatorCardActionResp, OperatorCardsResp, PairBody, PairResp, PauseInfo,
+    PushRegisterBody, RunningHarnessPhase, RunningResp, StandingCandidate, StandingCandidatesResp,
+    StandingDecisionBody, ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem,
+    WorkspacesResp, WorkspaceSwitchBody, WorkspaceSwitchResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -375,6 +375,78 @@ impl OperatorClient {
         self.bearer_get_json::<DesktopDevicesResp>(&url)
             .await
             .map(|r| r.devices)
+    }
+
+    /// `GET /api/mobile/operator/cards`
+    pub async fn list_operator_cards(&self) -> Result<Vec<OperatorCard>, ApiError> {
+        let url = format!("{}/api/mobile/operator/cards", self.base_url());
+        self.bearer_get_json::<OperatorCardsResp>(&url)
+            .await
+            .map(|r| r.cards)
+    }
+
+    /// `POST /api/mobile/operator/cards/{id}/dispatch`
+    pub async fn dispatch_operator_card(&self, card_id: &str) -> Result<String, ApiError> {
+        let url = format!("{}/api/mobile/operator/cards/{card_id}/dispatch", self.base_url());
+        let mut req = self.http.post(&url);
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            let detail = resp
+                .json::<ErrorBody>()
+                .await
+                .map(|e| e.error)
+                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail,
+            });
+        }
+        let body = resp
+            .json::<OperatorCardActionResp>()
+            .await
+            .map_err(|e| ApiError::Decode(e.to_string()))?;
+        body.message
+            .ok_or_else(|| ApiError::Decode("missing message".into()))
+    }
+
+    /// `POST /api/mobile/operator/cards/{id}/dismiss`
+    pub async fn dismiss_operator_card(&self, card_id: &str) -> Result<String, ApiError> {
+        let url = format!("{}/api/mobile/operator/cards/{card_id}/dismiss", self.base_url());
+        let mut req = self.http.post(&url);
+        req = match &self.device_token {
+            Some(tok) => req.bearer_auth(tok),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let resp = req.send().await?;
+        let status = resp.status();
+        if status.as_u16() == 401 {
+            return Err(ApiError::Unauthorized);
+        }
+        if !status.is_success() {
+            let detail = resp
+                .json::<ErrorBody>()
+                .await
+                .map(|e| e.error)
+                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
+            return Err(ApiError::Server {
+                status: status.as_u16(),
+                detail,
+            });
+        }
+        let body = resp
+            .json::<OperatorCardActionResp>()
+            .await
+            .map_err(|e| ApiError::Decode(e.to_string()))?;
+        body.message
+            .ok_or_else(|| ApiError::Decode("missing message".into()))
     }
 
     /// `GET /api/mobile/operator/standing-candidates`

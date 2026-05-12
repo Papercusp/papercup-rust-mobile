@@ -13,10 +13,10 @@ use papercup_core::mesh::{
 };
 use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
 use papercup_core::types::{
-    AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
-    PauseInfo as CorePauseInfo, PushRegisterBody, RunningHarnessPhase as CoreRunning,
-    StandingCandidate as CoreStandingCandidate, ToastRow as CoreToast,
-    VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
+    AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull,
+    OperatorCard as CoreOperatorCard, PairBody, PauseInfo as CorePauseInfo, PushRegisterBody,
+    RunningHarnessPhase as CoreRunning, StandingCandidate as CoreStandingCandidate,
+    ToastRow as CoreToast, VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
     WorkspaceSwitchResp as CoreWorkspaceSwitch,
 };
 use papercup_core::voice::{
@@ -583,6 +583,32 @@ impl From<CoreStandingCandidate> for StandingCandidate {
     }
 }
 
+pub struct OperatorCard {
+    pub id: String,
+    pub action: String,
+    pub reason: Option<String>,
+    pub target_harness: Option<String>,
+    pub directive_kind: Option<String>,
+    pub directive_subject: Option<String>,
+    pub directive_body: Option<String>,
+    pub status: String,
+}
+
+impl From<CoreOperatorCard> for OperatorCard {
+    fn from(card: CoreOperatorCard) -> Self {
+        Self {
+            id: card.id,
+            action: card.action,
+            reason: card.reason,
+            target_harness: card.target_harness,
+            directive_kind: card.directive_kind,
+            directive_subject: card.directive_subject,
+            directive_body: card.directive_body,
+            status: card.status,
+        }
+    }
+}
+
 fn parse_mesh(value: &serde_json::Value) -> Option<MeshConfig> {
     #[derive(serde::Deserialize)]
     struct Raw {
@@ -1102,6 +1128,37 @@ impl OperatorClient {
             }
             Err(papercup_core::biometric::BiometricGateError::Inner(e)) => Err(e.into()),
         }
+    }
+
+    pub async fn list_operator_cards(&self) -> Result<Vec<OperatorCard>, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.list_operator_cards().await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(result.into_iter().map(OperatorCard::from).collect())
+    }
+
+    pub async fn dispatch_operator_card(&self, card_id: String) -> Result<String, ApiError> {
+        let core = self.inner.clone();
+        rt().spawn(async move { core.dispatch_operator_card(&card_id).await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })?
+            .map_err(Into::into)
+    }
+
+    pub async fn dismiss_operator_card(&self, card_id: String) -> Result<String, ApiError> {
+        let core = self.inner.clone();
+        rt().spawn(async move { core.dismiss_operator_card(&card_id).await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })?
+            .map_err(Into::into)
     }
 
     pub async fn standing_candidates(&self) -> Result<Vec<StandingCandidate>, ApiError> {

@@ -282,6 +282,17 @@ dictionary StandingCandidate {
     string? first_shown_at;
 };
 
+dictionary OperatorCard {
+    string id;
+    string action;
+    string? reason;
+    string? target_harness;
+    string? directive_kind;
+    string? directive_subject;
+    string? directive_body;
+    string status;
+};
+
 dictionary SyncEvent {
     string id;
     string name;
@@ -383,6 +394,18 @@ interface OperatorClient {
     /// `DELETE /api/mobile/desktop/devices/{id}`.
     [Throws=ApiError, Async]
     void revoke_device(string device_id);
+
+    /// `GET /api/mobile/operator/cards`.
+    [Throws=ApiError, Async]
+    sequence<OperatorCard> list_operator_cards();
+
+    /// `POST /api/mobile/operator/cards/{id}/dispatch`.
+    [Throws=ApiError, Async]
+    string dispatch_operator_card(string card_id);
+
+    /// `POST /api/mobile/operator/cards/{id}/dismiss`.
+    [Throws=ApiError, Async]
+    string dismiss_operator_card(string card_id);
 
     /// `GET /api/mobile/operator/standing-candidates`.
     [Throws=ApiError, Async]

@@ -343,6 +343,72 @@ async fn recent_actions_unwraps_entries_envelope() {
 }
 
 #[tokio::test]
+async fn list_operator_cards_unwraps_envelope() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/mobile/operator/cards"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "cards": [
+                {
+                    "id": "c1",
+                    "action": "send_directive",
+                    "reason": "why",
+                    "target_harness": "alpha",
+                    "directive_kind": "Directive",
+                    "directive_subject": "Do x",
+                    "directive_body": "body",
+                    "status": "pending"
+                },
+                {
+                    "id": "c2",
+                    "action": "inform",
+                    "status": "shown"
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let cards = client.list_operator_cards().await.unwrap();
+    assert_eq!(cards.len(), 2);
+    assert_eq!(cards[0].id, "c1");
+    assert_eq!(cards[0].target_harness.as_deref(), Some("alpha"));
+    assert_eq!(cards[1].action, "inform");
+}
+
+#[tokio::test]
+async fn dispatch_operator_card_returns_message() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/mobile/operator/cards/c1/dispatch"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true,
+            "message": "Dispatched to alpha."
+        })))
+        .mount(&server)
+        .await;
+    let message = client.dispatch_operator_card("c1").await.unwrap();
+    assert_eq!(message, "Dispatched to alpha.");
+}
+
+#[tokio::test]
+async fn dismiss_operator_card_returns_message() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/mobile/operator/cards/c2/dismiss"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true,
+            "message": "Dismissed: test."
+        })))
+        .mount(&server)
+        .await;
+    let message = client.dismiss_operator_card("c2").await.unwrap();
+    assert_eq!(message, "Dismissed: test.");
+}
+
+#[tokio::test]
 async fn standing_candidates_unwraps_envelope() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))

@@ -28,6 +28,11 @@ import com.papercuspai.operator.mobile.theme.PapercupCardHeader
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -598,16 +603,32 @@ private fun MobileBottomNav(
         Triple(Route.Settings, "⚙", stringResource(R.string.tab_settings)),
     )
 
-    Row(
+    // Wrap in Surface so the Scaffold's FAB-anchor measurement
+    // includes the bar's actual rendered height + so we sit above
+    // page content in z-order (raw Row with .background() lets
+    // sibling FABs slide visually underneath on some devices).
+    // windowInsetsPadding(systemBars.only(bottom)) pushes content
+    // above the system gesture bar on phones like the Fold5.
+    Surface(
+        color = Color.Transparent,
         modifier = Modifier
             .fillMaxWidth()
             .background(PapercupColors.HeaderGradient)
-            .border(1.dp, PapercupColors.StrokeSoft)
-            .padding(bottom = 4.dp, top = 6.dp, start = 6.dp, end = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+            .border(1.dp, PapercupColors.StrokeSoft),
+        tonalElevation = 3.dp,
+        shadowElevation = 3.dp,
     ) {
-        items.forEach { (route, glyph, label) ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(
+                    WindowInsets.systemBars.only(WindowInsetsSides.Bottom)
+                )
+                .padding(bottom = 4.dp, top = 6.dp, start = 6.dp, end = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items.forEach { (route, glyph, label) ->
             val active = selected == route
             Column(
                 modifier = Modifier
@@ -633,6 +654,7 @@ private fun MobileBottomNav(
                     style = MaterialTheme.typography.labelSmall,
                     color = if (active) PapercupColors.AccentStrong else PapercupColors.TextFaint,
                 )
+            }
             }
         }
     }
