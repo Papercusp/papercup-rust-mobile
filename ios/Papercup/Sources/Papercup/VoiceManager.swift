@@ -207,11 +207,20 @@ final class VoiceManager: ObservableObject {
                 }
             }
         }
-        // Agent audio level for the FAB halo. The SDK exposes this on
-        // the conversation as a Published Float-ish value.
+        // Agent audio "level" for the FAB halo. ElevenLabs Swift SDK
+        // 3.1+ dropped $agentAudioLevel in favor of a coarse $agentState
+        // enum (listening / speaking). We translate state → level so
+        // the existing UI keeps animating: full glow while the agent
+        // speaks, half while listening, zero when idle. Imperfect but
+        // visually equivalent for FAB feedback.
         levelPump = Task { @MainActor [weak self] in
-            for await level in conv.$agentAudioLevel.values {
-                self?.micLevel = level
+            for await s in conv.$agentState.values {
+                guard let self else { return }
+                switch s {
+                case .speaking: self.micLevel = 1.0
+                case .listening: self.micLevel = 0.4
+                @unknown default: self.micLevel = 0.0
+                }
             }
         }
         // Client-tool dispatch. EL calls these for browser:'required'
@@ -259,55 +268,98 @@ final class VoiceManager: ObservableObject {
                     else { pendingIntent = .navigateHarness(slug: slug); await ok() }
                 } else { await fail("unknown path: \(path)") }
             }
-        case "nav.harness", "nav.installed-harnesses":
-            pendingIntent = .navigateTab(.harnesses); await ok()
-        case "nav.settings":
-            pendingIntent = .navigateTab(.settings); await ok()
-        case "nav.settings-voice":
-            pendingIntent = .navigateVoiceSettings; await ok()
-        case "nav.marketplace": await unsupported("Marketplace isn't on the phone yet")
-        case "nav.docs": await unsupported("Docs aren't on the phone")
-        case "nav.settings-api-keys": await unsupported("API keys are desktop-only")
-        case "nav.settings-shortcuts": await unsupported("Shortcuts are desktop-only")
-        case "nav.openHarness":
-            if let slug = params["slug"] as? String, !slug.isEmpty {
-                pendingIntent = .navigateHarness(slug: slug); await ok()
-            } else { await fail("missing slug") }
-
         // ── operator pause / resume / scan ───────────────────────────
-        case "operator.pause": pendingIntent = .pause; await ok()
-        case "operator.resume": pendingIntent = .resume; await ok()
-        case "operator.approve-pending":
+        case "operator_pause": pendingIntent = .pause; await ok()
+        case "operator_resume": pendingIntent = .resume; await ok()
+        case "operator_approve_pending":
             pendingIntent = .navigateStandingApprovals; await ok()
-        case "operator.scan": await unsupported("Run scans from the desktop")
-        case "operator.across-workspaces": await unsupported("Cross-workspace view is desktop-only")
+        case "operator_scan": await unsupported("Run scans from the desktop")
+        case "operator_across_workspaces": await unsupported("Cross-workspace view is desktop-only")
 
         // ── voice ────────────────────────────────────────────────────
-        case "voice.claim": pendingIntent = .claimVoice; await ok()
-        case "voice.set-mode":
+        case "voice_claim": pendingIntent = .claimVoice; await ok()
+        case "voice_set_mode":
             let mode = (params["mode"] as? String) ?? ""
             if mode.isEmpty { await fail("missing mode") }
             else { pendingIntent = .voiceSetMode(mode); await ok() }
 
         // ── workspace ────────────────────────────────────────────────
-        case "workspace.switch":
+        case "workspace_switch":
             let wid = (params["workspaceId"] as? String) ?? ""
             if wid.isEmpty { await fail("missing workspaceId") }
             else { pendingIntent = .workspaceSwitch(workspaceId: wid); await ok() }
 
-        // ── panel.* — desktop concept; route cards to standing tab ───
-        case "panel.open", "panel.toggle":
+        // ── panel.* — phone has no panel UI; route open/toggle to
+        //    the Standing Approvals tab, no-op close, proxy the
+        //    data-returning ones (cards/state/dispatch/dismiss). ────
+        case "panel_open", "panel_toggle":
             pendingIntent = .navigateStandingApprovals; await ok()
-        case "panel.close":
-            await ok() // no-op on phone, accept so agent doesn't retry
+        case "panel_close":
+            await ok()
 
         // ── chat / delegate — desktop-only, accept for the flow ──────
-        case "chat.open-pane": await ok()
+        case "chat_open_pane": await ok()
         case "delegate_to_claude":
             await unsupported("Delegation isn't available from phone voice in V1")
 
         default:
-            await fail("unknown client tool: \(call.toolName)")
+            // Every remaining EL-registered tool (~26: harness_*,
+            // ask_operator, agents_across_workspace, chat_list,
+            // voice_prefs, issues_list, escalations_get,
+            // pending_reviews_list, actions_recent, notifications_recent,
+            // scans_*, delegates_*, panel_cards/state/dispatch/dismiss,
+            // workspace_list) is server data — proxy through
+            // /api/mobile/voice-tool/<name>. Same registry, same auth,
+            // same shape as desktop. Server has special handling for
+            // ask_operator (drains operator-converse SSE). The SDK
+            // invokes us on the main actor; URLSession.shared.data is
+            // already async, so no NetworkOnMainThreadException risk
+            // like Android.
+            await proxyTool(call.toolName, params: params, toolId: toolId, conv: conv)
+        }
+    }
+
+    /// Forward an unhandled-on-phone tool call to the operator's
+    /// /api/mobile/voice-tool/<name> proxy and surface the response
+    /// back to ElevenLabs. Mirrors the Android proxy flow but uses
+    /// async URLSession — no thread hop needed.
+    private func proxyTool(_ name: String, params: [String: Any], toolId: String, conv: Conversation) async {
+        do {
+            guard let url = URL(string: "\(creds.server)/api/mobile/voice-tool/\(name)") else {
+                try? await conv.sendToolResult(for: toolId, result: ["error": "bad-url"], isError: true)
+                return
+            }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("Bearer \(creds.deviceToken)", forHTTPHeaderField: "Authorization")
+            req.setValue("application/json", forHTTPHeaderField: "content-type")
+            req.timeoutInterval = 20
+            req.httpBody = try JSONSerialization.data(
+                withJSONObject: ["parameters": params]
+            )
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            let body = String(data: data, encoding: .utf8) ?? ""
+            if !(200..<300).contains(code) {
+                try? await conv.sendToolResult(
+                    for: toolId,
+                    result: ["error": "proxy \(name) \(code): \(body.prefix(160))"],
+                    isError: true
+                )
+                return
+            }
+            // Body is the JSON the registry tool / ask_operator returned —
+            // forward verbatim wrapped as the tool result. EL agents read
+            // this back through their LLM, so plain string or JSON both
+            // work — passing the raw text keeps the wire format identical
+            // to what desktop already feeds them.
+            try? await conv.sendToolResult(for: toolId, result: ["value": body])
+        } catch {
+            try? await conv.sendToolResult(
+                for: toolId,
+                result: ["error": "proxy: \(error.localizedDescription)"],
+                isError: true
+            )
         }
     }
 
