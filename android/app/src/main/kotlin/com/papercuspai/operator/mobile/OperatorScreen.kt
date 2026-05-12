@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.papercuspai.operator.mobile
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupCardHeader
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupPanel
+import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,7 +30,6 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
 import uniffi.papercup.Harness
-import uniffi.papercup.OperatorClient
 import uniffi.papercup.Running
 import uniffi.papercup.Toast as ToastEntry
 import uniffi.papercup.VoiceLease
@@ -75,22 +82,20 @@ fun OperatorScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(stringResource(R.string.operator_screen_title), style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            "core ${uniffi.papercup.version()} · ${creds.server}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
-                },
+            PapercupScreenHeader(
+                title = stringResource(R.string.operator_screen_title),
+                subtitle = "core ${uniffi.papercup.version()} · ${creds.server}",
             )
         },
+        containerColor = PapercupColors.Ink,
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(PapercupColors.ScreenGradient)
+                .padding(padding)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Spacer(Modifier.height(8.dp))
@@ -130,11 +135,10 @@ fun OperatorScreen(
 
 @Composable
 private fun ErrorCard(message: String) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+    PapercupCard(accent = PapercupColors.ErrorSoft) {
         Text(
             message,
-            modifier = Modifier.padding(12.dp),
-            color = MaterialTheme.colorScheme.onErrorContainer,
+            color = PapercupColors.Error,
             fontFamily = FontFamily.Monospace,
             style = MaterialTheme.typography.bodySmall,
         )
@@ -148,7 +152,7 @@ private fun PauseCard(
     modifier: Modifier = Modifier,
 ) {
     val isPaused = paused == true
-    Card(
+    PapercupCard(
         modifier = modifier
             .clickable(enabled = paused != null) { onToggle(!isPaused) }
             .semantics {
@@ -159,14 +163,11 @@ private fun PauseCard(
                 }
                 role = Role.Button
             },
-        colors = if (isPaused) {
-            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-        } else {
-            CardDefaults.cardColors()
-        },
+        accent = if (isPaused) PapercupColors.ErrorSoft else PapercupColors.SuccessSoft,
+        contentPadding = PaddingValues(12.dp),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(stringResource(R.string.operator_label), style = MaterialTheme.typography.labelSmall)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            PapercupMetaText(stringResource(R.string.operator_label))
             Text(
                 when (paused) {
                     true -> "PAUSED"
@@ -174,11 +175,9 @@ private fun PauseCard(
                     null -> "…"
                 },
                 style = MaterialTheme.typography.titleMedium,
+                color = if (isPaused) PapercupColors.Error else PapercupColors.Success,
             )
-            Text(
-                "tap to ${if (isPaused) "resume" else "pause"}",
-                style = MaterialTheme.typography.labelSmall,
-            )
+            PapercupMetaText("tap to ${if (isPaused) "resume" else "pause"}")
         }
     }
 }
@@ -197,63 +196,51 @@ private fun VoiceLeaseCard(
         lease.ownerKind == "mobile" -> "OTHER PHONE" to lease.ownerId.take(8) + "…"
         else -> "DESKTOP" to lease.ownerId.take(8) + "…"
     }
-    Card(
+    PapercupCard(
         modifier = modifier.semantics {
             contentDescription = "Voice lease: $label. $sub"
         },
+        accent = PapercupColors.InfoSoft,
+        contentPadding = PaddingValues(12.dp),
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(stringResource(R.string.voice_label), style = MaterialTheme.typography.labelSmall)
-            Text(label, style = MaterialTheme.typography.titleMedium)
-            Text(sub, style = MaterialTheme.typography.labelSmall)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            PapercupMetaText(stringResource(R.string.voice_label))
+            Text(label, style = MaterialTheme.typography.titleMedium, color = PapercupColors.AccentStrong)
+            PapercupMetaText(sub)
         }
     }
 }
 
 @Composable
 private fun RunningCard(running: List<Running>, onSelect: (String) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(stringResource(R.string.currently_running), style = MaterialTheme.typography.titleSmall)
-                AssistChip(
-                    onClick = {},
-                    label = { Text("${running.size}", style = MaterialTheme.typography.labelSmall) },
-                )
-            }
+    PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PapercupCardHeader(stringResource(R.string.currently_running), meta = running.size.toString())
             if (running.isEmpty()) {
-                Text(stringResource(R.string.no_active_runs), style = MaterialTheme.typography.bodySmall)
+                PapercupMetaText(stringResource(R.string.no_active_runs))
             } else {
                 running.forEach { r ->
-                    Column(
-                        modifier = Modifier.fillMaxWidth().clickable { onSelect(r.harnessSlug) }.padding(vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    PapercupPanel(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(r.harnessSlug) },
+                        contentPadding = PaddingValues(10.dp),
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(r.harnessSlug, style = MaterialTheme.typography.bodyMedium)
-                            AssistChip(onClick = {}, label = { Text("${r.phase} · ${r.status}") })
-                        }
-                        // passed/todo/blocked counts + active roles
-                        val counts = "✓${r.passedCount} · ☐${r.todoCount}" +
-                            (if (r.blockedCount > 0) " · ⚠${r.blockedCount}" else "")
-                        Text(
-                            "$counts · iter ${r.iteration}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                        if (r.activeRoles.isNotEmpty()) {
-                            Text(
-                                "roles: ${r.activeRoles.joinToString(", ")}",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(r.harnessSlug, style = MaterialTheme.typography.titleSmall)
+                                PapercupStatusChip(text = "${r.phase} · ${r.status}")
+                            }
+                            val counts = "✓${r.passedCount} · ☐${r.todoCount}" +
+                                (if (r.blockedCount > 0) " · ⚠${r.blockedCount}" else "")
+                            PapercupMetaText("$counts · iter ${r.iteration}", monospace = true)
+                            if (r.activeRoles.isNotEmpty()) {
+                                PapercupMetaText("roles: ${r.activeRoles.joinToString(", ")}")
+                            }
                         }
                     }
                 }
@@ -264,30 +251,37 @@ private fun RunningCard(running: List<Running>, onSelect: (String) -> Unit) {
 
 @Composable
 private fun RecentHarnessesCard(harnesses: List<Harness>, onSelect: (String) -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.recent_harnesses), style = MaterialTheme.typography.titleSmall)
+    PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PapercupCardHeader(stringResource(R.string.recent_harnesses), meta = harnesses.size.toString())
             if (harnesses.isEmpty()) {
-                Text(stringResource(R.string.no_harnesses_yet), style = MaterialTheme.typography.bodySmall)
+                PapercupMetaText(stringResource(R.string.no_harnesses_yet))
             } else {
                 harnesses.take(5).forEach { h ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onSelect(h.slug) }.padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                    PapercupPanel(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(h.slug) },
+                        contentPadding = PaddingValues(10.dp),
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
-                            Text(h.slug, style = MaterialTheme.typography.bodyMedium)
-                            val meta = buildList {
-                                h.harnessKind?.let { add("kind=$it") }
-                                h.iteration?.let { add("iter=$it") }
-                                if (!h.hasState) add("no-state")
-                            }.joinToString(" · ")
-                            if (meta.isNotEmpty()) {
-                                Text(meta, style = MaterialTheme.typography.labelSmall)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                                Text(h.slug, style = MaterialTheme.typography.titleSmall)
+                                val meta = buildList {
+                                    h.harnessKind?.let { add("kind=$it") }
+                                    h.iteration?.let { add("iter=$it") }
+                                    if (!h.hasState) add("no-state")
+                                }.joinToString(" · ")
+                                if (meta.isNotEmpty()) {
+                                    PapercupMetaText(meta)
+                                }
                             }
+                            h.status?.let { PapercupStatusChip(text = it) }
                         }
-                        h.status?.let { AssistChip(onClick = {}, label = { Text(it) }) }
                     }
                 }
             }
@@ -298,31 +292,29 @@ private fun RecentHarnessesCard(harnesses: List<Harness>, onSelect: (String) -> 
 @Composable
 private fun RecentNotificationsCard(toasts: List<ToastEntry>, onSelectHarness: (String) -> Unit) {
     if (toasts.isEmpty()) return
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.recent_activity), style = MaterialTheme.typography.titleSmall)
+    PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PapercupCardHeader(stringResource(R.string.recent_activity), meta = toasts.size.toString())
             toasts.take(3).forEach { t ->
-                Column(
+                PapercupPanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .let { mod ->
                             t.harnessSlug?.let { slug -> mod.clickable { onSelectHarness(slug) } } ?: mod
                         },
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    contentPadding = PaddingValues(10.dp),
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(t.message, style = MaterialTheme.typography.bodySmall)
-                        Text(
-                            FMT.format(Date(t.createdAt * 1000)),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
-                    t.harnessSlug?.let {
-                        Text(it, style = MaterialTheme.typography.labelSmall)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(t.message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            PapercupMetaText(FMT.format(Date(t.createdAt * 1000)), monospace = true)
+                        }
+                        t.harnessSlug?.let {
+                            PapercupMetaText(it, monospace = true)
+                        }
                     }
                 }
             }
@@ -332,9 +324,9 @@ private fun RecentNotificationsCard(toasts: List<ToastEntry>, onSelectHarness: (
 
 @Composable
 private fun IdentityCard(creds: DeviceCredentials) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(stringResource(R.string.this_device), style = MaterialTheme.typography.titleSmall)
+    PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            PapercupCardHeader(stringResource(R.string.this_device), meta = creds.workspaceId)
             KvLine("workspace", creds.workspaceId)
             KvLine("device", creds.deviceId.take(12) + "…")
             creds.meshAssignedIp?.let { KvLine("mesh", it) }
@@ -349,8 +341,8 @@ private fun KvLine(key: String, value: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(key, style = MaterialTheme.typography.bodySmall)
-        Text(value, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        PapercupMetaText(key)
+        PapercupMetaText(value, monospace = true)
     }
 }
 

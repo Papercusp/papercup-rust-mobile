@@ -19,6 +19,7 @@ import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
 import com.papercuspai.operator.mobile.theme.PapercupPanel
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
+import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,14 +82,7 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings_title)) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = PapercupColors.InkRaised,
-                    titleContentColor = PapercupColors.Text,
-                    navigationIconContentColor = PapercupColors.Text,
-                ),
-            )
+            PapercupScreenHeader(title = stringResource(R.string.settings_title))
         },
         containerColor = PapercupColors.Ink,
     ) { padding ->

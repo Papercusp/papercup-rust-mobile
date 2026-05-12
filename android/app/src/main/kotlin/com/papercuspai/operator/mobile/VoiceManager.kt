@@ -313,72 +313,53 @@ class VoiceManager(
             }
         }
 
+        // Tool names MUST match the EL agent's tool catalog verbatim —
+        // the SDK does a literal map lookup against the name the agent
+        // emits, and onUnhandledClientToolCall has no return path
+        // (the agent waits forever and ultimately apologizes).
+        // EL normalizes to underscore-form at agent-creation time.
         return mapOf(
             // ── navigation ────────────────────────────────────────────
             "navigate" to clientTool { params ->
                 val path = params["path"]?.toString().orEmpty()
                 if (path.isBlank()) ClientToolResult.failure("missing path") else navigatePath(path)
             },
-            "nav.harness" to clientTool { _ ->
-                _intents.tryEmit(Intent.NavigateTab(Intent.Tab.Harnesses)); ok
-            },
-            "nav.settings" to clientTool { _ ->
-                _intents.tryEmit(Intent.NavigateTab(Intent.Tab.Settings)); ok
-            },
-            "nav.settings-voice" to clientTool { _ ->
-                _intents.tryEmit(Intent.NavigateVoiceSettings()); ok
-            },
-            "nav.installed-harnesses" to clientTool { _ ->
-                _intents.tryEmit(Intent.NavigateTab(Intent.Tab.Harnesses)); ok
-            },
-            "nav.marketplace" to clientTool { _ -> unsupported("Marketplace isn't on the phone yet") },
-            "nav.docs" to clientTool { _ -> unsupported("Docs aren't on the phone") },
-            "nav.settings-api-keys" to clientTool { _ -> unsupported("API keys are desktop-only") },
-            "nav.settings-shortcuts" to clientTool { _ -> unsupported("Shortcuts are desktop-only") },
-
-            // Legacy alias from our pre-unification flow — agents may
-            // still emit it; map to NavigateHarness.
-            "nav.openHarness" to clientTool { params ->
-                val slug = params["slug"]?.toString().orEmpty()
-                if (slug.isBlank()) ClientToolResult.failure("missing slug")
-                else { _intents.tryEmit(Intent.NavigateHarness(slug)); ok }
-            },
 
             // ── operator pause / resume ──────────────────────────────
-            "operator.pause" to clientTool { _ -> _intents.tryEmit(Intent.Pause); ok },
-            "operator.resume" to clientTool { _ -> _intents.tryEmit(Intent.Resume); ok },
-            "operator.approve-pending" to clientTool { _ ->
+            "operator_pause" to clientTool { _ -> _intents.tryEmit(Intent.Pause); ok },
+            "operator_resume" to clientTool { _ -> _intents.tryEmit(Intent.Resume); ok },
+            "operator_approve_pending" to clientTool { _ ->
                 _intents.tryEmit(Intent.NavigateStandingApprovals()); ok
             },
-            "operator.scan" to clientTool { _ -> unsupported("Run scans from the desktop") },
-            "operator.across-workspaces" to clientTool { _ -> unsupported("Cross-workspace view is desktop-only") },
+            "operator_scan" to clientTool { _ -> unsupported("Run scans from the desktop") },
+            "operator_across_workspaces" to clientTool { _ -> unsupported("Cross-workspace view is desktop-only") },
 
             // ── voice ────────────────────────────────────────────────
-            "voice.claim" to clientTool { _ -> _intents.tryEmit(Intent.ClaimVoice); ok },
-            "voice.set-mode" to clientTool { params ->
+            "voice_claim" to clientTool { _ -> _intents.tryEmit(Intent.ClaimVoice); ok },
+            "voice_set_mode" to clientTool { params ->
                 val mode = params["mode"]?.toString().orEmpty()
                 if (mode.isBlank()) ClientToolResult.failure("missing mode")
                 else { _intents.tryEmit(Intent.VoiceSetMode(mode)); ok }
             },
 
             // ── workspace ────────────────────────────────────────────
-            "workspace.switch" to clientTool { params ->
+            "workspace_switch" to clientTool { params ->
                 val id = params["workspaceId"]?.toString().orEmpty()
                 if (id.isBlank()) ClientToolResult.failure("missing workspaceId")
                 else { _intents.tryEmit(Intent.WorkspaceSwitch(id)); ok }
             },
 
-            // ── panel.* — desktop-only concept, accept + no-op ───────
-            // The desktop operator has a side panel for cards. Phone
-            // surfaces cards through the Standing Approvals tab. We
-            // accept the call so the agent's reflexive UI flow doesn't
-            // crash, but actually route to Standing Approvals.
-            "panel.open" to clientTool { _ -> _intents.tryEmit(Intent.NavigateStandingApprovals()); ok },
-            "panel.close" to clientTool { _ -> ok },
-            "panel.toggle" to clientTool { _ -> _intents.tryEmit(Intent.NavigateStandingApprovals()); ok },
+            // ── panel.* — desktop-only concept. Phone surfaces cards
+            //    through the Standing Approvals tab; route panel_open /
+            //    panel_toggle there. panel_cards / panel_state /
+            //    panel_dispatch_card / panel_dismiss_card need server
+            //    data → proxy. panel_close is a no-op. ───────────────
+            "panel_open" to clientTool { _ -> _intents.tryEmit(Intent.NavigateStandingApprovals()); ok },
+            "panel_close" to clientTool { _ -> ok },
+            "panel_toggle" to clientTool { _ -> _intents.tryEmit(Intent.NavigateStandingApprovals()); ok },
 
             // ── chat pane — desktop-only, no-op ──────────────────────
-            "chat.open-pane" to clientTool { _ -> ok },
+            "chat_open_pane" to clientTool { _ -> ok },
 
             // ── delegate_to_claude — server-side from desktop; on
             //    phone we lack the chat surface; surface error ───────
@@ -398,6 +379,10 @@ class VoiceManager(
     /// agent speaks. Same authority surface as the desktop client
     /// (same registry, same per-tool schemas).
     private fun proxyTools(): Map<String, ClientTool> {
+        // Mirrors every server-data tool in the EL agent's catalog.
+        // Source of truth: GET /v1/convai/agents/<id>.conversation_config
+        // .agent.prompt.tools — these are the names the SDK looks up
+        // verbatim. Native handlers above cover the rest.
         val proxiedNames = listOf(
             "ask_operator",
             "workspace_list",
@@ -409,7 +394,11 @@ class VoiceManager(
             "issues_list", "escalations_get", "pending_reviews_list",
             "actions_recent", "notifications_recent",
             "scans_list", "scans_get", "scans_search",
-            "delegates_list",
+            "delegates_list", "delegates_get", "delegates_search",
+            // panel_* that need server data — phone has no panel UI
+            // but proxying gives the agent the data it'd narrate.
+            "panel_cards", "panel_state",
+            "panel_dispatch_card", "panel_dismiss_card",
         )
         return proxiedNames.associateWith { name ->
             clientTool { params ->

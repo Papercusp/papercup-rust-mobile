@@ -5,9 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
 import androidx.compose.ui.res.stringResource
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
@@ -15,6 +13,7 @@ import com.papercuspai.operator.mobile.theme.PapercupMetaText
 import com.papercuspai.operator.mobile.theme.PapercupPanel
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import com.papercuspai.operator.mobile.theme.PapercupCardHeader
+import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,7 +24,6 @@ import java.util.Date
 import java.util.Locale
 import uniffi.papercup.ApiException
 import uniffi.papercup.AuditEntry
-import uniffi.papercup.OperatorClient
 import uniffi.papercup.Toast as ToastEntry
 
 private sealed interface ActivityState {
@@ -62,15 +60,12 @@ fun ActivityScreen(
     Scaffold(
         topBar = {
             Column {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.tab_activity)) },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = PapercupColors.InkRaised,
-                        titleContentColor = PapercupColors.Text,
-                        navigationIconContentColor = PapercupColors.Text,
-                    ),
-                )
-                TabRow(selectedTabIndex = tab, containerColor = PapercupColors.InkRaised, contentColor = PapercupColors.Accent) {
+                PapercupScreenHeader(title = stringResource(R.string.tab_activity))
+                TabRow(
+                    selectedTabIndex = tab,
+                    containerColor = PapercupColors.InkRaised.copy(alpha = 0.96f),
+                    contentColor = PapercupColors.AccentStrong,
+                ) {
                     Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.activity_tab_notifications)) })
                     Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.activity_tab_actions)) })
                 }

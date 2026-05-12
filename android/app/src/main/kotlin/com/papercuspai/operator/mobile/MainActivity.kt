@@ -26,12 +26,12 @@ import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
 import com.papercuspai.operator.mobile.theme.PapercupCardHeader
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
+import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Dashboard
@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,7 +51,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
 import uniffi.papercup.Harness
-import uniffi.papercup.OperatorClient
 import uniffi.papercup.SyncException
 import uniffi.papercup.SyncStream
 import uniffi.papercup.version
@@ -381,7 +379,12 @@ private fun PairedShell(
             }
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                modifier = Modifier.border(1.dp, PapercupColors.StrokeSoft),
+                containerColor = PapercupColors.InkRaised.copy(alpha = 0.96f),
+                contentColor = PapercupColors.Text,
+                tonalElevation = 0.dp,
+            ) {
                 val items = listOf(
                     Triple(Route.Operator, Icons.Default.Dashboard, stringResource(R.string.tab_operator)),
                     Triple(Route.List, Icons.Default.Apps, stringResource(R.string.tab_harnesses)),
@@ -393,7 +396,14 @@ private fun PairedShell(
                         selected = route == r,
                         onClick = { onRouteChange(r) },
                         icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                        label = { Text(label.uppercase(), style = MaterialTheme.typography.labelSmall) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = PapercupColors.AccentStrong,
+                            selectedTextColor = PapercupColors.AccentStrong,
+                            indicatorColor = PapercupColors.AccentSoft,
+                            unselectedIconColor = PapercupColors.TextFaint,
+                            unselectedTextColor = PapercupColors.TextFaint,
+                        ),
                     )
                 }
             }
@@ -485,22 +495,9 @@ fun HarnessListScreen(
         // Voice FAB is hoisted to PairedShell so it's visible on every
         // top-level tab — not just this one.
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(stringResource(R.string.app_brand), style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            "core ${version()} · ${creds.server}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = PapercupColors.InkRaised,
-                    titleContentColor = PapercupColors.Text,
-                    actionIconContentColor = PapercupColors.Text,
-                ),
+            PapercupScreenHeader(
+                title = stringResource(R.string.app_brand),
+                subtitle = "core ${version()} · ${creds.server}",
             )
         },
         containerColor = PapercupColors.Ink,

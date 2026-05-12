@@ -7,11 +7,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -23,10 +26,12 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -64,8 +69,91 @@ fun PapercupScreen(modifier: Modifier = Modifier, content: @Composable () -> Uni
     }
 }
 
+@Composable
+fun PapercupScreenHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    navigationIcon: (@Composable () -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(PapercupColors.HeaderGradient)
+            .border(BorderStroke(1.dp, PapercupColors.StrokeSoft))
+            .drawBehind {
+                val y = size.height - 1.dp.toPx()
+                drawLine(
+                    color = PapercupColors.AccentStrong.copy(alpha = 0.46f),
+                    start = Offset(16.dp.toPx(), y),
+                    end = Offset(size.width * 0.52f, y),
+                    strokeWidth = 1.dp.toPx(),
+                )
+                drawLine(
+                    color = PapercupColors.Gold.copy(alpha = 0.24f),
+                    start = Offset(size.width * 0.70f, y),
+                    end = Offset(size.width - 16.dp.toPx(), y),
+                    strokeWidth = 1.dp.toPx(),
+                )
+            }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                navigationIcon?.let {
+                    it()
+                    Spacer(Modifier.width(10.dp))
+                }
+                Column {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = PapercupColors.Text,
+                    )
+                    subtitle?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PapercupColors.TextFaint,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = actions,
+            )
+        }
+    }
+}
+
 fun Modifier.papercupCardChrome() =
-    this.border(BorderStroke(1.dp, PapercupColors.Stroke.copy(alpha = 0.72f)), PapercupCardShape)
+    this
+        .clip(PapercupCardShape)
+        .background(PapercupColors.CardGradient)
+        .border(BorderStroke(1.dp, PapercupColors.Stroke.copy(alpha = 0.72f)), PapercupCardShape)
+        .drawBehind {
+            val cyan = PapercupColors.AccentStrong.copy(alpha = 0.36f)
+            val gold = PapercupColors.Gold.copy(alpha = 0.22f)
+            drawLine(cyan, Offset.Zero, Offset(84.dp.toPx(), 0f), strokeWidth = 1.dp.toPx())
+            drawLine(cyan.copy(alpha = 0.28f), Offset.Zero, Offset(0f, 72.dp.toPx()), strokeWidth = 1.dp.toPx())
+            drawLine(
+                gold,
+                Offset(size.width - 104.dp.toPx(), 0f),
+                Offset(size.width, 0f),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
 
 @Composable
 fun PapercupCard(

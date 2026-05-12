@@ -15,6 +15,7 @@ import com.papercuspai.operator.mobile.theme.PapercupMetaText
 import com.papercuspai.operator.mobile.theme.PapercupPanel
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import com.papercuspai.operator.mobile.theme.PapercupCardHeader
+import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -24,7 +25,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import uniffi.papercup.ApiException
 import uniffi.papercup.HarnessStatus
-import uniffi.papercup.OperatorClient
 
 private sealed interface DetailState {
     data object Loading : DetailState
@@ -56,18 +56,13 @@ fun HarnessDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(slug, style = MaterialTheme.typography.titleLarge) },
+            PapercupScreenHeader(
+                title = slug,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = PapercupColors.InkRaised,
-                    titleContentColor = PapercupColors.Text,
-                    navigationIconContentColor = PapercupColors.Text,
-                ),
             )
         },
         containerColor = PapercupColors.Ink,
