@@ -402,22 +402,49 @@ private fun PairedShell(
 ) {
     val connState by monitor.state.collectAsState()
     val voiceStateForBanner by voice.state.collectAsState()
+    var pendingCardBadgeCount by remember { mutableIntStateOf(0) }
+    var recentToastBadgeCount by remember { mutableIntStateOf(0) }
+
+    suspend fun refreshNavBadges() {
+        val client = current.client()
+        try {
+            pendingCardBadgeCount = client.listOperatorCards().size
+        } catch (_: Throwable) {
+            // Keep the last known badge count; the screen itself surfaces load errors.
+        }
+        try {
+            recentToastBadgeCount = client.recentNotifications().count(::isAttentionToast)
+        } catch (_: Throwable) {
+            // Keep the last known badge count; the screen itself surfaces load errors.
+        }
+    }
+
+    LaunchedEffect(current.deviceToken, liveTick) {
+        refreshNavBadges()
+    }
+    LaunchedEffect(current.deviceToken) {
+        while (isActive) {
+            delay(30_000)
+            refreshNavBadges()
+        }
+    }
+    var offlineNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(connState.status, connState.offlineSinceMs) {
+        if (connState.status != ConnStatus.Offline) return@LaunchedEffect
+        while (isActive) {
+            offlineNowMs = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
     Scaffold(
         topBar = {
             Column {
                 GlobalPausedBanner(creds = current, liveTick = liveTick)
                 if (connState.status == ConnStatus.Offline) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            stringResource(R.string.connection_lost),
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                    }
+                    OfflineBanner(
+                        offlineSinceMs = connState.offlineSinceMs,
+                        nowMs = offlineNowMs,
+                    )
                 }
                 (voiceStateForBanner as? VoiceManager.State.Failed)?.let { failed ->
                     VoiceErrorBanner(
@@ -431,6 +458,10 @@ private fun PairedShell(
         bottomBar = {
             MobileBottomNav(
                 selected = route,
+                badgeCounts = ShellBadgeCounts(
+                    pendingCards = pendingCardBadgeCount,
+                    recentToasts = recentToastBadgeCount,
+                ),
                 onRouteChange = onRouteChange,
             )
         },
@@ -590,17 +621,86 @@ private fun formatPauseAge(iso: String): String {
     }
 }
 
+private data class ShellBadgeCounts(
+    val pendingCards: Int = 0,
+    val recentToasts: Int = 0,
+)
+
+private enum class NavBadgeTone { Info, Attention }
+
+private data class BottomNavItem(
+    val route: Route,
+    val glyph: String,
+    val label: String,
+    val badgeCount: Int,
+    val badgeTone: NavBadgeTone,
+)
+
+private fun isAttentionToast(toast: uniffi.papercup.Toast): Boolean {
+    return when (toast.level.lowercase()) {
+        "error", "warning", "warn" -> true
+        else -> false
+    }
+}
+
+private fun formatOfflineDuration(offlineSinceMs: Long?, nowMs: Long): String {
+    val since = offlineSinceMs ?: return ""
+    val seconds = ((nowMs - since) / 1_000).coerceAtLeast(1)
+    return when {
+        seconds < 60 -> "${seconds}s"
+        seconds < 3_600 -> "${seconds / 60}m"
+        else -> "${seconds / 3_600}h"
+    }
+}
+
+@Composable
+private fun OfflineBanner(offlineSinceMs: Long?, nowMs: Long) {
+    val duration = formatOfflineDuration(offlineSinceMs, nowMs)
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "●",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                text = "Desktop offline",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            if (duration.isNotEmpty()) {
+                Text(
+                    text = duration,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.80f),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun MobileBottomNav(
     selected: Route,
+    badgeCounts: ShellBadgeCounts,
     onRouteChange: (Route) -> Unit,
 ) {
     val items = listOf(
-        Triple(Route.Operator, "●", stringResource(R.string.tab_operator)),
-        Triple(Route.List, "⌘", stringResource(R.string.tab_harnesses)),
-        Triple(Route.Running, "▶", stringResource(R.string.tab_running)),
-        Triple(Route.Activity, "◆", stringResource(R.string.tab_activity)),
-        Triple(Route.Settings, "⚙", stringResource(R.string.tab_settings)),
+        BottomNavItem(Route.Operator, "●", stringResource(R.string.tab_operator), badgeCounts.pendingCards, NavBadgeTone.Info),
+        BottomNavItem(Route.List, "⌘", stringResource(R.string.tab_harnesses), 0, NavBadgeTone.Info),
+        BottomNavItem(Route.Running, "▶", stringResource(R.string.tab_running), 0, NavBadgeTone.Info),
+        BottomNavItem(Route.Activity, "◆", stringResource(R.string.tab_activity), badgeCounts.recentToasts, NavBadgeTone.Attention),
+        BottomNavItem(Route.Settings, "⚙", stringResource(R.string.tab_settings), 0, NavBadgeTone.Info),
     )
 
     // Wrap in Surface so the Scaffold's FAB-anchor measurement
@@ -628,34 +728,77 @@ private fun MobileBottomNav(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            items.forEach { (route, glyph, label) ->
-            val active = selected == route
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (active) PapercupColors.AccentSoft else Color.Transparent)
-                    .clickable { onRouteChange(route) }
-                    .semantics {
-                        contentDescription = label
-                        role = androidx.compose.ui.semantics.Role.Button
+            items.forEach { item ->
+                val active = selected == item.route
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (active) PapercupColors.AccentSoft else Color.Transparent)
+                        .clickable { onRouteChange(item.route) }
+                        .semantics {
+                            contentDescription = item.label
+                            role = androidx.compose.ui.semantics.Role.Button
+                        }
+                        .padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    Box {
+                        Text(
+                            text = item.glyph,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (active) PapercupColors.AccentStrong else PapercupColors.TextFaint,
+                        )
+                        NavBadge(
+                            count = item.badgeCount,
+                            tone = item.badgeTone,
+                            modifier = Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-4).dp),
+                        )
                     }
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(1.dp),
-            ) {
-                Text(
-                    text = glyph,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (active) PapercupColors.AccentStrong else PapercupColors.TextFaint,
-                )
-                Text(
-                    text = label.uppercase(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (active) PapercupColors.AccentStrong else PapercupColors.TextFaint,
-                )
+                    Text(
+                        text = item.label.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (active) PapercupColors.AccentStrong else PapercupColors.TextFaint,
+                    )
+                }
             }
-            }
+        }
+    }
+}
+
+@Composable
+private fun NavBadge(
+    count: Int,
+    tone: NavBadgeTone,
+    modifier: Modifier = Modifier,
+) {
+    if (count <= 0) return
+    val container = when (tone) {
+        NavBadgeTone.Attention -> PapercupColors.Error
+        NavBadgeTone.Info -> PapercupColors.Accent
+    }
+    val content = when (tone) {
+        NavBadgeTone.Attention -> Color.White
+        NavBadgeTone.Info -> PapercupColors.ButtonInk
+    }
+    Surface(
+        modifier = modifier
+            .height(16.dp)
+            .defaultMinSize(minWidth = 16.dp),
+        shape = RoundedCornerShape(999.dp),
+        color = container,
+        contentColor = content,
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (count > 99) "99+" else count.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = content,
+            )
         }
     }
 }

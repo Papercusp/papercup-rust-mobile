@@ -104,6 +104,7 @@ private struct PairedShell: View {
     @StateObject private var monitor: ConnectionMonitor
     @StateObject private var voice: VoiceManager
     @StateObject private var cacheHost: CacheHost
+    @StateObject private var badgeHost: ShellBadgeHost
     private let wakeWord: WakeWordEngine
 
     init(current: DeviceCredentials,
@@ -128,6 +129,7 @@ private struct PairedShell: View {
         self._monitor = StateObject(wrappedValue: ConnectionMonitor(creds: current))
         self._voice = voiceState
         self._cacheHost = StateObject(wrappedValue: CacheHost(creds: current))
+        self._badgeHost = StateObject(wrappedValue: ShellBadgeHost(creds: current))
         let voiceRef = voiceState
         self.wakeWord = WakeWordEngine { [voiceRef] in
             Task { @MainActor in voiceRef.wrappedValue.start() }
@@ -163,12 +165,7 @@ private struct PairedShell: View {
 
         VStack(spacing: 0) {
             if monitor.state.status == .offline {
-                Text(NSLocalizedString("connection.lost", comment: ""))
-                    .font(.caption)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(Color.red)
+                OfflineBanner(state: monitor.state)
             }
             PausedBanner(creds: current)
             VoiceErrorBanner(voice: voice)
@@ -239,7 +236,7 @@ private struct PairedShell: View {
                     .padding(.trailing, 16)
                     .padding(.bottom, 76)
             }
-            MobileBottomNav(tab: $tab)
+            MobileBottomNav(tab: $tab, counts: badgeHost.counts)
         }
         .task(id: current.deviceToken) { monitor.start(); await runSync() }
         .onReceive(cacheHost.$tick) { _ in
@@ -247,6 +244,9 @@ private struct PairedShell: View {
             // observe `invalidationTick: liveTick` refresh when any
             // cache-tracked query refetches.
             liveTick += 1
+        }
+        .task(id: current.deviceToken) {
+            await badgeHost.run()
         }
         .onChange(of: voice.state) { _, new in
             if new == .idle { wakeWord.start() } else { wakeWord.stop() }
@@ -314,6 +314,9 @@ private struct PairedShell: View {
                 let ev = try await stream.nextEvent()
                 lastInvalidate = ev.name
                 await cacheHost.handleInvalidate(ev.name)
+                if Self.shouldRefreshBadges(for: ev.name) {
+                    Task { await badgeHost.refresh() }
+                }
                 if ev.name.hasPrefix("harness") {
                     liveTick += 1
                 }
@@ -322,8 +325,111 @@ private struct PairedShell: View {
             }
         }
     }
+
+    private static func shouldRefreshBadges(for invalidateName: String) -> Bool {
+        invalidateName == "toastLog.recent"
+            || invalidateName == "auditLog.recent"
+            || invalidateName == "operatorScans.running"
+            || invalidateName.hasPrefix("operatorScans.")
+    }
 }
 
+
+private struct ShellBadgeCounts: Equatable {
+    var pendingCards: Int = 0
+    var recentAlerts: Int = 0
+}
+
+@MainActor
+private final class ShellBadgeHost: ObservableObject {
+    @Published private(set) var counts = ShellBadgeCounts()
+
+    private let creds: DeviceCredentials
+
+    init(creds: DeviceCredentials) {
+        self.creds = creds
+    }
+
+    func run() async {
+        await refresh()
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            if Task.isCancelled { break }
+            await refresh()
+        }
+    }
+
+    func refresh() async {
+        let client = creds.client()
+        let fresh = ShellBadgeCounts(
+            pendingCards: await pendingCardCount(client: client),
+            recentAlerts: await recentAlertCount(client: client)
+        )
+        if counts != fresh {
+            counts = fresh
+        }
+    }
+
+    private func pendingCardCount(client: OperatorClient) async -> Int {
+        do {
+            return (try await client.listOperatorCards()).count
+        } catch {
+            return counts.pendingCards
+        }
+    }
+
+    private func recentAlertCount(client: OperatorClient) async -> Int {
+        do {
+            return (try await client.recentNotifications()).filter { Self.isAlertLevel($0.level) }.count
+        } catch {
+            return counts.recentAlerts
+        }
+    }
+
+    private static func isAlertLevel(_ level: String) -> Bool {
+        level.caseInsensitiveCompare("error") == .orderedSame
+            || level.caseInsensitiveCompare("warning") == .orderedSame
+            || level.caseInsensitiveCompare("warn") == .orderedSame
+    }
+}
+
+private struct OfflineBanner: View {
+    let state: ConnState
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 8) {
+                Text("●")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Desktop offline")
+                    .font(.caption.weight(.semibold))
+                Spacer(minLength: 12)
+                Text(durationText(now: context.date))
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(PapercupTheme.error.opacity(0.82))
+            }
+            .foregroundStyle(Color(red: 1.0, green: 0.80, blue: 0.84))
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color(red: 0.28, green: 0.02, blue: 0.07).opacity(0.94))
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(PapercupTheme.error.opacity(0.32))
+                    .frame(height: 1)
+            }
+        }
+    }
+
+    private func durationText(now: Date) -> String {
+        guard let since = state.offlineSinceMs else { return "" }
+        let elapsed = max(1, Int(now.timeIntervalSince1970) - Int(since / 1_000))
+        if elapsed < 60 { return "\(elapsed)s" }
+        let minutes = elapsed / 60
+        if minutes < 60 { return "\(minutes)m" }
+        return "\(minutes / 60)h"
+    }
+}
 private struct PausedBanner: View {
     let creds: DeviceCredentials
 
@@ -457,29 +563,41 @@ private extension String {
 }
 private struct MobileBottomNav: View {
     @Binding var tab: AppRoot.Tab
+    let counts: ShellBadgeCounts
 
-    private var items: [(AppRoot.Tab, String, String)] {
+    private enum BadgeKind {
+        case pendingCards
+        case recentAlerts
+    }
+
+    private var items: [(tab: AppRoot.Tab, icon: String, label: String, badge: BadgeKind?)] {
         [
-            (.operatorTab, "●", NSLocalizedString("tab.operator", comment: "")),
-            (.harnesses, "⌘", NSLocalizedString("tab.harnesses", comment: "")),
-            (.running, "▶", NSLocalizedString("tab.running", comment: "")),
-            (.activity, "◆", NSLocalizedString("tab.activity", comment: "")),
-            (.settings, "⚙", NSLocalizedString("tab.settings", comment: "")),
+            (.operatorTab, "●", NSLocalizedString("tab.operator", comment: ""), .pendingCards),
+            (.harnesses, "⌘", NSLocalizedString("tab.harnesses", comment: ""), nil),
+            (.running, "▶", NSLocalizedString("tab.running", comment: ""), nil),
+            (.activity, "◆", NSLocalizedString("tab.activity", comment: ""), .recentAlerts),
+            (.settings, "⚙", NSLocalizedString("tab.settings", comment: ""), nil),
         ]
     }
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(items, id: \.0) { item in
-                let selected = tab == item.0
+            ForEach(items, id: \.tab) { item in
+                let selected = tab == item.tab
                 let background = selected ? PapercupTheme.accent.opacity(0.10) : Color.clear
                 Button {
-                    tab = item.0
+                    tab = item.tab
                 } label: {
                     VStack(spacing: 1) {
-                        Text(item.1)
-                            .font(.system(size: 18, weight: .semibold))
-                        Text(item.2.uppercased())
+                        ZStack(alignment: .topTrailing) {
+                            Text(item.icon)
+                                .font(.system(size: 18, weight: .semibold))
+                            if let badge = item.badge {
+                                NavBadge(count: count(for: badge), tone: badge == .recentAlerts ? .attention : .info)
+                                    .offset(x: 12, y: -5)
+                            }
+                        }
+                        Text(item.label.uppercased())
                             .font(.system(size: 10, weight: .semibold))
                             .tracking(0.8)
                     }
@@ -492,7 +610,7 @@ private struct MobileBottomNav: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(item.2))
+                .accessibilityLabel(Text(accessibilityLabel(for: item.label, badge: item.badge)))
                 .accessibilityAddTraits(selected ? [.isButton, .isSelected] : [.isButton])
             }
         }
@@ -510,6 +628,43 @@ private struct MobileBottomNav: View {
             Rectangle()
                 .fill(PapercupTheme.accentStrong.opacity(0.16))
                 .frame(height: 1)
+        }
+    }
+
+    private func count(for badge: BadgeKind) -> Int {
+        switch badge {
+        case .pendingCards: return counts.pendingCards
+        case .recentAlerts: return counts.recentAlerts
+        }
+    }
+
+    private func accessibilityLabel(for label: String, badge: BadgeKind?) -> String {
+        guard let badge else { return label }
+        let count = count(for: badge)
+        guard count > 0 else { return label }
+        return "\(label), \(count) \(badge == .pendingCards ? "pending" : "alerts")"
+    }
+}
+
+private struct NavBadge: View {
+    enum Tone {
+        case info
+        case attention
+    }
+
+    let count: Int
+    let tone: Tone
+
+    var body: some View {
+        if count > 0 {
+            Text(count > 99 ? "99+" : "\(count)")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(tone == .attention ? Color(red: 1.0, green: 0.94, blue: 0.95) : PapercupTheme.ink)
+                .lineLimit(1)
+                .monospacedDigit()
+                .frame(minWidth: 16, minHeight: 16)
+                .padding(.horizontal, count > 9 ? 2 : 0)
+                .background(tone == .attention ? PapercupTheme.error : PapercupTheme.accent, in: Capsule())
         }
     }
 }
