@@ -141,7 +141,7 @@ struct OperatorView: View {
         case .connecting: return "connecting…"
         case .listening: return "listening"
         case .speaking(_, let source): return "speaking · \(source)"
-        case .failed(let m): return String(m.prefix(40))
+        case .failed(let m, _, _): return String(m.prefix(40))
         }
     }
 
