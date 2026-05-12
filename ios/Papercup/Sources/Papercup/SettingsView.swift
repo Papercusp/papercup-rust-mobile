@@ -11,128 +11,398 @@ struct SettingsView: View {
     @State private var devices: [Device]? = nil
     @State private var error: String? = nil
     @State private var revoking: String? = nil
+    @State private var voicePrefs: VoicePrefs = VoicePrefsStore.load()
 
     var body: some View {
         NavigationStack {
-            List {
-                if let err = error {
-                    Section { Text(err).font(.footnote.monospaced()).foregroundStyle(.red) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    screenHeader
+                    if let err = error {
+                        errorCard(err)
+                    }
+                    pairingSection
+                    connectionSection
+                    voiceSection
+                    aboutSection
+                    devicesSection
                 }
-                identitySection
-                workspacesSection
-                devicesSection
-                Section {
-                    NavigationLink(NSLocalizedString("settings.standingApprovals", comment: "")) {
-                        StandingApprovalsView(creds: creds)
-                    }
-                    .accessibilityHint(Text("Opens standing approvals review."))
-                    NavigationLink(NSLocalizedString("settings.voice", comment: "")) {
-                        VoiceSettingsView()
-                    }
-                    .accessibilityHint(Text("Opens voice and wake-word settings."))
-                    NavigationLink(NSLocalizedString("settings.diagnostics", comment: "")) {
-                        DiagnosticsView(creds: creds, monitor: monitor)
-                    }
-                    .accessibilityHint(Text("Opens connection and build diagnostics."))
-                }
-                Section {
-                    Button(role: .destructive, action: onForget) {
-                        Text(NSLocalizedString("settings.forgetDevice", comment: ""))
-                    }
-                    .accessibilityHint(Text("Clears stored credentials and returns to pair view."))
-                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 112)
             }
+            .papercupScreenChrome()
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
             .task(id: creds.deviceToken) { await load() }
+            .onAppear { voicePrefs = VoicePrefsStore.load() }
         }
     }
 
-    private var identitySection: some View {
-        Section(NSLocalizedString("operator.thisDevice", comment: "")) {
-            kv("server", creds.server)
-            kv("device id", creds.deviceId)
-            kv("workspace id", creds.workspaceId)
-            if let ip = creds.meshAssignedIp { kv("mesh address", ip) }
+    private var screenHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Settings")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(PapercupTheme.text)
+            Text("Pairing, connection, voice, and device controls.")
+                .font(.caption)
+                .foregroundStyle(PapercupTheme.textMuted)
         }
+        .padding(.vertical, 10)
     }
 
-    @ViewBuilder
-    private var workspacesSection: some View {
-        Section(NSLocalizedString("settings.workspaces", comment: "")) {
-            if let ws = workspaces {
-                ForEach(ws, id: \.id) { w in workspaceRow(w) }
+    private var pairingSection: some View {
+        sectionShell("Pairing") {
+            infoRow("Desktop", value: creds.server)
+            infoRow("Workspace", value: creds.workspaceId)
+            infoRow("Device ID", value: creds.deviceId, mono: true)
+            if let ip = creds.meshAssignedIp {
+                infoRow("Mesh address", value: ip, mono: true, isLast: true)
             } else {
-                Text(NSLocalizedString("loading", comment: "")).font(.footnote).foregroundStyle(.secondary)
+                infoRow("Mesh address", value: "not assigned", isLast: true)
             }
+        }
+    }
+
+    private var connectionSection: some View {
+        sectionShell("Connection") {
+            subsectionLabel(NSLocalizedString("settings.workspaces", comment: ""))
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 10)
+
+            if let ws = workspaces {
+                if ws.isEmpty {
+                    infoRow("Workspaces", value: "none available", isLast: false)
+                } else {
+                    ForEach(Array(ws.enumerated()), id: \.element.id) { index, workspace in
+                        workspaceRow(workspace, isLast: index == ws.count - 1)
+                    }
+                }
+            } else {
+                loadingRow(isLast: true)
+            }
+
+            dividerLine()
+
+            NavigationLink {
+                StandingApprovalsView(creds: creds)
+            } label: {
+                navRow(
+                    title: NSLocalizedString("settings.standingApprovals", comment: ""),
+                    detail: "Review candidates queued for silent dispatch."
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Opens standing approvals review."))
+
+            dividerLine()
+
+            Button(role: .destructive, action: onForget) {
+                actionRow(
+                    title: NSLocalizedString("settings.forgetDevice", comment: ""),
+                    detail: "Clear credentials and return to pairing.",
+                    destructive: true,
+                    isLast: true
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Clears stored credentials and returns to pair view."))
+        }
+    }
+
+    private var voiceSection: some View {
+        sectionShell("Voice") {
+            NavigationLink {
+                VoiceSettingsView()
+            } label: {
+                navRow(
+                    title: NSLocalizedString("settings.voice", comment: ""),
+                    detail: voicePrefs.wakeWord.isEmpty ? "Wake word, speech rate, pitch, and system voice." : "Wake word: \(voicePrefs.wakeWord)"
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Opens voice and wake-word settings."))
+            dividerLine()
+            infoRow("Speech", value: "Local TTS + wake-word tuning", isLast: true)
+        }
+    }
+
+    private var aboutSection: some View {
+        sectionShell("About") {
+            infoRow("Version", value: version())
+            dividerLine()
+            NavigationLink {
+                DiagnosticsView(creds: creds, monitor: monitor)
+            } label: {
+                navRow(
+                    title: NSLocalizedString("settings.diagnostics", comment: ""),
+                    detail: "Connection, pairing, mesh, push, and build info."
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Opens connection and build diagnostics."))
         }
     }
 
     @ViewBuilder
     private var devicesSection: some View {
-        Section(NSLocalizedString("settings.pairedDevices", comment: "")) {
+        sectionShell("Paired devices") {
             if let dv = devices {
-                ForEach(dv, id: \.deviceId) { d in deviceRow(d) }
+                if dv.isEmpty {
+                    emptyRow("No paired devices found.")
+                } else {
+                    ForEach(Array(dv.enumerated()), id: \.element.deviceId) { index, device in
+                        deviceRow(device, isLast: index == dv.count - 1)
+                    }
+                }
             } else {
-                Text(NSLocalizedString("loading", comment: "")).font(.footnote).foregroundStyle(.secondary)
+                loadingRow(isLast: true)
             }
         }
     }
 
-    private func workspaceRow(_ w: Workspace) -> some View {
+    private func workspaceRow(_ w: Workspace, isLast: Bool) -> some View {
         Button {
             guard !w.current, revoking == nil else { return }
             Task { await switchWorkspace(w) }
         } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(w.name).font(.subheadline)
-                    Text(w.id).font(.caption.monospaced()).foregroundStyle(.secondary)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(w.name)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(PapercupTheme.text)
+                    Text(w.id)
+                        .papercupMonoMeta()
                 }
-                Spacer()
+                Spacer(minLength: 12)
                 if w.current {
-                    Text("current").font(.caption).padding(.horizontal, 8).padding(.vertical, 4).background(.green.opacity(0.2), in: Capsule())
+                    PapercupChip(text: "CURRENT", role: .success)
                 } else if revoking == "switch:\(w.id)" {
-                    ProgressView().controlSize(.small)
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(PapercupTheme.accent)
                 } else {
-                    Text("tap to switch").font(.caption).foregroundStyle(.secondary)
+                    Text("tap to switch")
+                        .font(.caption)
+                        .foregroundStyle(PapercupTheme.textMuted)
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(w.current || revoking != nil)
+        .background(rowBackground)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                separatorInset
+            }
+        }
     }
 
-    private func deviceRow(_ d: Device) -> some View {
+    private func deviceRow(_ d: Device, isLast: Bool) -> some View {
         let isSelf = d.deviceId == creds.deviceId
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(d.deviceLabel ?? String(d.deviceId.prefix(12))).font(.subheadline)
-                Spacer()
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(d.deviceLabel ?? String(d.deviceId.prefix(12)))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(PapercupTheme.text)
+                    Text(d.deviceId)
+                        .papercupMonoMeta()
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 12)
                 if isSelf {
-                    Text("this phone").font(.caption).padding(.horizontal, 8).padding(.vertical, 4).background(.gray.opacity(0.2), in: Capsule())
+                    PapercupChip(text: "THIS PHONE", role: .muted)
                 }
             }
-            if let ls = d.lastSeen { kv("last seen", ls) }
-            if let pa = d.pairedAt { kv("paired at", pa) }
-            kv("workspace", d.workspaceId)
+
+            VStack(spacing: 0) {
+                if let ls = d.lastSeen {
+                    infoRow("Last seen", value: ls)
+                    dividerLine()
+                }
+                if let pa = d.pairedAt {
+                    infoRow("Paired", value: pa)
+                    dividerLine()
+                }
+                infoRow("Workspace", value: d.workspaceId, isLast: isSelf)
+            }
+
             if !isSelf {
                 Button(role: .destructive) {
                     Task { await revokeDevice(d) }
                 } label: {
-                    Text(revoking == d.deviceId ? "Revoking…" : "Revoke")
-                        .font(.caption)
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(PapercupTheme.error)
+                            .frame(width: 6, height: 6)
+                            .shadow(color: PapercupTheme.error.opacity(0.45), radius: 6)
+                        Text(revoking == d.deviceId ? "Revoking…" : "Revoke")
+                            .font(.caption.weight(.semibold))
+                        Spacer()
+                    }
+                    .foregroundStyle(PapercupTheme.error)
+                    .padding(.top, 2)
                 }
+                .buttonStyle(.plain)
                 .disabled(revoking != nil)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(rowBackground)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                separatorInset
             }
         }
     }
 
-    private func kv(_ key: String, _ value: String) -> some View {
-        HStack {
-            Text(key).font(.footnote).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(.footnote.monospaced())
+    private func infoRow(_ label: String, value: String, mono: Bool = false, isLast: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(PapercupTheme.textMuted)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(mono ? .caption.monospaced() : .caption)
+                .foregroundStyle(PapercupTheme.text)
+                .multilineTextAlignment(.trailing)
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(rowBackground)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                separatorInset
+            }
+        }
+    }
+
+    private func navRow(title: String, detail: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(PapercupTheme.text)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(PapercupTheme.textMuted)
+            }
+            Spacer(minLength: 12)
+            Text("›")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PapercupTheme.textMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+    }
+
+    private func actionRow(title: String, detail: String, destructive: Bool = false, isLast: Bool = false) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(destructive ? PapercupTheme.error : PapercupTheme.accentStrong)
+                        .frame(width: 6, height: 6)
+                        .shadow(color: (destructive ? PapercupTheme.error : PapercupTheme.accentStrong).opacity(0.45), radius: 6)
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                }
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(PapercupTheme.textMuted)
+            }
+            .foregroundStyle(destructive ? PapercupTheme.error : PapercupTheme.text)
+            Spacer(minLength: 12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .background(rowBackground)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                separatorInset
+            }
+        }
+    }
+
+    private func emptyRow(_ text: String) -> some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(PapercupTheme.textMuted)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(rowBackground)
+    }
+
+    private func loadingRow(isLast: Bool) -> some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(PapercupTheme.accent)
+            Text(NSLocalizedString("loading", comment: ""))
+                .foregroundStyle(PapercupTheme.textMuted)
+                .font(.callout)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(rowBackground)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                separatorInset
+            }
+        }
+    }
+
+    private func sectionShell<Content: View>(_ title: String, accent: Color = PapercupTheme.accent.opacity(0.10), @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PapercupSectionTitle(text: title)
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(PapercupTheme.cardBackground(accent: accent))
+        }
+    }
+
+    private func subsectionLabel(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(PapercupTheme.accentStrong)
+            .tracking(0.9)
+    }
+
+    private func dividerLine() -> some View {
+        Rectangle()
+            .fill(PapercupTheme.stroke.opacity(0.28))
+            .frame(height: 1)
+            .padding(.horizontal, 16)
+    }
+
+    private var separatorInset: some View {
+        Rectangle()
+            .fill(PapercupTheme.stroke.opacity(0.22))
+            .frame(height: 1)
+            .padding(.leading, 16)
+            .padding(.trailing, 16)
+    }
+
+    private var rowBackground: some View {
+        Color.clear
+    }
+
+    private func errorCard(_ message: String) -> some View {
+        Text(message)
+            .font(.footnote.monospaced())
+            .foregroundStyle(PapercupTheme.error)
+            .papercupCardContainer(accent: PapercupTheme.error.opacity(0.16))
     }
 
     private func load() async {

@@ -8,57 +8,214 @@ struct VoiceSettingsView: View {
     @State private var synth = AVSpeechSynthesizer()
 
     var body: some View {
-        Form {
-            Section("Wake word") {
-                TextField("hey papercup", text: $prefs.wakeWord)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled(true)
-                Text("Picovoice Porcupine accepts only its trained keyword set; this field is the wake-phrase shown to the voice WS server. Hot-reload requires app restart.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                screenHeader
+                wakeWordSection
+                speechRateSection
+                pitchSection
+                voiceSection
+                actionsSection
             }
-
-            Section("Speech rate: \(String(format: "%.2f", prefs.rate))") {
-                Slider(value: $prefs.rate, in: 0.5...2.0)
-            }
-            Section("Pitch: \(String(format: "%.2f", prefs.pitch))") {
-                Slider(value: $prefs.pitch, in: 0.5...2.0)
-            }
-
-            Section("Voice") {
-                if voices.isEmpty {
-                    Text("No system voices loaded.").foregroundStyle(.secondary)
-                } else {
-                    Picker("Voice", selection: Binding(
-                        get: { prefs.voiceIdentifier ?? "" },
-                        set: { prefs.voiceIdentifier = $0.isEmpty ? nil : $0 }
-                    )) {
-                        Text(NSLocalizedString("voice_settings_system_default", value: "System default", comment: "")).tag("")
-                        ForEach(voices, id: \.identifier) { v in
-                            Text("\(v.name) (\(v.language))").tag(v.identifier)
-                        }
-                    }
-                }
-            }
-
-            Section {
-                HStack {
-                    Button("Test") { test() }
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
-                    Button("Reset") { prefs = VoicePrefs() }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-                }
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 112)
         }
+        .papercupScreenChrome()
         .navigationTitle("Voice")
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             voices = AVSpeechSynthesisVoice.speechVoices().filter {
                 $0.language.hasPrefix(Locale.current.language.languageCode?.identifier ?? "en")
             }
         }
         .onChange(of: prefs) { _, new in VoicePrefsStore.save(new) }
+    }
+
+    private var screenHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Voice")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(PapercupTheme.text)
+            Text("Tune wake word, speech rate, pitch, and voice output.")
+                .font(.caption)
+                .foregroundStyle(PapercupTheme.textMuted)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var wakeWordSection: some View {
+        sectionShell("Wake word") {
+            VStack(alignment: .leading, spacing: 0) {
+                TextField("hey operator", text: $prefs.wakeWord)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .font(.body)
+                    .foregroundStyle(PapercupTheme.text)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                dividerLine()
+                Text("3-syllable phrases work best — single words misfire.")
+                    .font(.caption)
+                    .foregroundStyle(PapercupTheme.textMuted)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+            }
+        }
+    }
+
+    private var speechRateSection: some View {
+        sectionShell("Speech rate") {
+            rangeRow(value: $prefs.rate, range: 0.5...2.0, step: 0.05)
+        }
+    }
+
+    private var pitchSection: some View {
+        sectionShell("Pitch") {
+            rangeRow(value: $prefs.pitch, range: 0.5...2.0, step: 0.05)
+        }
+    }
+
+    private var voiceSection: some View {
+        sectionShell("Voice") {
+            if voices.isEmpty {
+                Text("No system voices loaded.")
+                    .font(.callout)
+                    .foregroundStyle(PapercupTheme.textMuted)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Menu {
+                    Button("System default") { prefs.voiceIdentifier = nil }
+                    ForEach(voices, id: \.identifier) { voice in
+                        Button("\(voice.name) (\(voice.language))") {
+                            prefs.voiceIdentifier = voice.identifier
+                        }
+                    }
+                } label: {
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(selectedVoiceTitle)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(PapercupTheme.text)
+                            Text(selectedVoiceSubtitle)
+                                .font(.caption)
+                                .foregroundStyle(PapercupTheme.textMuted)
+                        }
+                        Spacer(minLength: 12)
+                        Text("›")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PapercupTheme.textMuted)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var actionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PapercupSectionTitle(text: "Test + reset")
+            HStack(spacing: 10) {
+                Button { test() } label: {
+                    actionButtonLabel(
+                        title: NSLocalizedString("voice.test", comment: ""),
+                        fill: LinearGradient(
+                            colors: [PapercupTheme.accentStrong.opacity(0.96), PapercupTheme.accent.opacity(0.82)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        foreground: PapercupTheme.ink
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button { prefs = VoicePrefs() } label: {
+                    actionButtonLabel(
+                        title: NSLocalizedString("voice.reset", comment: ""),
+                        fill: LinearGradient(
+                            colors: [Color.white.opacity(0.08), Color.white.opacity(0.03)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        foreground: PapercupTheme.text
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var selectedVoiceTitle: String {
+        guard let id = prefs.voiceIdentifier,
+              let voice = voices.first(where: { $0.identifier == id }) else {
+            return "System default"
+        }
+        return voice.name
+    }
+
+    private var selectedVoiceSubtitle: String {
+        guard let id = prefs.voiceIdentifier,
+              let voice = voices.first(where: { $0.identifier == id }) else {
+            return "Use the iPhone default voice."
+        }
+        return voice.language
+    }
+
+    private func sectionShell<Content: View>(_ title: String, accent: Color = PapercupTheme.accent.opacity(0.10), @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PapercupSectionTitle(text: title)
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(PapercupTheme.cardBackground(accent: accent))
+        }
+    }
+
+    private func dividerLine() -> some View {
+        Rectangle()
+            .fill(PapercupTheme.stroke.opacity(0.28))
+            .frame(height: 1)
+            .padding(.horizontal, 16)
+    }
+
+    private func rangeRow(value: Binding<Float>, range: ClosedRange<Float>, step: Float) -> some View {
+        HStack(spacing: 14) {
+            Slider(
+                value: Binding(
+                    get: { Double(value.wrappedValue) },
+                    set: { value.wrappedValue = Float($0) }
+                ),
+                in: Double(range.lowerBound)...Double(range.upperBound),
+                step: Double(step)
+            )
+            .tint(PapercupTheme.accent)
+
+            Text(String(format: "%.2f", value.wrappedValue))
+                .font(.caption.monospaced())
+                .foregroundStyle(PapercupTheme.text)
+                .frame(width: 44, alignment: .trailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
+    private func actionButtonLabel(title: String, fill: LinearGradient, foreground: Color) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(PapercupTheme.stroke.opacity(0.65), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.24), radius: 10, x: 0, y: 6)
     }
 
     private func test() {

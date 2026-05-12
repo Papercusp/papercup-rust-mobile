@@ -5,35 +5,28 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import com.papercuspai.operator.mobile.theme.PapercupCardHeader
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
-import com.papercuspai.operator.mobile.theme.PapercupPanel
-import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
 import uniffi.papercup.Device
 import uniffi.papercup.OperatorClient
 import uniffi.papercup.Workspace
 
-/// Catch-all 'Settings' page reachable from the overflow menu. Surfaces
-/// the things that don't earn dedicated nav: workspaces, paired devices,
-/// device + mesh + server identity.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -45,9 +38,6 @@ fun SettingsScreen(
     onOpenDiagnostics: () -> Unit = {},
 ) {
     val activity = androidx.compose.ui.platform.LocalContext.current.let { ctx ->
-        // Walk to the FragmentActivity (MainActivity) so BiometricGate
-        // can show the prompt. ContextThemeWrapper is occasionally in
-        // the chain; unwrap it.
         var c: android.content.Context = ctx
         while (c is android.content.ContextWrapper && c !is androidx.fragment.app.FragmentActivity) {
             c = c.baseContext
@@ -55,14 +45,14 @@ fun SettingsScreen(
         c as? androidx.fragment.app.FragmentActivity
     }
     val gatedClient: () -> OperatorClient = {
-        creds.client().also { c ->
-            activity?.let { c.setBiometricPrompt(BiometricGate(it)) }
+        creds.client().also { client ->
+            activity?.let { client.setBiometricPrompt(BiometricGate(it)) }
         }
     }
     var workspaces by remember { mutableStateOf<List<Workspace>?>(null) }
     var devices by remember { mutableStateOf<List<Device>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    var revoking by remember { mutableStateOf<String?>(null) }
+    var busyKey by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     suspend fun load() {
@@ -80,9 +70,14 @@ fun SettingsScreen(
 
     LaunchedEffect(creds.deviceToken) { load() }
 
+    val selfDevice = devices?.firstOrNull { it.deviceId == creds.deviceId }
+
     Scaffold(
         topBar = {
-            PapercupScreenHeader(title = stringResource(R.string.settings_title))
+            PapercupScreenHeader(
+                title = stringResource(R.string.settings_title),
+                subtitle = creds.workspaceId,
+            )
         },
         containerColor = PapercupColors.Ink,
     ) { padding ->
@@ -99,223 +94,367 @@ fun SettingsScreen(
                 item {
                     PapercupCard(accent = PapercupColors.ErrorSoft) {
                         Text(
-                            it,
+                            text = it,
                             color = PapercupColors.Error,
-                            fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
                         )
                     }
                 }
             }
 
             item {
-                IdentityCard(creds)
+                SectionShell(title = "Pairing") {
+                    ValueRow(label = "Desktop", value = creds.server)
+                    selfDevice?.pairedAt?.let { ValueRow(label = "Paired", value = it) }
+                    ValueRow(label = "Workspace", value = creds.workspaceId)
+                    ValueRow(label = "Device ID", value = creds.deviceId, mono = true, last = creds.meshAssignedIp == null)
+                    creds.meshAssignedIp?.let { ValueRow(label = "Mesh address", value = it, mono = true, last = true) }
+                }
             }
 
             item {
-                PapercupCardHeader(stringResource(R.string.settings_workspaces), meta = workspaces?.size?.toString())
-            }
-            val ws = workspaces
-            if (ws == null) {
-                item { PapercupMetaText(stringResource(R.string.loading)) }
-            } else {
-                items(ws) { w ->
-                    WorkspaceRow(
-                        w = w,
-                        switching = revoking == "switch:${w.id}",
-                        onSwitch = if (w.current) {
-                            null
-                        } else {
-                            {
-                                scope.launch {
-                                    revoking = "switch:${w.id}"
-                                    try {
-                                        val res = gatedClient().workspaceSwitch(w.id)
-                                        onWorkspaceSwitched(
-                                            creds.copy(
-                                                deviceToken = res.deviceToken,
-                                                workspaceId = res.workspaceId,
-                                            ),
-                                        )
-                                    } catch (t: Throwable) {
-                                        error = "Switch failed: ${t.message}"
-                                    } finally {
-                                        revoking = null
+                SectionShell(title = "Connection") {
+                    val currentWorkspace = workspaces?.firstOrNull { it.current }
+                    ActionRow(
+                        title = "Switch workspace",
+                        subtitle = currentWorkspace?.name ?: creds.workspaceId,
+                        enabled = false,
+                        trailing = null,
+                    )
+                    when (val ws = workspaces) {
+                        null -> LoadingRow(last = false)
+                        else -> ws.forEachIndexed { index, workspace ->
+                            WorkspaceSwitchRow(
+                                workspace = workspace,
+                                switching = busyKey == "switch:${workspace.id}",
+                                isLast = index == ws.lastIndex,
+                                onSwitch = if (workspace.current) {
+                                    null
+                                } else {
+                                    {
+                                        scope.launch {
+                                            busyKey = "switch:${workspace.id}"
+                                            try {
+                                                val res = gatedClient().workspaceSwitch(workspace.id)
+                                                onWorkspaceSwitched(
+                                                    creds.copy(
+                                                        deviceToken = res.deviceToken,
+                                                        workspaceId = res.workspaceId,
+                                                    ),
+                                                )
+                                            } catch (t: Throwable) {
+                                                error = "Switch failed: ${t.message}"
+                                            } finally {
+                                                busyKey = null
+                                            }
+                                        }
                                     }
-                                }
-                            }
-                        },
-                    )
-                }
-            }
-
-            item {
-                Spacer(Modifier.height(4.dp))
-                PapercupCardHeader(stringResource(R.string.settings_paired_devices), meta = devices?.size?.toString())
-            }
-            val dv = devices
-            if (dv == null) {
-                item { PapercupMetaText(stringResource(R.string.loading)) }
-            } else {
-                items(dv) { d ->
-                    DeviceRowCard(
-                        device = d,
-                        isSelf = d.deviceId == creds.deviceId,
-                        revoking = revoking == d.deviceId,
-                        onRevoke = {
-                            scope.launch {
-                                revoking = d.deviceId
-                                try {
-                                    gatedClient().revokeDevice(d.deviceId)
-                                    load()
-                                } catch (t: Throwable) {
-                                    error = "Revoke failed: ${t.message}"
-                                } finally {
-                                    revoking = null
-                                }
-                            }
-                        },
-                    )
-                }
-            }
-
-            item {
-                Spacer(Modifier.height(8.dp))
-                PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(0.dp)) {
-                    Column {
-                        NavRow(
-                            stringResource(R.string.settings_standing_approvals),
-                            stringResource(R.string.settings_standing_approvals_subtitle),
-                            onOpenStandingApprovals,
-                        )
-                        HorizontalDivider()
-                        NavRow(
-                            stringResource(R.string.settings_voice),
-                            stringResource(R.string.settings_voice_subtitle),
-                            onOpenVoiceSettings,
-                        )
-                        HorizontalDivider()
-                        NavRow(
-                            stringResource(R.string.settings_diagnostics),
-                            stringResource(R.string.settings_diagnostics_subtitle),
-                            onOpenDiagnostics,
-                        )
+                                },
+                            )
+                        }
                     }
                 }
             }
 
             item {
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = onForget,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                    ),
-                ) { Text(stringResource(R.string.settings_forget_device)) }
+                SectionShell(title = "Voice") {
+                    ActionRow(
+                        title = "Voice settings",
+                        subtitle = stringResource(R.string.settings_voice_subtitle),
+                        onClick = onOpenVoiceSettings,
+                        last = false,
+                    )
+                    ValueRow(label = "STT / TTS", value = "Android local speech", last = false)
+                    ValueRow(label = "Audio routing", value = "Phone speaker", last = true)
+                }
+            }
+
+            item {
+                SectionShell(title = "About") {
+                    ValueRow(label = "Version", value = uniffi.papercup.version(), mono = true, last = false)
+                    ActionRow(
+                        title = stringResource(R.string.settings_diagnostics),
+                        subtitle = stringResource(R.string.settings_diagnostics_subtitle),
+                        onClick = onOpenDiagnostics,
+                        last = true,
+                    )
+                }
+            }
+
+            item {
+                SectionShell(title = "Paired devices", meta = devices?.size?.toString()) {
+                    when (val dv = devices) {
+                        null -> LoadingRow(last = true)
+                        else -> dv.forEachIndexed { index, device ->
+                            DeviceRow(
+                                device = device,
+                                isSelf = device.deviceId == creds.deviceId,
+                                revoking = busyKey == device.deviceId,
+                                isLast = index == dv.lastIndex,
+                                onRevoke = if (device.deviceId == creds.deviceId) {
+                                    null
+                                } else {
+                                    {
+                                        scope.launch {
+                                            busyKey = device.deviceId
+                                            try {
+                                                gatedClient().revokeDevice(device.deviceId)
+                                                load()
+                                            } catch (t: Throwable) {
+                                                error = "Revoke failed: ${t.message}"
+                                            } finally {
+                                                busyKey = null
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                SectionShell(title = "Actions") {
+                    ActionRow(
+                        title = stringResource(R.string.settings_standing_approvals),
+                        subtitle = stringResource(R.string.settings_standing_approvals_subtitle),
+                        onClick = onOpenStandingApprovals,
+                        last = false,
+                    )
+                    ActionRow(
+                        title = stringResource(R.string.settings_forget_device),
+                        subtitle = "Remove this phone from the paired desktop",
+                        onClick = onForget,
+                        danger = true,
+                        trailing = null,
+                        last = true,
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun IdentityCard(creds: DeviceCredentials) {
-    PapercupCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            PapercupCardHeader("This device", meta = creds.workspaceId)
-            Kv("server", creds.server)
-            Kv("device id", creds.deviceId)
-            Kv("workspace id", creds.workspaceId)
-            creds.meshAssignedIp?.let { Kv("mesh address", it) }
+private fun SectionShell(
+    title: String,
+    meta: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    PapercupCard(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = title.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = PapercupColors.TextMuted,
+                )
+                meta?.let {
+                    PapercupStatusChip(
+                        text = it,
+                        containerColor = PapercupColors.WarningSoft,
+                        contentColor = PapercupColors.Warning,
+                    )
+                }
+            }
+            HorizontalDivider(color = PapercupColors.StrokeSoft)
+            Column(content = content)
         }
     }
 }
 
 @Composable
-private fun WorkspaceRow(
-    w: Workspace,
+private fun LoadingRow(last: Boolean) {
+    ValueRow(label = "Status", value = stringResource(R.string.loading), last = last)
+}
+
+@Composable
+private fun ValueRow(
+    label: String,
+    value: String,
+    mono: Boolean = false,
+    last: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = PapercupColors.TextMuted,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = PapercupColors.Text,
+            fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
+        )
+    }
+    if (!last) {
+        HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
+    }
+}
+
+@Composable
+private fun ActionRow(
+    title: String,
+    subtitle: String,
+    onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
+    danger: Boolean = false,
+    trailing: String? = "›",
+    last: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(enabled = enabled, onClick = onClick)
+                } else {
+                    Modifier
+                }
+            )
+            .semantics(mergeDescendants = true) {
+                contentDescription = listOf(title, subtitle).joinToString(". ")
+                if (onClick != null) role = androidx.compose.ui.semantics.Role.Button
+            }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (danger) PapercupColors.Error else PapercupColors.Text,
+            )
+            PapercupMetaText(text = subtitle)
+        }
+        trailing?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (danger) PapercupColors.Error else PapercupColors.TextMuted,
+            )
+        }
+    }
+    if (!last) {
+        HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
+    }
+}
+
+@Composable
+private fun WorkspaceSwitchRow(
+    workspace: Workspace,
     switching: Boolean,
+    isLast: Boolean,
     onSwitch: (() -> Unit)?,
 ) {
-    PapercupPanel(
-        modifier = Modifier.fillMaxWidth().let { m ->
-            onSwitch?.let { m.clickable(enabled = !switching, onClick = it) } ?: m
-        },
-        contentPadding = PaddingValues(12.dp),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (onSwitch != null) {
+                    Modifier.clickable(enabled = !switching, onClick = onSwitch)
+                } else {
+                    Modifier
+                }
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = workspace.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = PapercupColors.Text,
+            )
+            PapercupMetaText(text = workspace.id, monospace = true)
+        }
+        when {
+            workspace.current -> PapercupStatusChip(
+                text = "Current",
+                containerColor = PapercupColors.SuccessSoft,
+                contentColor = PapercupColors.Success,
+            )
+
+            switching -> PapercupMetaText(text = "Switching…")
+            else -> PapercupMetaText(text = "Tap to switch")
+        }
+    }
+    if (!isLast) {
+        HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
+    }
+}
+
+@Composable
+private fun DeviceRow(
+    device: Device,
+    isSelf: Boolean,
+    revoking: Boolean,
+    isLast: Boolean,
+    onRevoke: (() -> Unit)?,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(w.name, style = MaterialTheme.typography.titleSmall)
-                Text(w.id, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
-            }
-            when {
-                w.current -> PapercupStatusChip(text = "current", containerColor = PapercupColors.SuccessSoft, contentColor = PapercupColors.Success)
-                switching -> Text("switching…", style = MaterialTheme.typography.labelSmall)
-                onSwitch != null -> Text("tap to switch", style = MaterialTheme.typography.labelSmall)
+            Text(
+                text = device.deviceLabel ?: device.deviceId.take(12),
+                style = MaterialTheme.typography.bodyMedium,
+                color = PapercupColors.Text,
+            )
+            if (isSelf) {
+                PapercupStatusChip(
+                    text = stringResource(R.string.this_device),
+                    containerColor = PapercupColors.InfoSoft,
+                    contentColor = PapercupColors.Info,
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun DeviceRowCard(device: Device, isSelf: Boolean, revoking: Boolean, onRevoke: () -> Unit) {
-    PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+        PapercupMetaText(text = device.deviceId, monospace = true)
+        PapercupMetaText(text = "workspace · ${device.workspaceId}")
+        device.pairedAt?.let { PapercupMetaText(text = "paired · $it") }
+        device.lastSeen?.let { PapercupMetaText(text = "last seen · $it") }
+        if (onRevoke != null) {
+            TextButton(
+                onClick = onRevoke,
+                enabled = !revoking,
+                contentPadding = PaddingValues(0.dp),
             ) {
                 Text(
-                    device.deviceLabel ?: device.deviceId.take(12),
-                    style = MaterialTheme.typography.titleSmall,
+                    text = if (revoking) "Revoking…" else stringResource(R.string.settings_revoke),
+                    color = PapercupColors.Error,
                 )
-                if (isSelf) PapercupStatusChip(text = "this phone", containerColor = PapercupColors.InfoSoft, contentColor = PapercupColors.Info)
-            }
-            device.lastSeen?.let { Kv("last seen", it) }
-            device.pairedAt?.let { Kv("paired at", it) }
-            Kv("workspace", device.workspaceId)
-            if (!isSelf) {
-                TextButton(onClick = onRevoke, enabled = !revoking) {
-                    Text(if (revoking) "Revoking…" else stringResource(R.string.settings_revoke))
-                }
             }
         }
     }
-}
-
-@Composable
-private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .semantics(mergeDescendants = true) {
-                contentDescription = "$title. $subtitle. Double-tap to open."
-                role = androidx.compose.ui.semantics.Role.Button
-            }
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Text("›", style = MaterialTheme.typography.titleLarge)
-    }
-}
-
-@Composable
-private fun Kv(key: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        PapercupMetaText(key)
-        PapercupMetaText(value, monospace = true)
+    if (!isLast) {
+        HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
     }
 }

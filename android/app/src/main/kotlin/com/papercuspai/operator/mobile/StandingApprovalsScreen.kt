@@ -1,22 +1,31 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.papercuspai.operator.mobile
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
-import uniffi.papercup.OperatorClient
 import uniffi.papercup.StandingCandidate
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeParseException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,7 +39,7 @@ fun StandingApprovalsScreen(
     var hidden by remember { mutableStateOf<Set<String>>(emptySet()) }
     val scope = rememberCoroutineScope()
 
-    fun key(c: StandingCandidate) = "${c.capability}::${c.targetHarness}"
+    fun key(candidate: StandingCandidate) = "${candidate.capability}::${candidate.targetHarness}"
 
     suspend fun load() {
         try {
@@ -45,90 +54,157 @@ fun StandingApprovalsScreen(
 
     LaunchedEffect(creds.deviceToken) { load() }
 
-    fun decide(c: StandingCandidate, approve: Boolean) {
-        val k = key(c)
-        pending = pending + k
-        hidden = hidden + k
+    fun decide(candidate: StandingCandidate, approve: Boolean) {
+        val candidateKey = key(candidate)
+        pending = pending + candidateKey
+        hidden = hidden + candidateKey
         scope.launch {
             try {
-                creds.client()
-                    .standingCandidateDecide(c.capability, c.targetHarness, approve)
+                creds.client().standingCandidateDecide(candidate.capability, candidate.targetHarness, approve)
             } catch (t: Throwable) {
                 error = t.message ?: "decision failed"
-                hidden = hidden - k
+                hidden = hidden - candidateKey
             } finally {
-                pending = pending - k
+                pending = pending - candidateKey
             }
         }
     }
 
+    val visible = candidates?.filter { key(it) !in hidden }
+    val subtitle = when {
+        visible == null -> stringResource(R.string.loading)
+        else -> "${visible.size} pending"
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.standing_approvals_title)) },
+            PapercupScreenHeader(
+                title = stringResource(R.string.standing_approvals_title),
+                subtitle = subtitle,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = PapercupColors.Text,
+                        )
                     }
                 },
             )
         },
+        containerColor = PapercupColors.Ink,
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Text(
-                "Patterns the operator has dispatched silently 3+ times in the last 24h. " +
-                    "Approve to grant standing authority for this capability + target.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(16.dp),
-            )
-            error?.let {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                ) { Text(it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall) }
-                Spacer(Modifier.height(8.dp))
-            }
-            val visible = candidates?.filter { key(it) !in hidden }
-            when {
-                visible == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(PapercupColors.ScreenGradient)
+                .padding(padding)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(vertical = 12.dp),
+        ) {
+            item {
+                PapercupCard {
+                    PapercupMetaText(
+                        text = "Patterns dispatched silently 3+ times in the last 24h. Approve to grant standing authority for this capability and target.",
+                    )
                 }
-                visible.isEmpty() -> Text(
-                    "No standing-approval candidates.",
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                else -> LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(visible, key = { key(it) }) { c ->
-                        val k = key(c)
-                        val busy = k in pending
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Text(
-                                        c.capability,
-                                        modifier = Modifier.weight(1f),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontFamily = FontFamily.Monospace,
-                                    )
-                                    AssistChip(onClick = {}, label = { Text("${c.count}×") })
+            }
+
+            error?.let {
+                item {
+                    PapercupCard(accent = PapercupColors.ErrorSoft) {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PapercupColors.Error,
+                        )
+                    }
+                }
+            }
+
+            when {
+                visible == null -> item {
+                    PapercupCard {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(color = PapercupColors.AccentStrong)
+                        }
+                    }
+                }
+
+                visible.isEmpty() -> item {
+                    PapercupCard {
+                        Text(
+                            text = "No standing-approval candidates.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = PapercupColors.TextMuted,
+                        )
+                    }
+                }
+
+                else -> items(visible, key = { key(it) }) { candidate ->
+                    val candidateKey = key(candidate)
+                    val busy = candidateKey in pending
+                    PapercupCard(contentPadding = PaddingValues(14.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Text(
+                                    text = candidate.capability,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = PapercupColors.Text,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                PapercupStatusChip(
+                                    text = "${candidate.count}×",
+                                    containerColor = PapercupColors.WarningSoft,
+                                    contentColor = PapercupColors.Warning,
+                                )
+                            }
+                            Text(
+                                text = candidate.targetHarness,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = PapercupColors.Text,
+                            )
+                            PapercupMetaText(
+                                text = buildString {
+                                    append("last seen ")
+                                    append(formatAge(candidate.lastSeenAt))
+                                    candidate.firstShownAt?.let {
+                                        append(" · first shown ")
+                                        append(formatAge(it))
+                                    }
+                                },
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Button(
+                                    onClick = { decide(candidate, true) },
+                                    enabled = !busy,
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = PapercupColors.AccentStrong,
+                                        contentColor = PapercupColors.ButtonInk,
+                                    ),
+                                ) {
+                                    Text(if (busy) "…" else stringResource(R.string.standing_approvals_approve))
                                 }
-                                Text("→ ${c.targetHarness}", style = MaterialTheme.typography.bodySmall)
-                                Text("last seen ${c.lastSeenAt}", style = MaterialTheme.typography.labelSmall)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = { decide(c, true) },
-                                        enabled = !busy,
-                                        modifier = Modifier.weight(1f),
-                                    ) { Text(if (busy) "…" else stringResource(R.string.standing_approvals_approve)) }
-                                    OutlinedButton(
-                                        onClick = { decide(c, false) },
-                                        enabled = !busy,
-                                        modifier = Modifier.weight(1f),
-                                    ) { Text(stringResource(R.string.standing_approvals_dismiss)) }
+                                OutlinedButton(
+                                    onClick = { decide(candidate, false) },
+                                    enabled = !busy,
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PapercupColors.Text),
+                                ) {
+                                    Text(stringResource(R.string.standing_approvals_dismiss))
                                 }
                             }
                         }
@@ -136,5 +212,20 @@ fun StandingApprovalsScreen(
                 }
             }
         }
+    }
+}
+
+private fun formatAge(iso: String): String {
+    val instant = try {
+        Instant.parse(iso)
+    } catch (_: DateTimeParseException) {
+        return iso
+    }
+    val seconds = Duration.between(instant, Instant.now()).seconds.coerceAtLeast(0)
+    return when {
+        seconds < 60 -> "${seconds}s ago"
+        seconds < 3_600 -> "${seconds / 60}m ago"
+        seconds < 86_400 -> "${seconds / 3_600}h ago"
+        else -> instant.atZone(ZoneId.systemDefault()).toLocalDate().toString()
     }
 }

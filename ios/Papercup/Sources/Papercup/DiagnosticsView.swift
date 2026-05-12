@@ -10,55 +10,22 @@ struct DiagnosticsView: View {
     @State private var pushAuth: String = "checking…"
 
     var body: some View {
-        List {
-            Section("Connection") {
-                HStack {
-                    Text(NSLocalizedString("diagnostics.status", comment: "")).foregroundStyle(.secondary)
-                    Spacer()
-                    statusPill(monitor.state.status)
-                }
-                if let ms = monitor.state.lastPingMs {
-                    kv("Last ping", "\(ms) ms")
-                }
-                if let since = monitor.state.offlineSinceMs {
-                    kv("Offline since", Date(timeIntervalSince1970: TimeInterval(since) / 1000).description)
-                }
-                Button {
-                    pinging = true
-                    Task { await monitor.probe(); pinging = false }
-                } label: {
-                    Text(pinging ? "Pinging…" : "Ping desktop")
-                }
-                .disabled(pinging)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                screenHeader
+                connectionSection
+                pairingSection
+                meshSection
+                pushSection
+                buildSection
             }
-            Section("Pairing") {
-                kv("Device ID", creds.deviceId, mono: true)
-                kv("Workspace", creds.workspaceId)
-                kv("Server", creds.server)
-                kv("Token (first 12)", creds.deviceToken.prefix(12) + "…", mono: true)
-                kv("Token length", "\(creds.deviceToken.count) chars")
-            }
-            Section("Mesh") {
-                if let url = creds.meshUrl {
-                    kv("Mesh URL", url)
-                } else {
-                    kv("Mesh URL", "not assigned")
-                }
-                if let ip = creds.meshAssignedIp {
-                    kv("Mesh address", ip)
-                }
-                kv("Tunnel", "down — NEPacketTunnelProvider extension not built (requires Apple Dev Program)")
-            }
-            Section("Push") {
-                kv("Authorization", pushAuth)
-            }
-            Section("Build") {
-                kv("Core version", PapercupCoreVersion())
-                kv("iOS", UIDevice.current.systemVersion)
-                kv("Device", UIDevice.current.model)
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 112)
         }
+        .papercupScreenChrome()
         .navigationTitle("Diagnostics")
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             let settings = await UNUserNotificationCenter.current().notificationSettings()
             pushAuth = switch settings.authorizationStatus {
@@ -72,33 +39,226 @@ struct DiagnosticsView: View {
         }
     }
 
-    private func kv(_ k: String, _ v: some StringProtocol, mono: Bool = false) -> some View {
-        HStack {
-            Text(k).font(.caption).foregroundStyle(.secondary)
-            Spacer()
-            if mono {
-                Text(String(v)).font(.caption.monospaced())
-            } else {
-                Text(String(v)).font(.caption)
+    private var screenHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Diagnostics")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(PapercupTheme.text)
+            Text("Connection, pairing, mesh, and build state for this device.")
+                .font(.caption)
+                .foregroundStyle(PapercupTheme.textMuted)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var connectionSection: some View {
+        sectionShell("Connection") {
+            pillRow("Status", label: monitor.state.statusLabel, role: statusRole(monitor.state.status))
+            if let since = monitor.state.offlineSinceMs {
+                dividerLine()
+                infoRow("Offline since", value: Date(timeIntervalSince1970: TimeInterval(since) / 1000).formatted())
+            }
+            if let ms = monitor.state.lastPingMs {
+                dividerLine()
+                infoRow("Last ping", value: "\(ms) ms")
+            }
+            dividerLine()
+            infoRow("App shell", value: "native iOS", isLast: false)
+            dividerLine()
+            Button {
+                pinging = true
+                Task {
+                    await monitor.probe()
+                    pinging = false
+                }
+            } label: {
+                actionRow(
+                    title: pinging ? "Pinging…" : "Ping desktop",
+                    detail: "Trigger a fresh heartbeat check.",
+                    role: .accent,
+                    isLast: true
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(pinging)
+        }
+    }
+
+    private var pairingSection: some View {
+        sectionShell("Pairing") {
+            infoRow("Device ID", value: creds.deviceId, mono: true)
+            dividerLine()
+            infoRow("Workspace", value: creds.workspaceId)
+            dividerLine()
+            infoRow("Desktop host", value: creds.server)
+            dividerLine()
+            infoRow("Token (first 12)", value: String(creds.deviceToken.prefix(12)) + "…", mono: true)
+            dividerLine()
+            infoRow("Token length", value: "\(creds.deviceToken.count) chars", isLast: true)
+        }
+    }
+
+    private var meshSection: some View {
+        sectionShell("WireGuard mesh") {
+            infoRow("Mesh URL", value: creds.meshUrl ?? "not assigned", mono: creds.meshUrl != nil)
+            dividerLine()
+            infoRow("Mesh address", value: creds.meshAssignedIp ?? "not assigned", mono: creds.meshAssignedIp != nil)
+            dividerLine()
+            infoRow(
+                "Tunnel",
+                value: "down — NEPacketTunnelProvider extension not built (requires Apple Dev Program)",
+                isLast: true
+            )
+        }
+    }
+
+    private var pushSection: some View {
+        sectionShell("Push") {
+            pillRow("Authorization", label: pushAuth.uppercased(), role: pushRole(pushAuth), isLast: true)
+        }
+    }
+
+    private var buildSection: some View {
+        sectionShell("Build") {
+            infoRow("Mobile app version", value: version())
+            dividerLine()
+            infoRow("Core version", value: PapercupCoreVersion())
+            dividerLine()
+            infoRow("iOS", value: UIDevice.current.systemVersion)
+            dividerLine()
+            infoRow("Device", value: UIDevice.current.model, isLast: true)
+        }
+    }
+
+    private func sectionShell<Content: View>(_ title: String, accent: Color = PapercupTheme.accent.opacity(0.10), @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PapercupSectionTitle(text: title)
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(PapercupTheme.cardBackground(accent: accent))
+        }
+    }
+
+    private func infoRow(_ label: String, value: String, mono: Bool = false, isLast: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(PapercupTheme.textMuted)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(mono ? .caption.monospaced() : .caption)
+                .foregroundStyle(PapercupTheme.text)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.clear)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                separatorInset
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("\(k): \(String(v))"))
+        .accessibilityLabel(Text("\(label): \(value)"))
     }
 
-    private func statusPill(_ s: ConnStatus) -> some View {
-        let (label, color): (String, Color) = switch s {
-        case .online:  ("ONLINE",  .green)
-        case .offline: ("OFFLINE", .red)
-        case .unknown: ("UNKNOWN", .secondary)
+    private func pillRow(_ label: String, label pillLabel: String, role: PapercupChipRole, isLast: Bool = false) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(PapercupTheme.textMuted)
+            Spacer(minLength: 12)
+            PapercupChip(text: pillLabel, role: role)
         }
-        return Text(label)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 8).padding(.vertical, 2)
-            .background(color.opacity(0.2))
-            .foregroundStyle(color)
-            .clipShape(Capsule())
-            .accessibilityLabel(Text("Status \(label)"))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                separatorInset
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("\(label): \(pillLabel)"))
+    }
+
+    private func actionRow(title: String, detail: String, role: PapercupChipRole, isLast: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(role.foreground)
+                        .frame(width: 6, height: 6)
+                        .shadow(color: role.foreground.opacity(0.45), radius: 6)
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                }
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(PapercupTheme.textMuted)
+            }
+            .foregroundStyle(PapercupTheme.text)
+            Spacer(minLength: 12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                separatorInset
+            }
+        }
+    }
+
+    private func dividerLine() -> some View {
+        Rectangle()
+            .fill(PapercupTheme.stroke.opacity(0.28))
+            .frame(height: 1)
+            .padding(.horizontal, 16)
+    }
+
+    private var separatorInset: some View {
+        Rectangle()
+            .fill(PapercupTheme.stroke.opacity(0.22))
+            .frame(height: 1)
+            .padding(.horizontal, 16)
+    }
+
+    private func statusRole(_ status: ConnStatus) -> PapercupChipRole {
+        switch status {
+        case .online:
+            return .success
+        case .offline:
+            return .error
+        case .unknown:
+            return .muted
+        }
+    }
+
+    private func pushRole(_ state: String) -> PapercupChipRole {
+        switch state {
+        case "authorized", "provisional", "ephemeral":
+            return .success
+        case "denied":
+            return .error
+        case "not determined":
+            return .warning
+        default:
+            return .muted
+        }
+    }
+}
+
+private extension ConnState {
+    var statusLabel: String {
+        switch status {
+        case .online:
+            return "ONLINE"
+        case .offline:
+            return "OFFLINE"
+        case .unknown:
+            return "UNKNOWN"
+        }
     }
 }
 

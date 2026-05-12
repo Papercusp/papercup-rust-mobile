@@ -2,24 +2,31 @@
 package com.papercuspai.operator.mobile
 
 import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.ui.res.stringResource
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.google.firebase.messaging.FirebaseMessaging
-import com.wireguard.android.backend.Tunnel
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +41,7 @@ fun DiagnosticsScreen(
     var pinging by remember { mutableStateOf(false) }
     var fcmToken by remember { mutableStateOf<String?>(null) }
     var fcmError by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(creds.deviceToken) {
         runCatching { FirebaseMessaging.getInstance().token.await() }
             .onSuccess { fcmToken = it }
@@ -42,100 +50,184 @@ fun DiagnosticsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.diagnostics_title)) },
+            PapercupScreenHeader(
+                title = stringResource(R.string.diagnostics_title),
+                subtitle = creds.workspaceId,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = PapercupColors.Text,
+                        )
                     }
                 },
             )
         },
+        containerColor = PapercupColors.Ink,
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(PapercupColors.ScreenGradient)
+                .padding(padding)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Section("Connection") {
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text(stringResource(R.string.diagnostics_status), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(12.dp))
+            SectionShell(title = "Connection") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.diagnostics_status),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PapercupColors.TextMuted,
+                    )
                     StatusPill(state.status)
                 }
-                state.lastPingMs?.let { Kv("Last ping", "$it ms") }
-                state.offlineSinceMs?.let { Kv("Offline since", java.util.Date(it).toString()) }
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        pinging = true
-                        scope.launch { monitor.probe(); pinging = false }
-                    },
-                    enabled = !pinging,
-                ) { Text(if (pinging) stringResource(R.string.diagnostics_pinging) else stringResource(R.string.diagnostics_ping_button)) }
+                HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
+                ValueRow(label = "Last ping", value = state.lastPingMs?.let { "$it ms" } ?: "—", last = false)
+                state.offlineSinceMs?.let {
+                    ValueRow(label = "Offline since", value = formatTimestamp(it), last = false)
+                }
+                ValueRow(label = "Runtime", value = "Native Android", last = false)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.Start,
+                ) {
+                    Button(
+                        onClick = {
+                            pinging = true
+                            scope.launch {
+                                monitor.probe()
+                                pinging = false
+                            }
+                        },
+                        enabled = !pinging,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PapercupColors.AccentStrong,
+                            contentColor = PapercupColors.ButtonInk,
+                        ),
+                    ) {
+                        Text(if (pinging) stringResource(R.string.diagnostics_pinging) else stringResource(R.string.diagnostics_ping_button))
+                    }
+                }
             }
-            Section("Pairing") {
-                Kv("Device ID", creds.deviceId, mono = true)
-                Kv("Workspace", creds.workspaceId)
-                Kv("Server", creds.server)
-                Kv("Token (first 12)", creds.deviceToken.take(12) + "…", mono = true)
-                Kv("Token length", "${creds.deviceToken.length} chars")
+
+            SectionShell(title = "Pairing") {
+                ValueRow(label = "Device ID", value = creds.deviceId, mono = true, last = false)
+                ValueRow(label = "Workspace", value = creds.workspaceId, last = false)
+                ValueRow(label = "Desktop host", value = creds.server, last = false)
+                ValueRow(label = "Token (first 12)", value = creds.deviceToken.take(12) + "…", mono = true, last = false)
+                ValueRow(label = "Token length", value = "${creds.deviceToken.length} chars", last = true)
             }
-            Section("Mesh") {
-                Kv("Tunnel state", meshState.toString())
-                creds.meshUrl?.let { Kv("Mesh URL", it) }
-                creds.meshAssignedIp?.let { Kv("Mesh address", it) }
+
+            SectionShell(title = "WireGuard mesh") {
+                ValueRow(label = "State", value = meshState.toString(), last = creds.meshUrl == null && creds.meshAssignedIp == null)
+                creds.meshUrl?.let {
+                    ValueRow(label = "Peer", value = it, mono = true, last = creds.meshAssignedIp == null)
+                }
+                creds.meshAssignedIp?.let { ValueRow(label = "Address", value = it, mono = true, last = true) }
             }
-            Section("Push") {
+
+            SectionShell(title = "Build") {
+                ValueRow(label = "Core version", value = uniffi.papercup.version(), mono = true, last = false)
+                ValueRow(label = "Android", value = "${Build.VERSION.RELEASE} (sdk ${Build.VERSION.SDK_INT})", last = false)
+                ValueRow(label = "Device", value = "${Build.MANUFACTURER} ${Build.MODEL}", last = true)
+            }
+
+            SectionShell(title = "Push") {
                 val pushLabel = when {
                     fcmToken != null -> "registered"
                     fcmError != null -> "error: ${fcmError}"
                     else -> "fetching…"
                 }
-                Kv("FCM status", pushLabel)
-                fcmToken?.let { Kv("FCM token (first 12)", it.take(12) + "…", mono = true) }
+                ValueRow(label = "FCM status", value = pushLabel, last = fcmToken == null)
+                fcmToken?.let {
+                    ValueRow(label = "FCM token (first 12)", value = it.take(12) + "…", mono = true, last = true)
+                }
             }
-            Section("Build") {
-                Kv("Core version", uniffi.papercup.version())
-                Kv("Android", "${Build.VERSION.RELEASE} (sdk ${Build.VERSION.SDK_INT})")
-                Kv("Device", "${Build.MANUFACTURER} ${Build.MODEL}")
-            }
+            Spacer(Modifier.height(12.dp))
         }
     }
 }
 
 @Composable
-private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            content()
+private fun SectionShell(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    PapercupCard(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(0.dp),
+    ) {
+        Column {
+            Text(
+                text = title.uppercase(),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = PapercupColors.TextMuted,
+            )
+            HorizontalDivider(color = PapercupColors.StrokeSoft)
+            Column(content = content)
         }
     }
 }
 
 @Composable
-private fun Kv(k: String, v: String, mono: Boolean = false) {
-    Row {
-        Text(k, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+private fun ValueRow(
+    label: String,
+    value: String,
+    mono: Boolean = false,
+    last: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
         Text(
-            v,
+            text = label,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodySmall,
-            fontFamily = if (mono) FontFamily.Monospace else null,
+            color = PapercupColors.TextMuted,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = PapercupColors.Text,
+            fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
         )
     }
+    if (!last) {
+        HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
+    }
 }
 
 @Composable
-private fun StatusPill(s: ConnStatus) {
-    val (label, container) = when (s) {
-        ConnStatus.Online -> "online" to MaterialTheme.colorScheme.primaryContainer
-        ConnStatus.Offline -> "offline" to MaterialTheme.colorScheme.errorContainer
-        ConnStatus.Unknown -> "unknown" to MaterialTheme.colorScheme.surfaceVariant
+private fun StatusPill(status: ConnStatus) {
+    val (label, container, content) = when (status) {
+        ConnStatus.Online -> Triple("ONLINE", PapercupColors.SuccessSoft, PapercupColors.Success)
+        ConnStatus.Offline -> Triple("OFFLINE", PapercupColors.ErrorSoft, PapercupColors.Error)
+        ConnStatus.Unknown -> Triple("UNKNOWN", PapercupColors.WarningSoft, PapercupColors.Warning)
     }
-    Surface(
-        color = container,
-        shape = MaterialTheme.shapes.small,
-        modifier = Modifier.semantics { contentDescription = "Status $label" },
-    ) {
-        Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
-    }
+    PapercupStatusChip(
+        text = label,
+        containerColor = container,
+        contentColor = content,
+        modifier = Modifier.semantics { contentDescription = "Status ${label.lowercase()}" },
+    )
 }
+
+private fun formatTimestamp(epochMs: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(epochMs))
