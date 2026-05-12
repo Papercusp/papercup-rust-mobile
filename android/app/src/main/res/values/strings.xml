@@ -70,8 +70,8 @@
     <string name="diagnostics_pinging">Pinging…</string>
 
     <!-- Pair screen -->
-    <string name="pair_title">Pair this device</string>
-    <string name="pair_scan_qr">Scan QR code</string>
+    <string name="pair_title">Pair with your desktop</string>
+    <string name="pair_scan_qr">Scan QR</string>
     <string name="pair_paste_payload">Paste payload</string>
     <string name="pair_back">Back</string>
     <string name="pair_button">Pair</string>

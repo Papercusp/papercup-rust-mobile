@@ -51,8 +51,8 @@
 "diagnostics.status" = "Status";
 
 /* Pair */
-"pair.title" = "Pair this device";
-"pair.scanQr" = "Scan QR code";
+"pair.title" = "Pair with your desktop";
+"pair.scanQr" = "Scan QR";
 "pair.pastePayload" = "Paste payload";
 "pair.button" = "Pair";
 

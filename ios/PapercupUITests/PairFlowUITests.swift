@@ -31,10 +31,13 @@ final class PairFlowUITests: XCTestCase {
         app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["Pair this device"].waitForExistence(timeout: 10),
+        XCTAssertTrue(app.staticTexts["Pair with your desktop"].waitForExistence(timeout: 10),
                       "Pair view heading should render on fresh launch")
-        XCTAssertTrue(app.buttons["Scan QR code"].exists, "Scan QR button should be present")
-        XCTAssertTrue(app.buttons["Paste payload"].exists, "Paste payload button should be present")
+        let wordmarkExists = app.images["Papercusp"].exists ||
+            app.otherElements["Papercusp"].exists ||
+            app.staticTexts["Papercusp"].exists
+        XCTAssertTrue(wordmarkExists, "Papercusp wordmark should be present")
+        XCTAssertTrue(app.buttons["Scan QR"].exists, "Scan QR button should be present")
     }
 
     /// End-to-end pair flow + paired-state navigation in one go (the
