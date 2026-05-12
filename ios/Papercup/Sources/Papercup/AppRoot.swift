@@ -9,6 +9,7 @@ struct AppRoot: View {
     @State private var liveTick: Int = 0
     @State private var lastInvalidate: String? = nil
     @State private var pushedDetailSlug: String? = nil
+    @State private var pushedRunLogSlug: String? = nil
     @EnvironmentObject private var deepLink: DeepLinkRouter
 
     enum Tab: Hashable { case operatorTab, harnesses, running, activity, settings }
@@ -23,6 +24,7 @@ struct AppRoot: View {
                     liveTick: $liveTick,
                     lastInvalidate: $lastInvalidate,
                     pushedDetailSlug: $pushedDetailSlug,
+                    pushedRunLogSlug: $pushedRunLogSlug,
                     deepLink: deepLink,
                     onForget: {
                         CredentialStore.clear()
@@ -94,6 +96,7 @@ private struct PairedShell: View {
     @Binding var liveTick: Int
     @Binding var lastInvalidate: String?
     @Binding var pushedDetailSlug: String?
+    @Binding var pushedRunLogSlug: String?
     @ObservedObject var deepLink: DeepLinkRouter
     let onForget: () -> Void
     let onWorkspaceSwitched: (DeviceCredentials) -> Void
@@ -108,6 +111,7 @@ private struct PairedShell: View {
          liveTick: Binding<Int>,
          lastInvalidate: Binding<String?>,
          pushedDetailSlug: Binding<String?>,
+         pushedRunLogSlug: Binding<String?>,
          deepLink: DeepLinkRouter,
          onForget: @escaping () -> Void,
          onWorkspaceSwitched: @escaping (DeviceCredentials) -> Void) {
@@ -116,6 +120,7 @@ private struct PairedShell: View {
         self._liveTick = liveTick
         self._lastInvalidate = lastInvalidate
         self._pushedDetailSlug = pushedDetailSlug
+        self._pushedRunLogSlug = pushedRunLogSlug
         self.deepLink = deepLink
         self.onForget = onForget
         self.onWorkspaceSwitched = onWorkspaceSwitched
@@ -130,7 +135,10 @@ private struct PairedShell: View {
     }
 
     var body: some View {
-        let onSelectHarness: (String) -> Void = { slug in pushedDetailSlug = slug }
+        let onSelectHarness: (String) -> Void = { slug in
+            pushedRunLogSlug = nil
+            pushedDetailSlug = slug
+        }
 
         VStack(spacing: 0) {
             if monitor.state.status == .offline {
@@ -186,7 +194,19 @@ private struct PairedShell: View {
                         creds: current,
                         slug: slug,
                         invalidationTick: liveTick,
-                        onBack: { pushedDetailSlug = nil }
+                        onBack: {
+                            pushedRunLogSlug = nil
+                            pushedDetailSlug = nil
+                        },
+                        onOpenRunLog: { pushedRunLogSlug = slug }
+                    )
+                    .transition(.move(edge: .trailing))
+                }
+                if let slug = pushedRunLogSlug {
+                    RunLogView(
+                        creds: current,
+                        slug: slug,
+                        onBack: { pushedRunLogSlug = nil }
                     )
                     .transition(.move(edge: .trailing))
                 }
