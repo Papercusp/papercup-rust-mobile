@@ -1,7 +1,8 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Voice mode V1 — implementation plan
 
-**Status**: pending user sign-off · **Author**: mobile agent · **Date**: 2026-05-11
+**Status**: implementation complete 2026-05-12 (Phase A → D shipped). External blockers tracked separately: Picovoice AccessKey, Apple Developer Program, operator-brain empty-deltas. Manual test pass per `docs/VOICE_TEST_MATRIX.md` outstanding.
+**Author**: mobile agent · **Date**: 2026-05-11 → 2026-05-12
 
 ## Goal
 
@@ -147,11 +148,9 @@ Approx 15-25 `browser: 'required'` commands (the ones the phone client tool laye
    - Returns `{ agent_id, conversation_token, dynamic_variables }`
    - Logs to audit: `voice_session.init` with device_id + workspace_id
 
-2. **Per-conversation session-registry extension**
-   - Today: `lib/commands/session-registry.ts` tracks browser tabs by `tabId`
-   - Add: register phone sessions by `device_id` when the phone calls voice-session-init
-   - When the EL webhook fires a `browser: 'required'` command with a `conversation_id`, look up which session owns that conversation (browser tab OR phone), forward there
-   - For phone delivery, use the existing Hono SSE invalidate channel OR add a phone-specific WS push channel (probably reuse `/api/mobile/sync/sse` with a new event type)
+2. ~~**Per-conversation session-registry extension**~~ ✅ **Moot — architecture differs from initial design**
+   - The shipped path doesn't need it. EL Conv AI dispatches client tools to **the SDK in the originating client** (phone app's `ConversationClient` or browser tab's JS SDK) directly via WebRTC. Server only sees webhook-routed tools (`browser: 'none'/'optional'`), which run server-side regardless of source.
+   - The session-registry stays browser-only — it serves the desktop tab's SSE delivery, which the phone doesn't need.
 
 3. **Webhook auth doesn't change**
    - `/api/elevenlabs/webhook` already validates `x-elevenlabs-signature`
