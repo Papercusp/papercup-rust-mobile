@@ -235,6 +235,18 @@ private struct PairedShell: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(.trailing, 16)
                     .padding(.bottom, 76)
+
+                if let toast = badgeHost.toast {
+                    ShellToastView(
+                        toast: toast,
+                        onDismiss: { badgeHost.dismissToast(toast.id) },
+                        onOpen: { openToast(toast) }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
             }
             MobileBottomNav(tab: $tab, counts: badgeHost.counts)
         }
@@ -304,6 +316,50 @@ private struct PairedShell: View {
         .onDisappear { monitor.stop(); voice.stop(); wakeWord.stop() }
     }
 
+    private func openToast(_ toast: Toast) {
+        badgeHost.dismissToast(toast.id)
+        pushedDetailSlug = nil
+        pushedRunLogSlug = nil
+
+        if let slug = toast.harnessSlug, !slug.isEmpty {
+            tab = .harnesses
+            pushedDetailSlug = slug
+            return
+        }
+
+        guard let rawHref = toast.actionHref, !rawHref.isEmpty else {
+            tab = .activity
+            return
+        }
+
+        let path = rawHref
+            .split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
+
+        switch path {
+        case "", "operator":
+            tab = .operatorTab
+        case "harness":
+            tab = .harnesses
+        case let value where value.hasPrefix("harness/"):
+            tab = .harnesses
+            pushedDetailSlug = String(value.dropFirst("harness/".count))
+        case "running", "log":
+            tab = .running
+        case let value where value.hasPrefix("log/"):
+            tab = .running
+            pushedRunLogSlug = String(value.dropFirst("log/".count))
+        case "notifications", "notifications/history", "actions":
+            tab = .activity
+        case let value where value.hasPrefix("settings"):
+            tab = .settings
+        default:
+            tab = .activity
+        }
+    }
+
     private func runSync() async {
         // Cache lives on cacheHost (@StateObject) so it survives SSE
         // reconnects + lets the UI observe deltas via cacheHost.tick.
@@ -315,7 +371,7 @@ private struct PairedShell: View {
                 lastInvalidate = ev.name
                 await cacheHost.handleInvalidate(ev.name)
                 if Self.shouldRefreshBadges(for: ev.name) {
-                    Task { await badgeHost.refresh() }
+                    Task { await badgeHost.refresh(showToast: true) }
                 }
                 if ev.name.hasPrefix("harness") {
                     liveTick += 1
@@ -343,30 +399,44 @@ private struct ShellBadgeCounts: Equatable {
 @MainActor
 private final class ShellBadgeHost: ObservableObject {
     @Published private(set) var counts = ShellBadgeCounts()
+    @Published private(set) var toast: Toast?
 
     private let creds: DeviceCredentials
+    private var newestToastId: Int64?
+    private var dismissTask: Task<Void, Never>?
 
     init(creds: DeviceCredentials) {
         self.creds = creds
     }
 
     func run() async {
-        await refresh()
+        await refresh(showToast: false)
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 30_000_000_000)
             if Task.isCancelled { break }
-            await refresh()
+            await refresh(showToast: true)
         }
     }
 
-    func refresh() async {
+    func refresh(showToast: Bool = true) async {
         let client = creds.client()
+        let pending = await pendingCardCount(client: client)
+        let loadedNotifications = await recentNotifications(client: client)
         let fresh = ShellBadgeCounts(
-            pendingCards: await pendingCardCount(client: client),
-            recentAlerts: await recentAlertCount(client: client)
+            pendingCards: pending,
+            recentAlerts: loadedNotifications?.filter { Self.isAlertLevel($0.level) }.count ?? counts.recentAlerts
         )
         if counts != fresh {
             counts = fresh
+        }
+        if let loadedNotifications {
+            updateToast(from: loadedNotifications, showToast: showToast)
+        }
+    }
+
+    func dismissToast(_ id: Int64? = nil) {
+        if id == nil || toast?.id == id {
+            toast = nil
         }
     }
 
@@ -378,11 +448,36 @@ private final class ShellBadgeHost: ObservableObject {
         }
     }
 
-    private func recentAlertCount(client: OperatorClient) async -> Int {
+    private func recentNotifications(client: OperatorClient) async -> [Toast]? {
         do {
-            return (try await client.recentNotifications()).filter { Self.isAlertLevel($0.level) }.count
+            return try await client.recentNotifications()
         } catch {
-            return counts.recentAlerts
+            return nil
+        }
+    }
+
+    private func updateToast(from notifications: [Toast], showToast: Bool) {
+        guard let newest = notifications.max(by: { lhs, rhs in
+            if lhs.createdAt == rhs.createdAt {
+                return lhs.id < rhs.id
+            }
+            return lhs.createdAt < rhs.createdAt
+        }) else { return }
+
+        let previous = newestToastId
+        newestToastId = newest.id
+        guard showToast, previous != nil, previous != newest.id else { return }
+        toast = newest
+        scheduleDismiss(for: newest.id)
+    }
+
+    private func scheduleDismiss(for id: Int64) {
+        dismissTask?.cancel()
+        dismissTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            await MainActor.run {
+                self?.dismissToast(id)
+            }
         }
     }
 
@@ -428,6 +523,66 @@ private struct OfflineBanner: View {
         let minutes = elapsed / 60
         if minutes < 60 { return "\(minutes)m" }
         return "\(minutes / 60)h"
+    }
+}
+
+private struct ShellToastView: View {
+    let toast: Toast
+    let onDismiss: () -> Void
+    let onOpen: () -> Void
+
+    var body: some View {
+        let tone = Self.tone(for: toast.level)
+        HStack(alignment: .top, spacing: 10) {
+            Text(tone.glyph)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(tone.foreground)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(toast.message)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tone.foreground)
+                    .multilineTextAlignment(.leading)
+                if let description = toast.description, !description.isEmpty {
+                    Text(description)
+                        .font(.caption2)
+                        .foregroundStyle(tone.foreground.opacity(0.80))
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            Spacer(minLength: 8)
+            Button(action: onDismiss) {
+                Text("×")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(tone.foreground.opacity(0.88))
+                    .padding(.horizontal, 4)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 420, alignment: .leading)
+        .background(tone.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(tone.foreground.opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.34), radius: 18, x: 0, y: 10)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onOpen)
+        .accessibilityLabel(Text(toast.message))
+    }
+
+    private static func tone(for level: String) -> (glyph: String, background: Color, foreground: Color) {
+        switch level.lowercased() {
+        case "error":
+            return ("✕", Color(red: 0.25, green: 0.03, blue: 0.06).opacity(0.96), Color(red: 1.0, green: 0.86, blue: 0.89))
+        case "warning", "warn":
+            return ("!", Color(red: 0.23, green: 0.14, blue: 0.02).opacity(0.96), Color(red: 1.0, green: 0.88, blue: 0.64))
+        case "success":
+            return ("✓", Color(red: 0.03, green: 0.19, blue: 0.13).opacity(0.96), Color(red: 0.72, green: 0.98, blue: 0.84))
+        default:
+            return ("ℹ", Color(red: 0.03, green: 0.16, blue: 0.23).opacity(0.96), Color(red: 0.78, green: 0.95, blue: 1.0))
+        }
     }
 }
 private struct PausedBanner: View {

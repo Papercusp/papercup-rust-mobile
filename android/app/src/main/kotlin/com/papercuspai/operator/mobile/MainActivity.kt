@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.tasks.await
 import com.papercuspai.operator.mobile.theme.PapercupTheme
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import com.papercuspai.operator.mobile.theme.PapercupCard
@@ -404,8 +405,10 @@ private fun PairedShell(
     val voiceStateForBanner by voice.state.collectAsState()
     var pendingCardBadgeCount by remember { mutableIntStateOf(0) }
     var recentToastBadgeCount by remember { mutableIntStateOf(0) }
+    var latestToastId by remember { mutableStateOf<Long?>(null) }
+    var shellToast by remember { mutableStateOf<uniffi.papercup.Toast?>(null) }
 
-    suspend fun refreshNavBadges() {
+    suspend fun refreshShellFeeds(showNewToast: Boolean) {
         val client = current.client()
         try {
             pendingCardBadgeCount = client.listOperatorCards().size
@@ -413,20 +416,34 @@ private fun PairedShell(
             // Keep the last known badge count; the screen itself surfaces load errors.
         }
         try {
-            recentToastBadgeCount = client.recentNotifications().count(::isAttentionToast)
+            val notifications = client.recentNotifications()
+            recentToastBadgeCount = notifications.count(::isAttentionToast)
+            val newest = newestToast(notifications)
+            if (newest != null) {
+                val previous = latestToastId
+                latestToastId = newest.id
+                if (showNewToast && previous != null && previous != newest.id) {
+                    shellToast = newest
+                }
+            }
         } catch (_: Throwable) {
             // Keep the last known badge count; the screen itself surfaces load errors.
         }
     }
 
     LaunchedEffect(current.deviceToken, liveTick) {
-        refreshNavBadges()
+        refreshShellFeeds(showNewToast = true)
     }
     LaunchedEffect(current.deviceToken) {
         while (isActive) {
             delay(30_000)
-            refreshNavBadges()
+            refreshShellFeeds(showNewToast = true)
         }
+    }
+    LaunchedEffect(shellToast?.id) {
+        val toastId = shellToast?.id ?: return@LaunchedEffect
+        delay(6_000)
+        if (shellToast?.id == toastId) shellToast = null
     }
     var offlineNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(connState.status, connState.offlineSinceMs) {
@@ -506,6 +523,19 @@ private fun PairedShell(
                     onForget = onForget,
                 )
                 else -> {}
+            }
+            shellToast?.let { toast ->
+                ShellToastOverlay(
+                    toast = toast,
+                    onDismiss = { shellToast = null },
+                    onOpen = {
+                        shellToast = null
+                        onRouteChange(routeForToast(toast))
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                )
             }
         }
     }
@@ -643,6 +673,28 @@ private fun isAttentionToast(toast: uniffi.papercup.Toast): Boolean {
     }
 }
 
+private fun newestToast(toasts: List<uniffi.papercup.Toast>): uniffi.papercup.Toast? =
+    toasts.maxWithOrNull(compareBy<uniffi.papercup.Toast> { it.createdAt }.thenBy { it.id })
+
+private fun routeForToast(toast: uniffi.papercup.Toast): Route {
+    toast.harnessSlug?.takeIf { it.isNotBlank() }?.let { return Route.Detail(it) }
+    val rawHref = toast.actionHref ?: return Route.Activity
+    val href = rawHref.substringBefore('?').trimEnd('/')
+    return when {
+        href.isBlank() || href == "/" || href == "/operator" -> Route.Operator
+        href == "/harness" -> Route.List
+        href.startsWith("/harness/") -> Route.Detail(href.removePrefix("/harness/"))
+        href == "/running" -> Route.Running
+        href == "/log" -> Route.Running
+        href.startsWith("/log/") -> Route.RunLog(href.removePrefix("/log/"))
+        href == "/notifications" -> Route.Activity
+        href == "/notifications/history" -> Route.NotificationHistory
+        href == "/actions" -> Route.RecentActions
+        href.startsWith("/settings") -> Route.Settings
+        else -> Route.Activity
+    }
+}
+
 private fun formatOfflineDuration(offlineSinceMs: Long?, nowMs: Long): String {
     val since = offlineSinceMs ?: return ""
     val seconds = ((nowMs - since) / 1_000).coerceAtLeast(1)
@@ -688,6 +740,79 @@ private fun OfflineBanner(offlineSinceMs: Long?, nowMs: Long) {
         }
     }
 }
+
+@Composable
+private fun ShellToastOverlay(
+    toast: uniffi.papercup.Toast,
+    onDismiss: () -> Unit,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tone = shellToastTone(toast.level)
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = 420.dp)
+            .clickable(onClick = onOpen),
+        shape = RoundedCornerShape(14.dp),
+        color = tone.background,
+        contentColor = tone.foreground,
+        border = BorderStroke(1.dp, tone.foreground.copy(alpha = 0.28f)),
+        shadowElevation = 12.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(
+                text = tone.glyph,
+                style = MaterialTheme.typography.titleMedium,
+                color = tone.foreground,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = toast.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = tone.foreground,
+                )
+                toast.description?.takeIf { it.isNotBlank() }?.let { description ->
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = tone.foreground.copy(alpha = 0.80f),
+                    )
+                }
+            }
+            TextButton(
+                onClick = onDismiss,
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                colors = ButtonDefaults.textButtonColors(contentColor = tone.foreground),
+            ) {
+                Text("×", style = MaterialTheme.typography.titleMedium)
+            }
+        }
+    }
+}
+
+private data class ShellToastTone(
+    val glyph: String,
+    val background: Color,
+    val foreground: Color,
+)
+
+private fun shellToastTone(level: String): ShellToastTone =
+    when (level.lowercase()) {
+        "error" -> ShellToastTone("✕", Color(0xFF3F0710), Color(0xFFFFDDE3))
+        "warning", "warn" -> ShellToastTone("!", Color(0xFF3A2304), Color(0xFFFFE1A6))
+        "success" -> ShellToastTone("✓", Color(0xFF062D22), Color(0xFFBDF8D8))
+        else -> ShellToastTone("ℹ", Color(0xFF06283A), Color(0xFFC8F2FF))
+    }
 
 @Composable
 private fun MobileBottomNav(
