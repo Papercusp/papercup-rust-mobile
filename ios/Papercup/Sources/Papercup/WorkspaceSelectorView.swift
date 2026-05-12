@@ -203,8 +203,8 @@ struct WorkspaceSelectorView: View {
             error = nil
         } catch let err as ApiError {
             error = "API: \(err)"
-        } catch {
-            error = "Unexpected: \(error)"
+        } catch let err {
+            error = "Unexpected: \(err)"
         }
     }
 

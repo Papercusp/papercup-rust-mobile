@@ -12,6 +12,11 @@
 
 set -euo pipefail
 
+# Ensure homebrew (Intel + ARM) is on PATH for non-login shells.
+# Without this, xcodegen at /usr/local/bin/xcodegen isn't found when
+# the script runs via SSH or other non-interactive contexts.
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT/ios"
 
