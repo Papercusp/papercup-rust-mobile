@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 import AVFoundation
+import UIKit
 
 struct PairView: View {
     let onPaired: (DeviceCredentials) -> Void
@@ -263,13 +264,24 @@ private struct PapercuspWordmark: View {
             }
             context.fill(ellipse(cx: 260, cy: 104 + 39 * 1.08, rx: 4.4 * 1.08, ry: 6.2 * 1.08), with: .color(cream.opacity(0.46)))
 
-            context.draw(
-                Text("papercusp")
-                    .font(.system(size: 69 * scale, weight: .bold))
-                    .foregroundStyle(cream.opacity(0.96)),
-                at: p(260, 130),
-                anchor: .center
-            )
+            context.withCGContext { cgContext in
+                let font = UIFont.systemFont(ofSize: 69 * scale, weight: .bold)
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: UIColor(red: 0.95, green: 0.93, blue: 0.98, alpha: 0.96),
+                    .kern: -1.8 * scale,
+                ]
+                let wordmark = NSAttributedString(string: "papercusp", attributes: attributes)
+                let textSize = wordmark.size()
+                UIGraphicsPushContext(cgContext)
+                wordmark.draw(
+                    at: CGPoint(
+                        x: p(260, 0).x - textSize.width / 2,
+                        y: p(0, 140).y - font.ascender
+                    )
+                )
+                UIGraphicsPopContext()
+            }
         }
     }
 }

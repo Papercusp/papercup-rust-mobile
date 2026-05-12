@@ -342,8 +342,9 @@ private fun PapercuspWordmark(modifier: Modifier = Modifier) {
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = cream.copy(alpha = 0.96f).toArgb()
                     textSize = 69f
-                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
                     textAlign = Paint.Align.CENTER
+                    letterSpacing = -1.8f / 69f
                 }
                 canvas.nativeCanvas.drawText("papercusp", 260f, 140f, paint)
             }
