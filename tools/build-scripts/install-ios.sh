@@ -48,10 +48,17 @@ case "$HOST_ARCH" in
     x86_64)        SIM_ARCH=x86_64 ;;
     *)             SIM_ARCH="$HOST_ARCH" ;;
 esac
-echo "▶ building Papercup target (Debug, iphonesimulator, ARCHS=$SIM_ARCH)"
+echo "▶ building Papercup target (Debug, iphonesimulator, ARCHS=$SIM_ARCH, no-explicit-modules)"
+# Disable Xcode 16's ExplicitModules feature — it hashes-and-references
+# precompiled .pcm module files that frequently end up missing on
+# disk-pressured or x86 macOS VMs, surfacing as
+# "module file 'Foundation-…pcm' not found".
+# The implicit-modules path (pre-Xcode-16 default) is slower but works.
 xcodebuild -project Papercup.xcodeproj -target Papercup \
     -sdk iphonesimulator -configuration Debug \
     ARCHS="$SIM_ARCH" VALID_ARCHS="$SIM_ARCH" ONLY_ACTIVE_ARCH=NO \
+    CLANG_ENABLE_EXPLICIT_MODULES=NO \
+    SWIFT_ENABLE_EXPLICIT_MODULES=NO \
     build \
     > build/install-ios.log 2>&1 || {
     echo "ERROR: build failed; tail of build/install-ios.log:" >&2
