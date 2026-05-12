@@ -13,10 +13,10 @@
 
 use crate::types::{
     AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
-    ListResp, OperatorCard, OperatorCardActionResp, OperatorCardsResp, PairBody, PairResp, PauseInfo,
-    PushRegisterBody, RunningHarnessPhase, RunningResp, StandingCandidate, StandingCandidatesResp,
-    StandingDecisionBody, ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, WorkspaceItem,
-    WorkspacesResp, WorkspaceSwitchBody, WorkspaceSwitchResp,
+    ListResp, OperatorCard, OperatorCardActionResp, OperatorCardsResp, PairBody, PairResp,
+    PauseInfo, PushRegisterBody, RunningHarnessPhase, RunningResp, StandingCandidate,
+    StandingCandidatesResp, StandingDecisionBody, ToastRow, ToastsResp, VoiceLeaseRead,
+    VoiceLeaseShape, WorkspaceItem, WorkspaceSwitchBody, WorkspaceSwitchResp, WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -387,7 +387,10 @@ impl OperatorClient {
 
     /// `POST /api/mobile/operator/cards/{id}/dispatch`
     pub async fn dispatch_operator_card(&self, card_id: &str) -> Result<String, ApiError> {
-        let url = format!("{}/api/mobile/operator/cards/{card_id}/dispatch", self.base_url());
+        let url = format!(
+            "{}/api/mobile/operator/cards/{card_id}/dispatch",
+            self.base_url()
+        );
         let mut req = self.http.post(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -419,7 +422,10 @@ impl OperatorClient {
 
     /// `POST /api/mobile/operator/cards/{id}/dismiss`
     pub async fn dismiss_operator_card(&self, card_id: &str) -> Result<String, ApiError> {
-        let url = format!("{}/api/mobile/operator/cards/{card_id}/dismiss", self.base_url());
+        let url = format!(
+            "{}/api/mobile/operator/cards/{card_id}/dismiss",
+            self.base_url()
+        );
         let mut req = self.http.post(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
