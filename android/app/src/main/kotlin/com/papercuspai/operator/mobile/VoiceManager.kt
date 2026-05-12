@@ -402,9 +402,16 @@ class VoiceManager(
         )
         return proxiedNames.associateWith { name ->
             clientTool { params ->
-                runCatching { proxyVoiceTool(name, params) }
-                    .map { ClientToolResult.success(it) }
-                    .getOrElse { ClientToolResult.failure("proxy: ${it.message ?: it.javaClass.simpleName}") }
+                // EL SDK invokes ClientTool.execute on the main thread.
+                // OkHttp's synchronous execute() throws
+                // NetworkOnMainThreadException immediately (latency ~80ms,
+                // is_error=true) which the agent surfaces as "I had trouble
+                // just then." Hop to IO explicitly.
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    runCatching { proxyVoiceTool(name, params) }
+                        .map { ClientToolResult.success(it) }
+                        .getOrElse { ClientToolResult.failure("proxy: ${it.message ?: it.javaClass.simpleName}") }
+                }
             }
         }
     }
