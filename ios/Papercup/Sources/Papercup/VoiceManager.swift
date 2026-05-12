@@ -57,6 +57,18 @@ final class VoiceManager: ObservableObject {
     private var statePump: Task<Void, Never>? = nil
     private var levelPump: Task<Void, Never>? = nil
 
+    /// Idle / session-max timers — bound EL Conv AI billable time on
+    /// the mobile client the same way voice-mode.ts does on desktop
+    /// and VoiceManager.kt does on Android. Values come from the
+    /// server's voice-session-init response (idleTimeoutMin /
+    /// sessionMaxMin) so they track operator_voice_prefs centrally.
+    /// Idle resets on USER transcript only; session-max is set once
+    /// at session-start and never reset.
+    private var idleTimerTask: Task<Void, Never>? = nil
+    private var sessionMaxTimerTask: Task<Void, Never>? = nil
+    private var idleTimeoutSecs: TimeInterval = 0
+    private var sessionMaxSecs: TimeInterval = 0
+
     init(creds: DeviceCredentials) {
         self.creds = creds
     }
@@ -72,18 +84,35 @@ final class VoiceManager: ObservableObject {
                 state = .failed(message: "Voice unavailable — \(error.localizedDescription)")
                 return
             }
+            // Stash the timer budgets from the init payload so the
+            // armed timers can use them.
+            self.idleTimeoutSecs = max(0, TimeInterval(init_.idleTimeoutMin) * 60)
+            self.sessionMaxSecs = max(0, TimeInterval(init_.sessionMaxMin) * 60)
             do {
                 let config = ConversationConfig(
                     onAgentResponse: { [weak self] text, _ in
+                        // Idle = USER idle. Intentionally NOT calling
+                        // nudgeIdleTimer here — matches desktop
+                        // voice-mode.ts onAssistantText behavior (EL
+                        // credit-burn audit fix #2). A chatty agent
+                        // shouldn't keep the session billable forever.
                         Task { @MainActor in self?.state = .speaking(text: text, source: "agent") }
                     },
-                    onUserTranscript: { _, _ in /* logged by the SDK */ }
+                    onUserTranscript: { [weak self] _, _ in
+                        // User said something — reset the idle clock.
+                        Task { @MainActor in self?.nudgeIdleTimer() }
+                    }
                 )
                 let conv = try await ElevenLabs.startConversation(
                     conversationToken: init_.conversationToken,
                     config: config
                 )
                 conversation = conv
+                // Connected — arm both timers. Mirrors Android
+                // VoiceManager.onConnect which arms after the EL SDK
+                // surfaces a CONNECTED status.
+                armIdleTimer()
+                armSessionMaxTimer()
                 wirePumps(conv)
             } catch {
                 state = .failed(message: "Voice unavailable — \(error.localizedDescription)")
@@ -95,12 +124,72 @@ final class VoiceManager: ObservableObject {
         toolPump?.cancel(); toolPump = nil
         statePump?.cancel(); statePump = nil
         levelPump?.cancel(); levelPump = nil
+        idleTimerTask?.cancel(); idleTimerTask = nil
+        sessionMaxTimerTask?.cancel(); sessionMaxTimerTask = nil
         if let conv = conversation {
             conversation = nil
             Task { await conv.endConversation() }
         }
         micLevel = 0
         state = .idle
+    }
+
+    /// Arm a one-shot timeout that fires when no user transcript has
+    /// been received for `idleTimeoutSecs`. Cancelled on stop() and
+    /// rearmed every time the user says something. No-op when the
+    /// pref is 0 (auto-disconnect disabled).
+    private func armIdleTimer() {
+        idleTimerTask?.cancel()
+        idleTimerTask = nil
+        let secs = idleTimeoutSecs
+        guard secs > 0 else { return }
+        idleTimerTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(secs * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            let labelMin = max(1, Int(secs / 60))
+            self.state = .failed(message: "Voice idle \(labelMin)m — tap to resume.")
+            self.tearDownAfterTimer()
+        }
+    }
+
+    /// Reset the idle timer's deadline. Called from onUserTranscript
+    /// — explicitly NOT called from onAgentResponse so a chatty agent
+    /// can't keep the session alive forever.
+    private func nudgeIdleTimer() {
+        if idleTimerTask != nil { armIdleTimer() }
+    }
+
+    /// Arm the hard session-max timer at session-start. Runs ONCE —
+    /// does NOT reset on activity. Bounds worst-case billable
+    /// duration regardless of how active the session is.
+    private func armSessionMaxTimer() {
+        sessionMaxTimerTask?.cancel()
+        sessionMaxTimerTask = nil
+        let secs = sessionMaxSecs
+        guard secs > 0 else { return }
+        sessionMaxTimerTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(secs * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            let labelMin = max(1, Int(secs / 60))
+            self.state = .failed(message: "Voice session hit \(labelMin)m max — tap to start another.")
+            self.tearDownAfterTimer()
+        }
+    }
+
+    /// Internal teardown variant used by the timers — preserves the
+    /// .failed state set by the caller so the UI can surface the
+    /// reason. Otherwise identical to stop().
+    private func tearDownAfterTimer() {
+        toolPump?.cancel(); toolPump = nil
+        statePump?.cancel(); statePump = nil
+        levelPump?.cancel(); levelPump = nil
+        idleTimerTask?.cancel(); idleTimerTask = nil
+        sessionMaxTimerTask?.cancel(); sessionMaxTimerTask = nil
+        if let conv = conversation {
+            conversation = nil
+            Task { await conv.endConversation() }
+        }
+        micLevel = 0
     }
 
     private func wirePumps(_ conv: Conversation) {
@@ -250,9 +339,16 @@ final class VoiceManager: ObservableObject {
             )
         }
         let dyn = obj["dynamicVariables"] as? [String: Any] ?? [:]
+        // Server defaults match VoicePrefs.DEFAULT — keep these floors
+        // here as belt-and-suspenders so a malformed payload doesn't
+        // disable both timers silently.
+        let idleMin = (obj["idleTimeoutMin"] as? Int) ?? 2
+        let maxMin = (obj["sessionMaxMin"] as? Int) ?? 30
         return SessionInit(
             conversationToken: token,
             agentId: agentId,
+            idleTimeoutMin: idleMin,
+            sessionMaxMin: maxMin,
             deviceId: dyn["device_id"] as? String ?? "",
             workspaceId: dyn["workspace_id"] as? String ?? "",
             surface: dyn["surface"] as? String ?? "mobile-ios",
@@ -263,6 +359,8 @@ final class VoiceManager: ObservableObject {
     private struct SessionInit {
         let conversationToken: String
         let agentId: String
+        let idleTimeoutMin: Int
+        let sessionMaxMin: Int
         let deviceId: String
         let workspaceId: String
         let surface: String
