@@ -6,13 +6,18 @@ import ai.picovoice.porcupine.PorcupineManagerCallback
 import android.content.Context
 import android.util.Log
 
-/// Picovoice Porcupine wake-word detector.
+/// Wake-word detector. Two engines, one flag-driven:
+///   - Picovoice Porcupine (default): activated when
+///     `BuildConfig.PICOVOICE_ACCESS_KEY` is non-empty
+///   - openWakeWord (fallback): activated when `BuildConfig.USE_OWW=true`,
+///     even without a Porcupine key. Scaffolded for the case where the
+///     Picovoice AccessKey is unavailable. The actual TFLite/ONNX path
+///     is a TODO — the build flag exists so the wiring is ready when
+///     the OWW model is bundled.
 ///
-/// **Dormant unless an AccessKey is provided.** Set
-/// `PICOVOICE_ACCESS_KEY` in `android/local.properties` (or via the
-/// environment at build time); `BuildConfig.PICOVOICE_ACCESS_KEY` is
-/// empty by default, in which case `start()` is a no-op and the rest
-/// of the app runs unchanged.
+/// **Dormant unless one of the two engines is configured.** The default
+/// build emits a no-op start() so the app runs without any wake-word
+/// service touching the foreground microphone.
 ///
 /// Wake word: "hey papercup" (custom Porcupine `.ppn` keyword).
 /// `keywordPath` is the asset path the engine streams from. While
@@ -27,12 +32,17 @@ class WakeWordEngine(
     private val onDetected: () -> Unit,
 ) {
     private var manager: PorcupineManager? = null
+    private var owwActive: Boolean = false
 
-    fun isAvailable(): Boolean = ACCESS_KEY.isNotBlank()
+    fun isAvailable(): Boolean = ACCESS_KEY.isNotBlank() || USE_OWW
 
     fun start() {
-        if (!isAvailable()) {
-            Log.i(TAG, "wake word disabled — set PICOVOICE_ACCESS_KEY to enable")
+        if (USE_OWW) {
+            startOww()
+            return
+        }
+        if (ACCESS_KEY.isBlank()) {
+            Log.i(TAG, "wake word disabled — set PICOVOICE_ACCESS_KEY or PAPERCUP_USE_OWW=true to enable")
             return
         }
         if (manager != null) return
@@ -73,16 +83,40 @@ class WakeWordEngine(
         try { manager?.stop() } catch (_: Throwable) {}
         try { manager?.delete() } catch (_: Throwable) {}
         manager = null
+        if (owwActive) stopOww()
+    }
+
+    /// openWakeWord backend scaffold. Flag-flipped via
+    /// PAPERCUP_USE_OWW=true. Real implementation will bundle a TFLite
+    /// `.onnx` model in assets/ and read 16kHz PCM frames via
+    /// AudioRecord, feeding them to the OWW inference path. For now,
+    /// the start hook just logs intent — keeps the surface area in
+    /// place so wiring the actual model is a focused PR rather than
+    /// a cross-cutting change.
+    private fun startOww() {
+        if (owwActive) return
+        Log.w(TAG, "openWakeWord path enabled but model not yet bundled — no-op")
+        // TODO(wake-word): bundle openwakeword/hey_papercup.onnx in
+        // assets/, spin up AudioRecord at 16kHz mono PCM_16, push
+        // frames into the OWW inference pipeline, call onDetected()
+        // on a score > threshold.
+        owwActive = true
+    }
+
+    private fun stopOww() {
+        owwActive = false
     }
 
     companion object {
         private const val TAG = "PapercupWake"
         private val ACCESS_KEY: String = BuildConfig.PICOVOICE_ACCESS_KEY
+        private val USE_OWW: Boolean = BuildConfig.USE_OWW
 
-        /// Static check used at the Service-start gate: true only when a
-        /// Picovoice AccessKey is baked into BuildConfig. Avoids ever
-        /// touching the foreground microphone service when wake-word is
-        /// dormant (default — Picovoice key approval pending).
-        fun isConfigured(): Boolean = ACCESS_KEY.isNotBlank()
+        /// Static check used at the Service-start gate: true when
+        /// either Picovoice has an AccessKey OR the openWakeWord
+        /// fallback is enabled at build time. Avoids ever touching
+        /// the foreground microphone service when wake-word is
+        /// dormant (default — both engines disabled).
+        fun isConfigured(): Boolean = ACCESS_KEY.isNotBlank() || USE_OWW
     }
 }

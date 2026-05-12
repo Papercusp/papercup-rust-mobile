@@ -312,6 +312,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             slug = r.slug,
             invalidationTick = liveTick,
             onBack = { route = Route.List },
+            onOpenRunLog = { route = Route.RunLog(r.slug) },
         )
         is Route.RunLog -> RunLogScreen(
             creds = current,
