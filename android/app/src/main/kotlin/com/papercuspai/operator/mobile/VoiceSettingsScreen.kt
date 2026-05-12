@@ -21,6 +21,9 @@ import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
 import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import java.util.Locale
+import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,6 +83,11 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
             // Performance HUD — refreshed when the screen comes into
             // composition. Stats survive app restarts (SharedPreferences).
             PerformanceHud(ctx)
+
+            // Diagnostic — runs a no-mint probe against heartbeat +
+            // session-init so a user hitting "voice unavailable" can
+            // tell whether it's the pair, the server, or EL.
+            VoicePathDiagnostic(ctx)
 
             SectionShell(title = "Conversation mode") {
                 VoiceModeRow(prefs.voiceMode) { mode -> update(prefs.copy(voiceMode = mode)) }
@@ -398,3 +406,169 @@ private fun outlinedFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedContainerColor = PapercupColors.InkRaised,
     unfocusedContainerColor = PapercupColors.InkRaised,
 )
+
+private sealed interface ProbeResult {
+    data object Idle : ProbeResult
+    data object Running : ProbeResult
+    data class Success(
+        val heartbeatMs: Long,
+        val sessionInitMs: Long,
+    ) : ProbeResult
+    data class Failure(val stage: String, val detail: String) : ProbeResult
+}
+
+/// End-to-end probe that hits heartbeat + voice-session-init and
+/// reports per-stage latency. Helps a user distinguish "pair broken"
+/// from "server slow" from "EL down" without burning a voice session.
+@Composable
+private fun VoicePathDiagnostic(ctx: android.content.Context) {
+    var result by remember { mutableStateOf<ProbeResult>(ProbeResult.Idle) }
+    val scope = rememberCoroutineScope()
+
+    SectionShell(title = "Voice path diagnostic") {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            when (val r = result) {
+                ProbeResult.Idle -> {
+                    Text(
+                        "Runs a no-mint probe against heartbeat + session-init. Doesn't burn EL minutes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PapercupColors.TextMuted,
+                    )
+                }
+                ProbeResult.Running -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Probing…", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                is ProbeResult.Success -> {
+                    Text(
+                        "✓ all good",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = PapercupColors.Success,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "heartbeat ${r.heartbeatMs}ms · session-init ${r.sessionInitMs}ms",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PapercupColors.TextMuted,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                is ProbeResult.Failure -> {
+                    Text(
+                        "✗ ${r.stage}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = PapercupColors.Error,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        r.detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PapercupColors.Error.copy(alpha = 0.85f),
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            val enabled = result != ProbeResult.Running
+            TextButton(
+                onClick = {
+                    result = ProbeResult.Running
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        result = runVoicePathProbe(ctx)
+                    }
+                },
+                enabled = enabled,
+            ) {
+                Text(if (result is ProbeResult.Idle) "Run probe" else "Run again")
+            }
+        }
+    }
+}
+
+private suspend fun runVoicePathProbe(ctx: android.content.Context): ProbeResult {
+    val store = CredentialStore(ctx)
+    val creds = store.load() ?: return ProbeResult.Failure(
+        "not paired",
+        "Pair this device first via the operator desktop.",
+    )
+
+    val http = okhttp3.OkHttpClient.Builder()
+        .callTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
+
+    val heartbeatT0 = System.currentTimeMillis()
+    try {
+        val req = okhttp3.Request.Builder()
+            .url("${creds.server}/api/mobile/heartbeat")
+            .header("Authorization", "Bearer ${creds.deviceToken}")
+            .header("content-type", "application/json")
+            .post("{}".toRequestBody("application/json".toMediaTypeOrNull()))
+            .build()
+        http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                val body = resp.body?.string()?.take(120) ?: ""
+                return ProbeResult.Failure(
+                    "heartbeat ${resp.code}",
+                    if (resp.code == 401) "Token rejected — re-pair the device."
+                    else "Server returned ${resp.code}. $body",
+                )
+            }
+        }
+    } catch (t: Throwable) {
+        return ProbeResult.Failure(
+            "heartbeat unreachable",
+            "Couldn't reach ${creds.server}. Check Wi-Fi, Cloudflare tunnel, and that the operator desktop is running. (${t.javaClass.simpleName})",
+        )
+    }
+    val heartbeatMs = System.currentTimeMillis() - heartbeatT0
+
+    val initT0 = System.currentTimeMillis()
+    try {
+        val req = okhttp3.Request.Builder()
+            .url("${creds.server}/api/mobile/voice-session-init?surface=mobile-android&mode=continuous&probe=1")
+            .header("Authorization", "Bearer ${creds.deviceToken}")
+            .build()
+        http.newCall(req).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            when {
+                resp.isSuccessful -> { /* ok */ }
+                resp.code == 429 ->
+                    return ProbeResult.Failure(
+                        "cooldown",
+                        "EL mint cooldown — wait a few seconds and rerun.",
+                    )
+                resp.code == 503 && body.contains("concurrent_limit") ->
+                    return ProbeResult.Failure(
+                        "another device has voice",
+                        "Close other voice sessions or pre-empt from the FAB.",
+                    )
+                resp.code == 404 ->
+                    return ProbeResult.Failure(
+                        "EL not configured",
+                        "Open /settings/voice on the desktop and set the agent + API key.",
+                    )
+                resp.code >= 500 ->
+                    return ProbeResult.Failure(
+                        "operator brain offline",
+                        "${creds.server} returned ${resp.code}. Launch Papercup on your computer.",
+                    )
+                else ->
+                    return ProbeResult.Failure(
+                        "session-init ${resp.code}",
+                        body.take(120),
+                    )
+            }
+        }
+    } catch (t: Throwable) {
+        return ProbeResult.Failure(
+            "session-init unreachable",
+            "${t.javaClass.simpleName}: ${t.message?.take(120)}",
+        )
+    }
+    val initMs = System.currentTimeMillis() - initT0
+
+    return ProbeResult.Success(heartbeatMs = heartbeatMs, sessionInitMs = initMs)
+}

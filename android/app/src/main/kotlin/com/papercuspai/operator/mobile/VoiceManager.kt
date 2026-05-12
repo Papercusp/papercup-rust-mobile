@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -584,7 +585,7 @@ class VoiceManager(
             .url("${creds.server}/api/mobile/voice-tool/$name")
             .header("Authorization", "Bearer ${creds.deviceToken}")
             .header("content-type", "application/json")
-            .post(okhttp3.RequestBody.create(JSON_MEDIA, bodyJson))
+            .post(bodyJson.toRequestBody(JSON_MEDIA))
             .build()
         http.newCall(req).execute().use { resp ->
             val text = resp.body?.string().orEmpty()

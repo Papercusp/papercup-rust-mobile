@@ -6,12 +6,14 @@ struct VoiceSettingsView: View {
     @State private var prefs: VoicePrefs = VoicePrefsStore.load()
     @State private var voices: [AVSpeechSynthesisVoice] = []
     @State private var synth = AVSpeechSynthesizer()
+    @State private var probeResult: VoicePathProbeResult = .idle
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 screenHeader
                 performanceSection
+                voicePathDiagnosticSection
                 conversationModeSection
                 timersSection
                 wakeWordSection
@@ -345,5 +347,127 @@ struct VoiceSettingsView: View {
         }
         synth.stopSpeaking(at: .immediate)
         synth.speak(utt)
+    }
+
+    /// End-to-end probe — heartbeat + voice-session-init. Doesn't
+    /// burn EL minutes. Helps users distinguish pair/server/EL faults.
+    private var voicePathDiagnosticSection: some View {
+        sectionShell("Voice path diagnostic") {
+            VStack(alignment: .leading, spacing: 8) {
+                Group {
+                    switch probeResult {
+                    case .idle:
+                        Text("Runs a no-mint probe against heartbeat + session-init. Doesn't burn EL minutes.")
+                            .font(.caption)
+                            .foregroundStyle(PapercupTheme.textMuted)
+                    case .running:
+                        HStack(spacing: 8) {
+                            ProgressView().scaleEffect(0.7)
+                            Text("Probing…").font(.caption)
+                        }
+                    case .success(let hbMs, let initMs):
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("✓ all good").foregroundStyle(.green).font(.callout)
+                            Text("heartbeat \(hbMs)ms · session-init \(initMs)ms")
+                                .font(.caption).monospaced()
+                                .foregroundStyle(PapercupTheme.textMuted)
+                        }
+                    case .failure(let stage, let detail):
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("✗ \(stage)").foregroundStyle(.red).font(.callout)
+                            Text(detail).font(.caption).monospaced()
+                                .foregroundStyle(.red.opacity(0.85))
+                        }
+                    }
+                }
+                Button(action: { Task { await runProbe() } }) {
+                    Text(probeResult == .idle ? "Run probe" : "Run again")
+                }
+                .disabled(probeResult == .running)
+            }
+        }
+    }
+
+    @MainActor
+    private func runProbe() async {
+        probeResult = .running
+        probeResult = await VoicePathProbe.run()
+    }
+}
+
+enum VoicePathProbeResult: Equatable {
+    case idle
+    case running
+    case success(heartbeatMs: Int, sessionInitMs: Int)
+    case failure(stage: String, detail: String)
+}
+
+private enum VoicePathProbe {
+    static func run() async -> VoicePathProbeResult {
+        guard let creds = CredentialStore.load() else {
+            return .failure(stage: "not paired", detail: "Pair this device first via the operator desktop.")
+        }
+        let session = URLSession(configuration: .ephemeral)
+
+        // Heartbeat
+        let hbStart = Date()
+        guard let hbUrl = URL(string: "\(creds.server)/api/mobile/heartbeat") else {
+            return .failure(stage: "bad server url", detail: creds.server)
+        }
+        var hbReq = URLRequest(url: hbUrl, timeoutInterval: 15)
+        hbReq.httpMethod = "POST"
+        hbReq.setValue("Bearer \(creds.deviceToken)", forHTTPHeaderField: "Authorization")
+        hbReq.setValue("application/json", forHTTPHeaderField: "content-type")
+        hbReq.httpBody = Data("{}".utf8)
+        let hbCode: Int
+        do {
+            let (data, resp) = try await session.data(for: hbReq)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            hbCode = code
+            if !(200...299).contains(code) {
+                let body = String(data: data.prefix(120), encoding: .utf8) ?? ""
+                if code == 401 {
+                    return .failure(stage: "heartbeat 401", detail: "Token rejected — re-pair the device.")
+                }
+                return .failure(stage: "heartbeat \(code)", detail: body)
+            }
+        } catch {
+            return .failure(
+                stage: "heartbeat unreachable",
+                detail: "Couldn't reach \(creds.server). Check Wi-Fi, Cloudflare tunnel, and that operator desktop is running."
+            )
+        }
+        let heartbeatMs = Int(Date().timeIntervalSince(hbStart) * 1000)
+        _ = hbCode
+
+        // Session init
+        let initStart = Date()
+        guard let initUrl = URL(string: "\(creds.server)/api/mobile/voice-session-init?surface=mobile-ios&mode=continuous&probe=1") else {
+            return .failure(stage: "bad server url", detail: creds.server)
+        }
+        var initReq = URLRequest(url: initUrl, timeoutInterval: 15)
+        initReq.setValue("Bearer \(creds.deviceToken)", forHTTPHeaderField: "Authorization")
+        do {
+            let (data, resp) = try await session.data(for: initReq)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            let body = String(data: data.prefix(120), encoding: .utf8) ?? ""
+            switch code {
+            case 200...299: break
+            case 429: return .failure(stage: "cooldown", detail: "EL mint cooldown — wait a few seconds and rerun.")
+            case 503 where body.contains("concurrent_limit"):
+                return .failure(stage: "another device has voice", detail: "Close other voice sessions or pre-empt from the FAB.")
+            case 404:
+                return .failure(stage: "EL not configured", detail: "Open /settings/voice on the desktop and set the agent + API key.")
+            case 500...599:
+                return .failure(stage: "operator brain offline", detail: "\(creds.server) returned \(code). Launch Papercup on your computer.")
+            default:
+                return .failure(stage: "session-init \(code)", detail: body)
+            }
+        } catch {
+            return .failure(stage: "session-init unreachable", detail: "\(error.localizedDescription)")
+        }
+        let initMs = Int(Date().timeIntervalSince(initStart) * 1000)
+
+        return .success(heartbeatMs: heartbeatMs, sessionInitMs: initMs)
     }
 }
