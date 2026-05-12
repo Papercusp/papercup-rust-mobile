@@ -77,6 +77,10 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
         ) {
             Spacer(Modifier.height(12.dp))
 
+            // Performance HUD — refreshed when the screen comes into
+            // composition. Stats survive app restarts (SharedPreferences).
+            PerformanceHud(ctx)
+
             SectionShell(title = "Conversation mode") {
                 VoiceModeRow(prefs.voiceMode) { mode -> update(prefs.copy(voiceMode = mode)) }
                 HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
@@ -332,6 +336,55 @@ private fun IntInputRow(label: String, helper: String, value: Int, onChange: (In
             colors = outlinedFieldColors(),
         )
         PapercupMetaText(text = helper, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+@Composable
+private fun PerformanceHud(ctx: android.content.Context) {
+    // Recomputed each composition; cheap (max 50 samples).
+    val firstWord = remember { VoiceMetrics.firstWordStats(ctx) }
+    val sessionLen = remember { VoiceMetrics.sessionLenStats(ctx) }
+    SectionShell(title = "Performance") {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            if (firstWord.count == 0 && sessionLen.count == 0) {
+                Text(
+                    "No samples yet. Use voice once and come back.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PapercupColors.TextMuted,
+                )
+            } else {
+                StatRow("First word", firstWord, formatMs = true)
+                Spacer(Modifier.height(8.dp))
+                StatRow("Session", sessionLen, formatMs = false)
+            }
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = { VoiceMetrics.reset(ctx) },
+                colors = ButtonDefaults.textButtonColors(contentColor = PapercupColors.TextMuted),
+            ) {
+                Text("Reset samples")
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatRow(label: String, stats: VoiceMetrics.Stats, formatMs: Boolean) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = PapercupColors.Text,
+        )
+        Text(
+            text = if (stats.count == 0) "—"
+            else if (formatMs) "p50 ${stats.p50}ms · p95 ${stats.p95}ms · n=${stats.count}"
+            else "p50 ${stats.p50 / 1000}s · p95 ${stats.p95 / 1000}s · n=${stats.count}",
+            style = MaterialTheme.typography.bodySmall,
+            color = PapercupColors.TextMuted,
+            fontFamily = FontFamily.Monospace,
+        )
     }
 }
 

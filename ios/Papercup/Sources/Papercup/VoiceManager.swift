@@ -91,6 +91,13 @@ final class VoiceManager: ObservableObject {
     private var idleTimeoutSecs: TimeInterval = 0
     private var sessionMaxSecs: TimeInterval = 0
 
+    /// Performance HUD samples (Phase D). tapAtMs is the user's
+    /// intent-to-listen wall-clock time. firstWordRecorded gates the
+    /// "first onAgentResponse since start()" measurement so each
+    /// session contributes one sample.
+    private var tapAt: Date? = nil
+    private var firstWordRecorded: Bool = false
+
     init(creds: DeviceCredentials) {
         self.creds = creds
     }
@@ -98,6 +105,8 @@ final class VoiceManager: ObservableObject {
     func start() {
         guard conversation == nil else { return }
         state = .connecting
+        tapAt = Date()
+        firstWordRecorded = false
         Task { @MainActor in
             let init_: SessionInit
             do {
@@ -118,7 +127,15 @@ final class VoiceManager: ObservableObject {
                         // voice-mode.ts onAssistantText behavior (EL
                         // credit-burn audit fix #2). A chatty agent
                         // shouldn't keep the session billable forever.
-                        Task { @MainActor in self?.state = .speaking(text: text, source: "agent") }
+                        Task { @MainActor in
+                            guard let self else { return }
+                            if !self.firstWordRecorded, let t = self.tapAt {
+                                let ms = Int(Date().timeIntervalSince(t) * 1000)
+                                VoiceMetrics.recordFirstWordMs(ms)
+                                self.firstWordRecorded = true
+                            }
+                            self.state = .speaking(text: text, source: "agent")
+                        }
                     },
                     onUserTranscript: { [weak self] _, _ in
                         // User said something — reset the idle clock.
@@ -161,6 +178,14 @@ final class VoiceManager: ObservableObject {
         levelPump?.cancel(); levelPump = nil
         idleTimerTask?.cancel(); idleTimerTask = nil
         sessionMaxTimerTask?.cancel(); sessionMaxTimerTask = nil
+        // Record session length for the HUD before wiping tapAt.
+        // Only record when we actually connected (firstWordRecorded)
+        // so aborted negotiations don't skew the histogram.
+        if firstWordRecorded, let t = tapAt {
+            VoiceMetrics.recordSessionLenMs(Int(Date().timeIntervalSince(t) * 1000))
+        }
+        tapAt = nil
+        firstWordRecorded = false
         if let conv = conversation {
             conversation = nil
             Task { await conv.endConversation() }

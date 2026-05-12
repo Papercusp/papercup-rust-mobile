@@ -66,22 +66,20 @@ struct SettingsView: View {
 
     private var connectionSection: some View {
         sectionShell("Connection") {
-            subsectionLabel(NSLocalizedString("settings.workspaces", comment: ""))
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 10)
-
-            if let ws = workspaces {
-                if ws.isEmpty {
-                    infoRow("Workspaces", value: "none available", isLast: false)
-                } else {
-                    ForEach(Array(ws.enumerated()), id: \.element.id) { index, workspace in
-                        workspaceRow(workspace, isLast: index == ws.count - 1)
-                    }
-                }
-            } else {
-                loadingRow(isLast: true)
+            NavigationLink {
+                WorkspaceSelectorView(
+                    creds: creds,
+                    initialWorkspaces: workspaces,
+                    onSwitchWorkspace: switchWorkspace
+                )
+            } label: {
+                navRow(
+                    title: "Switch workspace",
+                    detail: currentWorkspaceDetail
+                )
             }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Opens the workspace selector."))
 
             dividerLine()
 
@@ -109,6 +107,13 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             .accessibilityHint(Text("Clears stored credentials and returns to pair view."))
         }
+    }
+
+    private var currentWorkspaceDetail: String {
+        if let workspaces, let current = workspaces.first(where: \.current) {
+            return current.name
+        }
+        return creds.workspaceId
     }
 
     private var voiceSection: some View {
@@ -162,45 +167,6 @@ struct SettingsView: View {
         }
     }
 
-    private func workspaceRow(_ w: Workspace, isLast: Bool) -> some View {
-        Button {
-            guard !w.current, revoking == nil else { return }
-            Task { await switchWorkspace(w) }
-        } label: {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(w.name)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(PapercupTheme.text)
-                    Text(w.id)
-                        .papercupMonoMeta()
-                }
-                Spacer(minLength: 12)
-                if w.current {
-                    PapercupChip(text: "CURRENT", role: .success)
-                } else if revoking == "switch:\(w.id)" {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(PapercupTheme.accent)
-                } else {
-                    Text("tap to switch")
-                        .font(.caption)
-                        .foregroundStyle(PapercupTheme.textMuted)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(w.current || revoking != nil)
-        .background(rowBackground)
-        .overlay(alignment: .bottom) {
-            if !isLast {
-                separatorInset
-            }
-        }
-    }
 
     private func deviceRow(_ d: Device, isLast: Bool) -> some View {
         let isSelf = d.deviceId == creds.deviceId
@@ -372,12 +338,6 @@ struct SettingsView: View {
         }
     }
 
-    private func subsectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(PapercupTheme.accentStrong)
-            .tracking(0.9)
-    }
 
     private func dividerLine() -> some View {
         Rectangle()
@@ -427,18 +387,12 @@ struct SettingsView: View {
         return c
     }
 
-    private func switchWorkspace(_ w: Workspace) async {
-        revoking = "switch:\(w.id)"
-        defer { revoking = nil }
-        do {
-            let res = try await gatedClient().workspaceSwitch(workspaceId: w.id)
-            var fresh = creds
-            fresh.deviceToken = res.deviceToken
-            fresh.workspaceId = res.workspaceId
-            onWorkspaceSwitched(fresh)
-        } catch let e {
-            self.error = "Switch failed: \(e)"
-        }
+    private func switchWorkspace(_ w: Workspace) async throws {
+        let res = try await gatedClient().workspaceSwitch(workspaceId: w.id)
+        var fresh = creds
+        fresh.deviceToken = res.deviceToken
+        fresh.workspaceId = res.workspaceId
+        onWorkspaceSwitched(fresh)
     }
 
     private func revokeDevice(_ d: Device) async {

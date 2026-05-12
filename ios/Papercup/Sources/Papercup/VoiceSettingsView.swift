@@ -11,6 +11,7 @@ struct VoiceSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 screenHeader
+                performanceSection
                 conversationModeSection
                 timersSection
                 wakeWordSection
@@ -44,6 +45,44 @@ struct VoiceSettingsView: View {
                 .foregroundStyle(PapercupTheme.textMuted)
         }
         .padding(.vertical, 10)
+    }
+
+    private var performanceSection: some View {
+        // Re-read each appear so stats reflect recent sessions.
+        let firstWord = VoiceMetrics.firstWordStats()
+        let sessionLen = VoiceMetrics.sessionLenStats()
+        return sectionShell("Performance") {
+            VStack(alignment: .leading, spacing: 8) {
+                if firstWord.count == 0 && sessionLen.count == 0 {
+                    Text("No samples yet. Use voice once and come back.")
+                        .font(.caption)
+                        .foregroundStyle(PapercupTheme.textMuted)
+                } else {
+                    statRow(label: "First word", stats: firstWord, formatMs: true)
+                    statRow(label: "Session", stats: sessionLen, formatMs: false)
+                }
+                Button("Reset samples") { VoiceMetrics.reset() }
+                    .font(.caption)
+                    .foregroundStyle(PapercupTheme.textMuted)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+
+    private func statRow(label: String, stats: VoiceMetrics.Stats, formatMs: Bool) -> some View {
+        HStack {
+            Text(label)
+                .font(.body)
+                .foregroundStyle(PapercupTheme.text)
+            Spacer()
+            let text = formatMs
+                ? "p50 \(stats.p50)ms · p95 \(stats.p95)ms · n=\(stats.count)"
+                : "p50 \(stats.p50 / 1000)s · p95 \(stats.p95 / 1000)s · n=\(stats.count)"
+            Text(text)
+                .font(.caption.monospaced())
+                .foregroundStyle(PapercupTheme.textMuted)
+        }
     }
 
     private var conversationModeSection: some View {

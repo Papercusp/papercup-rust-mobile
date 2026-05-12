@@ -134,11 +134,22 @@ class VoiceManager(
     private var idleTimeoutMs: Long = 0L
     private var sessionMaxMs: Long = 0L
 
+    /// Performance HUD samples (Phase D). Recorded into VoiceMetrics
+    /// so Settings → Voice → Performance shows P50/P95 over recent
+    /// sessions. tapAtMs is the user's FAB tap; firstWordMs is the
+    /// elapsed millis until the first onAgentResponse fires.
+    private var tapAtMs: Long = 0L
+    private var firstWordRecorded: Boolean = false
+
     fun start() {
         if (scope != null) return
         val s = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         scope = s
         _state.value = State.Connecting
+        // Mark the user's intent-to-listen time for first-word latency.
+        // Latency = time until the first onAgentResponse fires.
+        tapAtMs = System.currentTimeMillis()
+        firstWordRecorded = false
 
         sessionJob = s.launch(Dispatchers.IO) {
             val initResult = runCatching { fetchSessionInit() }
@@ -196,6 +207,12 @@ class VoiceManager(
                     },
                     onAudioLevelChanged = { level -> _micLevel.value = level },
                     onAgentResponse = { response ->
+                        // Record first-word latency once per session.
+                        if (!firstWordRecorded && tapAtMs > 0L) {
+                            val elapsed = System.currentTimeMillis() - tapAtMs
+                            VoiceMetrics.recordFirstWordMs(context, elapsed)
+                            firstWordRecorded = true
+                        }
                         // Idle = USER idle. Intentionally NOT resetting
                         // the idle timer on agent responses — matches
                         // desktop voice-mode.ts onAssistantText behavior
@@ -293,6 +310,15 @@ class VoiceManager(
         idleTimerJob = null
         sessionMaxTimerJob?.cancel()
         sessionMaxTimerJob = null
+        // Record session length for the Performance HUD before we
+        // wipe tapAtMs. Only record when we actually connected
+        // (firstWordRecorded == true) to avoid skewing the histogram
+        // with aborted negotiations.
+        if (firstWordRecorded && tapAtMs > 0L) {
+            VoiceMetrics.recordSessionLenMs(context, System.currentTimeMillis() - tapAtMs)
+        }
+        tapAtMs = 0L
+        firstWordRecorded = false
         val sess = session
         session = null
         if (sess != null) {
