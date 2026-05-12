@@ -301,13 +301,30 @@ Same prompt to desktop and to phone:
 - Audit `surface` field plumbed end-to-end
 - Smoke test: every command id verified callable from phone speech
 
-### Phase C — UX + failure modes (~2 days)
+### Phase C — UX + failure modes (~2 days) — ✅ shipped 2026-05-12
 
-- Continuous-with-turn-taking + single-utterance toggle in Voice Settings
-- Failure-mode matrix wired (each case has a distinct UX)
-- Lease handoff + lifecycle (background/foreground)
-- Wake-word plumbed through to `session.start()` (dormant until key)
-- openWakeWord fallback build flag scaffolded
+- ✅ **Three** voice modes in Voice Settings: continuous (default — ChatGPT-style),
+  hybrid (agent ends session on definitive answers), single-utterance
+  (one Q→A then disconnect). Stored device-locally in
+  EncryptedSharedPreferences (Android) and UserDefaults (iOS) so each
+  device can pick its own without affecting the workspace default.
+- ✅ EL agent prompt branches on `dynamic_variables.voice_mode`;
+  `end_conversation` client tool registered on the agent + handlers
+  on all 3 surfaces (Android, iOS, desktop voice-mode.ts).
+- ✅ Failure-mode UX matrix wired with 9 typed `FailureKind`s
+  (MicPermission / QuotaExceeded / ConcurrentLimit / MintCooldown /
+  NetworkUnreachable / IdleTimeout / SessionMax / AgentEnded /
+  Unknown). Banner UI with kind-specific actions on both platforms.
+- ✅ Lifecycle: idle timer (user-silence cap) + session-max ceiling
+  on both platforms; mint cooldown + in-flight dedupe shared with
+  desktop via `harness_shared.cooldown_marks`.
+- ✅ Wake-word plumbed: Picovoice Porcupine SDK on Android + iOS,
+  gated on `PICOVOICE_ACCESS_KEY` build var (empty by default →
+  fully dormant, foreground-microphone service never starts).
+- ✅ openWakeWord fallback build flag scaffolded: Android
+  `PAPERCUP_USE_OWW=true` routes to `startOww()` instead of
+  Porcupine. TODO is bundling the OWW model in assets/; wiring is
+  in place.
 
 ### Phase D — real-device matrix + Polish (~1 day)
 
