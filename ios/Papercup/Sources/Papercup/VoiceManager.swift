@@ -26,7 +26,29 @@ final class VoiceManager: ObservableObject {
         case connecting
         case listening
         case speaking(text: String, source: String)
-        case failed(message: String)
+        case failed(message: String, kind: FailureKind = .unknown, retryAfterSec: Int? = nil)
+    }
+
+    /// Drives the per-error UX:
+    ///   - micPermission     → "Allow mic" + Open-Settings button
+    ///   - quotaExceeded     → "EL limit hit" + link
+    ///   - concurrentLimit   → "Another device has voice" + Pre-empt
+    ///   - mintCooldown      → "Cool-down — auto-retry in Xs"
+    ///   - networkUnreachable→ "Lost connection — tap to retry"
+    ///   - idleTimeout       → user-facing "tap to resume" via FAB
+    ///   - sessionMax        → user-facing "tap to start another"
+    ///   - agentEnded        → quiet — agent ended via end_conversation
+    ///   - unknown           → generic fallback
+    enum FailureKind: Equatable {
+        case micPermission
+        case quotaExceeded
+        case concurrentLimit
+        case mintCooldown
+        case networkUnreachable
+        case idleTimeout
+        case sessionMax
+        case agentEnded
+        case unknown
     }
 
     @Published private(set) var state: State = .idle
@@ -81,7 +103,7 @@ final class VoiceManager: ObservableObject {
             do {
                 init_ = try await fetchSessionInit()
             } catch {
-                state = .failed(message: "Voice unavailable — \(error.localizedDescription)")
+                state = Self.classifyInitFailure(error)
                 return
             }
             // Stash the timer budgets from the init payload so the
@@ -115,7 +137,20 @@ final class VoiceManager: ObservableObject {
                 armSessionMaxTimer()
                 wirePumps(conv)
             } catch {
-                state = .failed(message: "Voice unavailable — \(error.localizedDescription)")
+                let msg = error.localizedDescription
+                let kind: FailureKind = {
+                    let lower = msg.lowercased()
+                    if lower.contains("quota") || lower.contains("limit exceeded")
+                        || lower.contains("1011") || lower.contains("1002") {
+                        return .quotaExceeded
+                    }
+                    if lower.contains("network") || lower.contains("unreachable")
+                        || lower.contains("timeout") {
+                        return .networkUnreachable
+                    }
+                    return .unknown
+                }()
+                state = .failed(message: "Voice unavailable — \(msg)", kind: kind)
             }
         }
     }
@@ -138,6 +173,48 @@ final class VoiceManager: ObservableObject {
     /// been received for `idleTimeoutSecs`. Cancelled on stop() and
     /// rearmed every time the user says something. No-op when the
     /// pref is 0 (auto-disconnect disabled).
+    /// Map a session-init Throwable to a typed Failed state. The
+    /// fetchSessionInit throws NSError with `code` set to the HTTP
+    /// status code and `userInfo[NSLocalizedDescriptionKey]` set to
+    /// `"session-init <code>: <body>"`. We pattern-match on both to
+    /// distinguish 429 (cooldown) from 503 (concurrent) from network
+    /// failures.
+    private static func classifyInitFailure(_ error: Error) -> State {
+        let ns = error as NSError
+        let msg = ns.localizedDescription
+        let code = ns.code
+        switch code {
+        case 429:
+            // Body looks like: {"error":"mint_cooldown","retryAfterMs":4321,...}
+            let secs: Int? = {
+                if let r = msg.range(of: #""retryAfterMs"\s*:\s*(\d+)"#, options: .regularExpression) {
+                    let n = msg[r].components(separatedBy: ":").last?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return Int(n ?? "").map { max(1, $0 / 1000) }
+                }
+                return nil
+            }()
+            return .failed(
+                message: secs.map { "Cooling down — retry in \($0)s." } ?? "Cooling down — retry in a moment.",
+                kind: .mintCooldown,
+                retryAfterSec: secs
+            )
+        case 503:
+            if msg.contains("concurrent_limit") || msg.contains("Another tab") {
+                return .failed(message: "Another device has voice. Pre-empt?", kind: .concurrentLimit)
+            }
+            return .failed(message: "Voice service error — tap to retry.", kind: .networkUnreachable)
+        default:
+            let lower = msg.lowercased()
+            if lower.contains("permission") && lower.contains("mic") {
+                return .failed(message: "Mic permission denied.", kind: .micPermission)
+            }
+            if lower.contains("session-init") {
+                return .failed(message: "Voice service error — tap to retry.", kind: .networkUnreachable)
+            }
+            return .failed(message: "Voice unavailable — \(msg)", kind: .unknown)
+        }
+    }
+
     private func armIdleTimer() {
         idleTimerTask?.cancel()
         idleTimerTask = nil
@@ -147,7 +224,7 @@ final class VoiceManager: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(secs * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
             let labelMin = max(1, Int(secs / 60))
-            self.state = .failed(message: "Voice idle \(labelMin)m — tap to resume.")
+            self.state = .failed(message: "Voice idle \(labelMin)m — tap to resume.", kind: .idleTimeout)
             self.tearDownAfterTimer()
         }
     }
@@ -171,7 +248,7 @@ final class VoiceManager: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(secs * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
             let labelMin = max(1, Int(secs / 60))
-            self.state = .failed(message: "Voice session hit \(labelMin)m max — tap to start another.")
+            self.state = .failed(message: "Voice session hit \(labelMin)m max — tap to start another.", kind: .sessionMax)
             self.tearDownAfterTimer()
         }
     }
@@ -203,7 +280,7 @@ final class VoiceManager: ObservableObject {
                 case .active: if case .speaking = self.state {} else { self.state = .listening }
                 case .ended:
                     if case .failed = self.state {} else { self.state = .idle }
-                case .error: self.state = .failed(message: "Voice error")
+                case .error: self.state = .failed(message: "Voice error — tap to retry.", kind: .networkUnreachable)
                 }
             }
         }
@@ -310,6 +387,10 @@ final class VoiceManager: ObservableObject {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 self?.stop()
+                // Surface so the UI knows the agent ended the session
+                // rather than the user tapping stop. UI auto-dismisses
+                // after 2s (mirrors Android VoiceErrorBanner behavior).
+                self?.state = .failed(message: "Agent ended the conversation.", kind: .agentEnded)
             }
 
         default:

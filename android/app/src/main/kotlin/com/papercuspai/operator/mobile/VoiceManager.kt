@@ -54,7 +54,34 @@ class VoiceManager(
         data object Connecting : State
         data object Listening : State
         data class Speaking(val text: String, val source: String) : State
-        data class Failed(val message: String) : State
+        data class Failed(
+            val message: String,
+            val kind: FailureKind = FailureKind.Unknown,
+            /** Suggested retry delay in seconds; null = manual retry only. */
+            val retryAfterSec: Int? = null,
+        ) : State
+    }
+
+    /// Drives the per-error UX:
+    ///   - MicPermission     → "Allow mic" + Open-app-settings button
+    ///   - QuotaExceeded     → "EL limit hit" + Open-voice-settings link
+    ///   - ConcurrentLimit   → "Another device has voice" + Pre-empt button
+    ///   - MintCooldown      → "Cool-down — auto-retry in Xs" + countdown
+    ///   - NetworkUnreachable→ "Lost connection — tap to retry"
+    ///   - IdleTimeout       → already user-facing "tap to resume" via FAB
+    ///   - SessionMax        → already user-facing "tap to start another"
+    ///   - AgentEnded        → quiet — agent intentionally ended via end_conversation
+    ///   - Unknown           → generic fallback toast
+    enum class FailureKind {
+        MicPermission,
+        QuotaExceeded,
+        ConcurrentLimit,
+        MintCooldown,
+        NetworkUnreachable,
+        IdleTimeout,
+        SessionMax,
+        AgentEnded,
+        Unknown,
     }
 
     /// Voice-driven phone intents. These map to client tools the
@@ -117,7 +144,7 @@ class VoiceManager(
             val initResult = runCatching { fetchSessionInit() }
             val init = initResult.getOrElse { err ->
                 Log.w(TAG, "session-init failed: ${err.message}")
-                _state.value = State.Failed("Voice unavailable — ${err.message}")
+                _state.value = classifyInitFailure(err)
                 return@launch
             }
             // Stash the timer budgets so onStatusChange / onUserTranscript
@@ -151,7 +178,10 @@ class VoiceManager(
                             ConversationStatus.DISCONNECTING -> {
                                 if (_state.value !is State.Failed) _state.value = State.Idle
                             }
-                            ConversationStatus.ERROR -> _state.value = State.Failed("Voice error")
+                            ConversationStatus.ERROR -> _state.value = State.Failed(
+                                "Voice error — tap to retry.",
+                                FailureKind.NetworkUnreachable,
+                            )
                         }
                     },
                     onModeChange = { mode ->
@@ -186,7 +216,21 @@ class VoiceManager(
                 session = ConversationClient.startSession(config, context)
             } catch (t: Throwable) {
                 Log.w(TAG, "EL startSession failed", t)
-                _state.value = State.Failed("Voice unavailable — ${t.message ?: t.javaClass.simpleName}")
+                val msg = t.message ?: t.javaClass.simpleName
+                // EL SDK surfaces quota/concurrent errors in the message
+                // body. Match conservatively — we only want to upgrade
+                // to a specific kind if we're sure.
+                val kind = when {
+                    msg.contains("quota", ignoreCase = true) ||
+                    msg.contains("limit exceeded", ignoreCase = true) ||
+                    msg.contains("1011", ignoreCase = true) ||
+                    msg.contains("1002", ignoreCase = true) -> FailureKind.QuotaExceeded
+                    msg.contains("network", ignoreCase = true) ||
+                    msg.contains("unreachable", ignoreCase = true) ||
+                    msg.contains("timeout", ignoreCase = true) -> FailureKind.NetworkUnreachable
+                    else -> FailureKind.Unknown
+                }
+                _state.value = State.Failed("Voice unavailable — $msg", kind)
             }
         }
     }
@@ -209,7 +253,7 @@ class VoiceManager(
             val labelMin = (ms / 60_000L).coerceAtLeast(1)
             val msg = "Voice idle ${labelMin}m — tap to resume."
             Log.i(TAG, "idle timer fired: $msg")
-            _state.value = State.Failed(msg)
+            _state.value = State.Failed(msg, FailureKind.IdleTimeout)
             teardown(reason = "idle")
         }
     }
@@ -237,7 +281,7 @@ class VoiceManager(
             val labelMin = (ms / 60_000L).coerceAtLeast(1)
             val msg = "Voice session hit ${labelMin}m max — tap to start another."
             Log.i(TAG, "session-max fired: $msg")
-            _state.value = State.Failed(msg)
+            _state.value = State.Failed(msg, FailureKind.SessionMax)
             teardown(reason = "session-max")
         }
     }
@@ -266,9 +310,55 @@ class VoiceManager(
         sessionJob = null
         _micLevel.value = 0f
         // Preserve a Failed state if onError fired earlier; otherwise
-        // park at Idle so the UI shows "Listen" again.
-        if (_state.value !is State.Failed) _state.value = State.Idle
+        // park at Idle so the UI shows "Listen" again. Exception:
+        // agent-end is intentional (hybrid / single-utterance mode),
+        // shown briefly so the user knows the agent hung up rather
+        // than the user — UI consumes the Failed→Idle transition.
+        if (reason == "agent-end") {
+            _state.value = State.Failed(
+                "Agent ended the conversation.",
+                FailureKind.AgentEnded,
+            )
+        } else if (_state.value !is State.Failed) {
+            _state.value = State.Idle
+        }
         s.cancel()
+    }
+
+    /// Map a session-init Throwable to a typed Failed state. Reads
+    /// status codes + response body from the message (fetchSessionInit
+    /// throws with the format "session-init <code>: <body>") so we can
+    /// distinguish 429 (cooldown) from 503 (concurrent) from 5xx
+    /// (server) from network-level failures.
+    private fun classifyInitFailure(t: Throwable): State.Failed {
+        val msg = t.message ?: t.javaClass.simpleName
+        return when {
+            msg.contains("session-init 429") -> {
+                // Body looks like: {"error":"mint_cooldown","retryAfterMs":4321,...}
+                val secs = Regex(""""retryAfterMs"\s*:\s*(\d+)""")
+                    .find(msg)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                    ?.let { (it / 1000).coerceAtLeast(1) }
+                State.Failed(
+                    secs?.let { "Cooling down — retry in ${it}s." }
+                        ?: "Cooling down — retry in a moment.",
+                    FailureKind.MintCooldown,
+                    retryAfterSec = secs,
+                )
+            }
+            msg.contains("session-init 503") &&
+                (msg.contains("concurrent_limit") || msg.contains("Another tab")) ->
+                State.Failed(
+                    "Another device has voice. Pre-empt?",
+                    FailureKind.ConcurrentLimit,
+                )
+            msg.contains("session-init") ->
+                State.Failed("Voice service error — tap to retry.", FailureKind.NetworkUnreachable)
+            msg.contains("permission", ignoreCase = true) &&
+                msg.contains("mic", ignoreCase = true) ->
+                State.Failed("Mic permission denied.", FailureKind.MicPermission)
+            else ->
+                State.Failed("Voice unavailable — $msg", FailureKind.Unknown)
+        }
     }
 
     /// Native client-tool table covering every `browser:'required'`

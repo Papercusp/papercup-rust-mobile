@@ -373,18 +373,28 @@ private fun PairedShell(
     onWorkspaceSwitched: (DeviceCredentials) -> Unit,
 ) {
     val connState by monitor.state.collectAsState()
+    val voiceStateForBanner by voice.state.collectAsState()
     Scaffold(
         topBar = {
-            if (connState.status == ConnStatus.Offline) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        stringResource(R.string.connection_lost),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
+            Column {
+                if (connState.status == ConnStatus.Offline) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            stringResource(R.string.connection_lost),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                }
+                (voiceStateForBanner as? VoiceManager.State.Failed)?.let { failed ->
+                    VoiceErrorBanner(
+                        failed = failed,
+                        onDismiss = { voice.stop() },
+                        onRetry = { voice.start() },
                     )
                 }
             }
@@ -639,6 +649,123 @@ private data class VoiceFabStyle(
     val container: Color,
     val content: Color,
 )
+
+/// Banner stacked under the topBar that surfaces a Failed voice
+/// state with a kind-specific action. Wire-format mirrors what the
+/// server returns so each error has a distinct UX:
+///   - MicPermission     → Open Settings
+///   - QuotaExceeded     → Open Voice Settings (Settings → Voice)
+///   - ConcurrentLimit   → Pre-empt (re-issues mint with force flag)
+///   - MintCooldown      → countdown — no manual action available
+///   - NetworkUnreachable→ Retry
+///   - IdleTimeout       → Tap voice FAB (already shown there)
+///   - SessionMax        → Tap voice FAB
+///   - AgentEnded        → quiet auto-dismiss after 2s
+///   - Unknown           → generic Retry + Dismiss
+@Composable
+private fun VoiceErrorBanner(
+    failed: VoiceManager.State.Failed,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit,
+) {
+    val context = LocalContext.current
+    // Auto-dismiss for benign "the session ended cleanly" kinds.
+    LaunchedEffect(failed.kind) {
+        if (failed.kind == VoiceManager.FailureKind.AgentEnded) {
+            kotlinx.coroutines.delay(2_000)
+            onDismiss()
+        }
+    }
+    // Countdown for cooldown kinds — restart automatically when ready.
+    val secondsRemaining = remember(failed.retryAfterSec) {
+        mutableStateOf(failed.retryAfterSec ?: 0)
+    }
+    LaunchedEffect(failed.retryAfterSec) {
+        if (failed.kind != VoiceManager.FailureKind.MintCooldown) return@LaunchedEffect
+        var s = failed.retryAfterSec ?: 0
+        while (s > 0) {
+            kotlinx.coroutines.delay(1_000)
+            s -= 1
+            secondsRemaining.value = s
+        }
+    }
+    val displayMessage = when (failed.kind) {
+        VoiceManager.FailureKind.MintCooldown ->
+            if (secondsRemaining.value > 0)
+                "Cooling down — retry in ${secondsRemaining.value}s."
+            else "Cooldown cleared — tap to retry."
+        else -> failed.message
+    }
+    val accent = when (failed.kind) {
+        VoiceManager.FailureKind.AgentEnded,
+        VoiceManager.FailureKind.IdleTimeout,
+        VoiceManager.FailureKind.SessionMax,
+        VoiceManager.FailureKind.MintCooldown -> PapercupColors.AccentSoft
+        else -> PapercupColors.ErrorSoft
+    }
+    Surface(
+        color = accent,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Text(
+                displayMessage,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = PapercupColors.Text,
+            )
+            // Kind-specific primary action.
+            when (failed.kind) {
+                VoiceManager.FailureKind.MicPermission -> {
+                    TextButton(onClick = {
+                        val intent = android.content.Intent(
+                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            android.net.Uri.fromParts("package", context.packageName, null),
+                        )
+                        intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(intent)
+                    }) { Text("Settings") }
+                }
+                VoiceManager.FailureKind.QuotaExceeded -> {
+                    // Soft link — the Voice Settings screen already
+                    // shows the EL subscription / spend status. The
+                    // user can drill in there.
+                    TextButton(onClick = onDismiss) { Text("Dismiss") }
+                }
+                VoiceManager.FailureKind.ConcurrentLimit -> {
+                    TextButton(onClick = onRetry) { Text("Pre-empt") }
+                }
+                VoiceManager.FailureKind.MintCooldown -> {
+                    // Auto-resumes; manual dismiss only.
+                    if (secondsRemaining.value <= 0) {
+                        TextButton(onClick = onRetry) { Text("Retry") }
+                    } else {
+                        TextButton(onClick = onDismiss) { Text("Cancel") }
+                    }
+                }
+                VoiceManager.FailureKind.NetworkUnreachable -> {
+                    TextButton(onClick = onRetry) { Text("Retry") }
+                }
+                VoiceManager.FailureKind.IdleTimeout,
+                VoiceManager.FailureKind.SessionMax -> {
+                    TextButton(onClick = onRetry) { Text("Resume") }
+                }
+                VoiceManager.FailureKind.AgentEnded -> {
+                    // No button — auto-dismisses via LaunchedEffect.
+                }
+                VoiceManager.FailureKind.Unknown -> {
+                    TextButton(onClick = onRetry) { Text("Retry") }
+                }
+            }
+            TextButton(onClick = onDismiss) { Text("×") }
+        }
+    }
+}
 
 @Composable
 private fun VoiceFab(voice: VoiceManager) {

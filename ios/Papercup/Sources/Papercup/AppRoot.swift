@@ -141,6 +141,7 @@ private struct PairedShell: View {
                     .padding(.vertical, 6)
                     .background(Color.red)
             }
+            VoiceErrorBanner(voice: voice)
             ZStack {
                 Group {
                     switch tab {
