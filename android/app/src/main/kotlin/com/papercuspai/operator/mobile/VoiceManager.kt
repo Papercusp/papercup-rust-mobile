@@ -15,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -95,6 +97,16 @@ class VoiceManager(
     private var session: ConversationSession? = null
     private var sessionJob: Job? = null
 
+    /// Idle / session-max timers — bound EL Conv AI billable time on
+    /// the mobile client the same way voice-mode.ts does on desktop.
+    /// Values come from the server's voice-session-init response so
+    /// they're always fresh (no need to refetch prefs). Idle resets on
+    /// USER transcript only; session-max is set once at connect.
+    private var idleTimerJob: Job? = null
+    private var sessionMaxTimerJob: Job? = null
+    private var idleTimeoutMs: Long = 0L
+    private var sessionMaxMs: Long = 0L
+
     fun start() {
         if (scope != null) return
         val s = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -108,11 +120,20 @@ class VoiceManager(
                 _state.value = State.Failed("Voice unavailable — ${err.message}")
                 return@launch
             }
+            // Stash the timer budgets so onStatusChange / onUserTranscript
+            // can arm + nudge them without re-parsing the init payload.
+            idleTimeoutMs = init.idleTimeoutMin.coerceAtLeast(0) * 60_000L
+            sessionMaxMs = init.sessionMaxMin.coerceAtLeast(0) * 60_000L
+
             try {
                 val config = ConversationConfig(
                     conversationToken = init.conversationToken,
                     userId = init.dynamicVariables.deviceId,
-                    onConnect = { _ -> Log.i(TAG, "EL connected") },
+                    onConnect = { _ ->
+                        Log.i(TAG, "EL connected — arming timers idle=${idleTimeoutMs}ms max=${sessionMaxMs}ms")
+                        armIdleTimer()
+                        armSessionMaxTimer()
+                    },
                     onDisconnect = { reason ->
                         // Fully tear down so a subsequent FAB tap can
                         // start a fresh session. Without this, `scope`
@@ -145,10 +166,17 @@ class VoiceManager(
                     },
                     onAudioLevelChanged = { level -> _micLevel.value = level },
                     onAgentResponse = { response ->
+                        // Idle = USER idle. Intentionally NOT resetting
+                        // the idle timer on agent responses — matches
+                        // desktop voice-mode.ts onAssistantText behavior
+                        // (EL credit-burn audit fix #2). A chatty agent
+                        // shouldn't keep the session billable forever.
                         _state.value = State.Speaking(response, "agent")
                     },
                     onUserTranscript = { transcript ->
                         Log.d(TAG, "user: $transcript")
+                        // User said something — reset the idle clock.
+                        nudgeIdleTimer()
                     },
                     onUnhandledClientToolCall = { call ->
                         Log.w(TAG, "agent invoked unhandled client tool: ${call.toolName}")
@@ -165,9 +193,62 @@ class VoiceManager(
 
     fun stop() = teardown(reason = "user")
 
+    /// Arm a one-shot timeout job that fires when no user transcript
+    /// has been received for `idleTimeoutMs`. Cancelled on teardown
+    /// and rearmed every time the user says something. No-op when the
+    /// pref is 0 (auto-disconnect disabled).
+    private fun armIdleTimer() {
+        idleTimerJob?.cancel()
+        idleTimerJob = null
+        val ms = idleTimeoutMs
+        if (ms <= 0L) return
+        val s = scope ?: return
+        idleTimerJob = s.launch(Dispatchers.Main) {
+            delay(ms)
+            if (!isActive) return@launch
+            val labelMin = (ms / 60_000L).coerceAtLeast(1)
+            val msg = "Voice idle ${labelMin}m — tap to resume."
+            Log.i(TAG, "idle timer fired: $msg")
+            _state.value = State.Failed(msg)
+            teardown(reason = "idle")
+        }
+    }
+
+    /// Reset the idle timer's deadline. Called from onUserTranscript
+    /// — explicitly NOT called from onAgentResponse so a chatty agent
+    /// can't keep the session alive forever.
+    private fun nudgeIdleTimer() {
+        if (idleTimerJob != null) armIdleTimer()
+    }
+
+    /// Arm the hard session-max timer at session-start. Runs ONCE —
+    /// does NOT reset on activity. Bounds worst-case billable
+    /// duration regardless of how active the session is. Matches
+    /// desktop voice-mode.ts armSessionMaxTimer.
+    private fun armSessionMaxTimer() {
+        sessionMaxTimerJob?.cancel()
+        sessionMaxTimerJob = null
+        val ms = sessionMaxMs
+        if (ms <= 0L) return
+        val s = scope ?: return
+        sessionMaxTimerJob = s.launch(Dispatchers.Main) {
+            delay(ms)
+            if (!isActive) return@launch
+            val labelMin = (ms / 60_000L).coerceAtLeast(1)
+            val msg = "Voice session hit ${labelMin}m max — tap to start another."
+            Log.i(TAG, "session-max fired: $msg")
+            _state.value = State.Failed(msg)
+            teardown(reason = "session-max")
+        }
+    }
+
     private fun teardown(reason: String) {
         val s = scope ?: return
         scope = null
+        idleTimerJob?.cancel()
+        idleTimerJob = null
+        sessionMaxTimerJob?.cancel()
+        sessionMaxTimerJob = null
         val sess = session
         session = null
         if (sess != null) {
@@ -390,6 +471,11 @@ class VoiceManager(
             return SessionInit(
                 conversationToken = j.getString("conversationToken"),
                 agentId = j.getString("agentId"),
+                // Server defaults match VoicePrefs.DEFAULT — keep these
+                // floors here as a belt-and-suspenders so a malformed
+                // payload doesn't disable both timers silently.
+                idleTimeoutMin = j.optInt("idleTimeoutMin", 2),
+                sessionMaxMin = j.optInt("sessionMaxMin", 30),
                 dynamicVariables = DynamicVars(
                     deviceId = dyn.optString("device_id"),
                     workspaceId = dyn.optString("workspace_id"),
@@ -403,6 +489,8 @@ class VoiceManager(
     private data class SessionInit(
         val conversationToken: String,
         val agentId: String,
+        val idleTimeoutMin: Int,
+        val sessionMaxMin: Int,
         val dynamicVariables: DynamicVars,
     )
 
