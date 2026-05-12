@@ -574,9 +574,15 @@ class VoiceManager(
     /// operator, returns the response body as the tool result. The
     /// agent reads it back as JSON the LLM can speak from.
     private fun proxyVoiceTool(name: String, params: Map<String, Any>): String {
+        // Read timeout MUST be longer than the server-side ask_operator
+        // timeout (25s) — otherwise the client errors before the server
+        // returns its diagnostic fallback message. 35s is the ceiling
+        // for any voice-tool round-trip; tools genuinely slower than
+        // that need a different transport (job queue + poll), not a
+        // synchronous EL tool call.
         val http = OkHttpClient.Builder()
             .connectTimeout(8, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(35, TimeUnit.SECONDS)
             .build()
         val bodyJson = JSONObject().apply {
             put("parameters", JSONObject(params))
