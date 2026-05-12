@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,14 +24,14 @@ import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
 import uniffi.papercup.Device
 import uniffi.papercup.OperatorClient
-import uniffi.papercup.Workspace
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     creds: DeviceCredentials,
     onForget: () -> Unit,
-    onWorkspaceSwitched: (DeviceCredentials) -> Unit,
+    onOpenWorkspaceSelector: () -> Unit = {},
     onOpenStandingApprovals: () -> Unit = {},
     onOpenVoiceSettings: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
@@ -49,7 +48,6 @@ fun SettingsScreen(
             activity?.let { client.setBiometricPrompt(BiometricGate(it)) }
         }
     }
-    var workspaces by remember { mutableStateOf<List<Workspace>?>(null) }
     var devices by remember { mutableStateOf<List<Device>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var busyKey by remember { mutableStateOf<String?>(null) }
@@ -57,9 +55,7 @@ fun SettingsScreen(
 
     suspend fun load() {
         try {
-            val client = creds.client()
-            workspaces = client.listWorkspaces()
-            devices = client.listDesktopDevices()
+            devices = creds.client().listDesktopDevices()
             error = null
         } catch (e: ApiException) {
             error = "API: ${e::class.simpleName}: ${e.message ?: ""}"
@@ -115,45 +111,12 @@ fun SettingsScreen(
 
             item {
                 SectionShell(title = "Connection") {
-                    val currentWorkspace = workspaces?.firstOrNull { it.current }
                     ActionRow(
-                        title = "Switch workspace",
-                        subtitle = currentWorkspace?.name ?: creds.workspaceId,
-                        enabled = false,
-                        trailing = null,
+                        title = "Workspace selector",
+                        subtitle = "Current claim · ${creds.workspaceId}",
+                        onClick = onOpenWorkspaceSelector,
+                        last = true,
                     )
-                    when (val ws = workspaces) {
-                        null -> LoadingRow(last = false)
-                        else -> ws.forEachIndexed { index, workspace ->
-                            WorkspaceSwitchRow(
-                                workspace = workspace,
-                                switching = busyKey == "switch:${workspace.id}",
-                                isLast = index == ws.lastIndex,
-                                onSwitch = if (workspace.current) {
-                                    null
-                                } else {
-                                    {
-                                        scope.launch {
-                                            busyKey = "switch:${workspace.id}"
-                                            try {
-                                                val res = gatedClient().workspaceSwitch(workspace.id)
-                                                onWorkspaceSwitched(
-                                                    creds.copy(
-                                                        deviceToken = res.deviceToken,
-                                                        workspaceId = res.workspaceId,
-                                                    ),
-                                                )
-                                            } catch (t: Throwable) {
-                                                error = "Switch failed: ${t.message}"
-                                            } finally {
-                                                busyKey = null
-                                            }
-                                        }
-                                    }
-                                },
-                            )
-                        }
-                    }
                 }
             }
 
@@ -360,50 +323,7 @@ private fun ActionRow(
     }
 }
 
-@Composable
-private fun WorkspaceSwitchRow(
-    workspace: Workspace,
-    switching: Boolean,
-    isLast: Boolean,
-    onSwitch: (() -> Unit)?,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (onSwitch != null) {
-                    Modifier.clickable(enabled = !switching, onClick = onSwitch)
-                } else {
-                    Modifier
-                }
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                text = workspace.name,
-                style = MaterialTheme.typography.bodyMedium,
-                color = PapercupColors.Text,
-            )
-            PapercupMetaText(text = workspace.id, monospace = true)
-        }
-        when {
-            workspace.current -> PapercupStatusChip(
-                text = "Current",
-                containerColor = PapercupColors.SuccessSoft,
-                contentColor = PapercupColors.Success,
-            )
 
-            switching -> PapercupMetaText(text = "Switching…")
-            else -> PapercupMetaText(text = "Tap to switch")
-        }
-    }
-    if (!isLast) {
-        HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
-    }
-}
 
 @Composable
 private fun DeviceRow(

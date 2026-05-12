@@ -110,7 +110,7 @@ struct SettingsView: View {
     }
 
     private var currentWorkspaceDetail: String {
-        if let workspaces, let current = workspaces.first(where: \.current) {
+        if let workspaces, let current = workspaces.first(where: { $0.current }) {
             return current.name
         }
         return creds.workspaceId

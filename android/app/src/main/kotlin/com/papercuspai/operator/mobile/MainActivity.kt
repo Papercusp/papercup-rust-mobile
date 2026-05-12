@@ -322,6 +322,11 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         Route.StandingApprovals -> StandingApprovalsScreen(creds = current, onBack = { route = Route.Settings })
         Route.VoiceSettings -> VoiceSettingsScreen(onBack = { route = Route.Settings })
         Route.Diagnostics -> DiagnosticsScreen(creds = current, monitor = monitor, onBack = { route = Route.Settings })
+        Route.WorkspaceSelector -> WorkspaceSelectorScreen(
+            creds = current,
+            onBack = { route = Route.Settings },
+            onWorkspaceSwitched = onWorkspaceSwitched,
+        )
         Route.NotificationHistory -> ActivityScreen(
             creds = current,
             invalidationTick = liveTick,
@@ -347,11 +352,11 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             route = r,
             onRouteChange = { route = it },
             onSelectHarness = { slug -> route = Route.Detail(slug) },
+            onOpenWorkspaceSelector = { route = Route.WorkspaceSelector },
             onOpenStandingApprovals = { route = Route.StandingApprovals },
             onOpenVoiceSettings = { route = Route.VoiceSettings },
             onOpenDiagnostics = { route = Route.Diagnostics },
             onForget = onForget,
-            onWorkspaceSwitched = onWorkspaceSwitched,
         )
     }
 }
@@ -367,11 +372,11 @@ private fun PairedShell(
     route: Route,
     onRouteChange: (Route) -> Unit,
     onSelectHarness: (String) -> Unit,
+    onOpenWorkspaceSelector: () -> Unit,
     onOpenStandingApprovals: () -> Unit,
     onOpenVoiceSettings: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onForget: () -> Unit,
-    onWorkspaceSwitched: (DeviceCredentials) -> Unit,
 ) {
     val connState by monitor.state.collectAsState()
     val voiceStateForBanner by voice.state.collectAsState()
@@ -440,11 +445,11 @@ private fun PairedShell(
                 )
                 Route.Settings -> SettingsScreen(
                     creds = current,
-                    onForget = onForget,
-                    onWorkspaceSwitched = onWorkspaceSwitched,
+                    onOpenWorkspaceSelector = onOpenWorkspaceSelector,
                     onOpenStandingApprovals = onOpenStandingApprovals,
                     onOpenVoiceSettings = onOpenVoiceSettings,
                     onOpenDiagnostics = onOpenDiagnostics,
+                    onForget = onForget,
                 )
                 else -> {}
             }
@@ -519,6 +524,7 @@ private sealed interface Route {
     data object StandingApprovals : Route
     data object VoiceSettings : Route
     data object Diagnostics : Route
+    data object WorkspaceSelector : Route
     data object NotificationHistory : Route
     data object RecentActions : Route
 }
