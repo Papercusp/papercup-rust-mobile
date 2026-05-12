@@ -37,9 +37,22 @@ fi
 # Per-target build, NOT -scheme. -scheme trips the destination-
 # resolver race; -target talks straight to the build system and
 # uses the active SDK without iterating destinations.
-echo "▶ building Papercup target (Debug, iphonesimulator)"
+#
+# Pin ARCHS to the host architecture. On x86_64 macOS VMs, attempting
+# to build arm64-simulator slices fails (clang -cc1 frontend can't
+# find precompiled module files for the wrong arch). Detect the host
+# and pass ARCHS explicitly so Xcode doesn't iterate fat archs.
+HOST_ARCH="$(uname -m)"
+case "$HOST_ARCH" in
+    arm64|aarch64) SIM_ARCH=arm64 ;;
+    x86_64)        SIM_ARCH=x86_64 ;;
+    *)             SIM_ARCH="$HOST_ARCH" ;;
+esac
+echo "▶ building Papercup target (Debug, iphonesimulator, ARCHS=$SIM_ARCH)"
 xcodebuild -project Papercup.xcodeproj -target Papercup \
-    -sdk iphonesimulator -configuration Debug build \
+    -sdk iphonesimulator -configuration Debug \
+    ARCHS="$SIM_ARCH" VALID_ARCHS="$SIM_ARCH" ONLY_ACTIVE_ARCH=NO \
+    build \
     > build/install-ios.log 2>&1 || {
     echo "ERROR: build failed; tail of build/install-ios.log:" >&2
     tail -30 build/install-ios.log >&2
