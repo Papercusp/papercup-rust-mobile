@@ -164,10 +164,10 @@ private struct PairedShell: View {
 
 
         VStack(spacing: 0) {
+            PausedBanner(creds: current)
             if monitor.state.status == .offline {
                 OfflineBanner(state: monitor.state)
             }
-            PausedBanner(creds: current)
             VoiceErrorBanner(voice: voice)
             ZStack {
                 Group {
