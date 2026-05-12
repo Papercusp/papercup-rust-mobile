@@ -15,8 +15,9 @@ use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
 use papercup_core::types::{
     AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull,
     OperatorCard as CoreOperatorCard, PairBody, PauseInfo as CorePauseInfo, PushRegisterBody,
-    RunningHarnessPhase as CoreRunning, StandingCandidate as CoreStandingCandidate,
-    ToastRow as CoreToast, VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
+    RunningHarnessPhase as CoreRunning, RunningScan as CoreRunningScan,
+    StandingCandidate as CoreStandingCandidate, ToastRow as CoreToast,
+    VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
     WorkspaceSwitchResp as CoreWorkspaceSwitch,
 };
 use papercup_core::voice::{
@@ -469,6 +470,29 @@ impl From<CoreVoiceLease> for VoiceLease {
             expires_at_ms: v.expires_at_ms,
         }
     }
+}
+
+pub struct RunningScan {
+    pub id: i64,
+    pub started_at: i64,
+    pub request_text: Option<String>,
+    pub cost_usd: f64,
+}
+
+impl From<CoreRunningScan> for RunningScan {
+    fn from(scan: CoreRunningScan) -> Self {
+        Self {
+            id: scan.id,
+            started_at: scan.started_at,
+            request_text: scan.request_text,
+            cost_usd: scan.cost_usd,
+        }
+    }
+}
+
+pub struct RunningSnapshot {
+    pub scan: Option<RunningScan>,
+    pub harnesses: Vec<Running>,
 }
 
 pub struct Running {
@@ -1016,6 +1040,20 @@ impl OperatorClient {
                 detail: "tokio join".into(),
             })??;
         Ok(result.into_iter().map(Running::from).collect())
+    }
+
+    pub async fn running_snapshot(&self) -> Result<RunningSnapshot, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.running_snapshot().await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(RunningSnapshot {
+            scan: result.0.map(RunningScan::from),
+            harnesses: result.1.into_iter().map(Running::from).collect(),
+        })
     }
 
     pub async fn recent_notifications(&self) -> Result<Vec<Toast>, ApiError> {

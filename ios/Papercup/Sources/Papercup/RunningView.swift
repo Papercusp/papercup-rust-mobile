@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import Foundation
 import SwiftUI
 
 struct RunningView: View {
@@ -8,11 +9,14 @@ struct RunningView: View {
 
     enum LoadState {
         case loading
-        case ready([Running])
+        case ready(RunningSnapshot)
         case failed(String)
     }
 
     @State private var state: LoadState = .loading
+    @State private var pauseBusy = false
+    @State private var pauseDone = false
+    @State private var pauseError: String?
 
     var body: some View {
         ScrollView {
@@ -25,8 +29,8 @@ struct RunningView: View {
                     loadingCard
                 case .failed(let message):
                     errorCard(message)
-                case .ready(let running):
-                    harnessSection(running)
+                case .ready(let snapshot):
+                    harnessSection(snapshot.harnesses)
                 }
             }
             .padding(.horizontal, 16)
@@ -55,11 +59,71 @@ struct RunningView: View {
     private var operatorSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionLabel("Operator")
-            Text("No active scan.")
-                .font(.callout)
-                .foregroundStyle(PapercupTheme.textMuted)
-                .papercupCardContainer(accent: PapercupTheme.info.opacity(0.08))
+            if case .ready(let snapshot) = state, let scan = snapshot.scan {
+                operatorScanCard(scan)
+            } else {
+                Text("No active scan.")
+                    .font(.callout)
+                    .foregroundStyle(PapercupTheme.textMuted)
+                    .papercupCardContainer(accent: PapercupTheme.info.opacity(0.08))
+            }
         }
+    }
+
+    private func operatorScanCard(_ scan: RunningScan) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("scanning")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PapercupTheme.accentStrong)
+                    .tracking(0.8)
+                    .textCase(.uppercase)
+                Spacer()
+                Text(relativeTime(scan.startedAt))
+                    .papercupMonoMeta()
+            }
+
+            Text(displayRequestText(scan.requestText))
+                .font(.subheadline)
+                .foregroundStyle(PapercupTheme.text)
+                .lineLimit(2)
+                .truncationMode(.tail)
+
+            Text(String(format: "$%.4f", scan.costUsd))
+                .font(.caption2.monospaced())
+                .foregroundStyle(PapercupTheme.textMuted)
+
+            if pauseDone {
+                Text("⏸ Paused — current scan will finish, no new dispatches.")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(PapercupTheme.warning)
+            } else {
+                Button { pauseOperator() } label: {
+                    HStack {
+                        Spacer()
+                        Text(pauseBusy ? "Pausing…" : "⏸ Pause operator")
+                            .font(.callout.weight(.semibold))
+                        Spacer()
+                    }
+                    .padding(.vertical, 10)
+                    .foregroundStyle(PapercupTheme.warning)
+                    .background(PapercupTheme.warning.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(PapercupTheme.warning.opacity(0.42), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(pauseBusy)
+            }
+
+            if let pauseError {
+                Text(pauseError)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(PapercupTheme.error)
+            }
+        }
+        .papercupCardContainer(accent: PapercupTheme.accent.opacity(0.12))
     }
 
     private var loadingCard: some View {
@@ -95,7 +159,7 @@ struct RunningView: View {
     }
 
     private func runningRow(_ running: Running) -> some View {
-        let total = running.passedCount + running.todoCount + running.blockedCount
+        let total = running.totalFeatures
         let passedPct = total > 0 ? Double(running.passedCount) / Double(total) : 0
         return Button { onSelectHarness(running.harnessSlug) } label: {
             VStack(alignment: .leading, spacing: 8) {
@@ -119,6 +183,10 @@ struct RunningView: View {
                         Text("\(running.blockedCount) blocked")
                             .font(.caption)
                             .foregroundStyle(PapercupTheme.warning)
+                    }
+                    if let lastActive = running.lastActiveTs {
+                        Spacer()
+                        Text(relativeTime(lastActive)).papercupMonoMeta()
                     }
                 }
                 ProgressView(value: passedPct)
@@ -147,11 +215,41 @@ struct RunningView: View {
     private func refetch() async {
         state = .loading
         do {
-            state = .ready(try await creds.client().listRunning())
+            state = .ready(try await creds.client().runningSnapshot())
         } catch let err as ApiError {
             state = .failed("API: \(err)")
         } catch {
             state = .failed("Unexpected: \(error)")
         }
+    }
+
+    private func pauseOperator() {
+        guard !pauseBusy else { return }
+        pauseBusy = true
+        pauseError = nil
+        Task { @MainActor in
+            do {
+                _ = try await creds.client().pauseSet(paused: true)
+                pauseDone = true
+            } catch let err as ApiError {
+                pauseError = "Pause failed: \(err)"
+            } catch {
+                pauseError = "Pause failed: \(error)"
+            }
+            pauseBusy = false
+        }
+    }
+
+    private func displayRequestText(_ text: String?) -> String {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "(no request text)" : trimmed
+    }
+
+    private func relativeTime(_ timestampMs: Int64) -> String {
+        let elapsed = max(0, Int(Date().timeIntervalSince1970 - (Double(timestampMs) / 1000.0)))
+        if elapsed < 60 { return "\(elapsed)s" }
+        if elapsed < 3_600 { return "\(elapsed / 60)m" }
+        if elapsed < 86_400 { return "\(elapsed / 3_600)h" }
+        return "\(elapsed / 86_400)d"
     }
 }

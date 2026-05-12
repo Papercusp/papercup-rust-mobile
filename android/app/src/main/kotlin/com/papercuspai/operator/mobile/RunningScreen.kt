@@ -27,12 +27,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
@@ -40,12 +42,15 @@ import com.papercuspai.operator.mobile.theme.PapercupMetaText
 import com.papercuspai.operator.mobile.theme.PapercupPanel
 import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
+import kotlinx.coroutines.launch
+import java.util.Locale
 import uniffi.papercup.ApiException
 import uniffi.papercup.Running
-
+import uniffi.papercup.RunningScan
+import uniffi.papercup.RunningSnapshot
 private sealed interface RunningState {
     data object Loading : RunningState
-    data class Ready(val running: List<Running>) : RunningState
+    data class Ready(val snapshot: RunningSnapshot) : RunningState
     data class Failed(val message: String) : RunningState
 }
 
@@ -56,11 +61,12 @@ fun RunningScreen(
     onSelectHarness: (String) -> Unit,
 ) {
     var state by remember { mutableStateOf<RunningState>(RunningState.Loading) }
+    val nowMs = remember(liveTick) { System.currentTimeMillis() }
 
     LaunchedEffect(creds.deviceToken, liveTick) {
         state = RunningState.Loading
         state = try {
-            RunningState.Ready(creds.client().listRunning())
+            RunningState.Ready(creds.client().runningSnapshot())
         } catch (e: ApiException) {
             RunningState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")
         } catch (t: Throwable) {
@@ -88,8 +94,13 @@ fun RunningScreen(
         ) {
             item {
                 SectionLabel("Operator")
-                PapercupPanel(contentPadding = PaddingValues(16.dp)) {
-                    PapercupMetaText("No active scan.")
+                val scan = (state as? RunningState.Ready)?.snapshot?.scan
+                if (scan == null) {
+                    PapercupPanel(contentPadding = PaddingValues(16.dp)) {
+                        PapercupMetaText("No active scan.")
+                    }
+                } else {
+                    RunningScanCard(creds = creds, scan = scan, nowMs = nowMs)
                 }
             }
 
@@ -114,16 +125,17 @@ fun RunningScreen(
                     }
                 }
                 is RunningState.Ready -> {
-                    item { SectionLabel("Harnesses (${s.running.size})") }
-                    if (s.running.isEmpty()) {
+                    val harnesses = s.snapshot.harnesses
+                    item { SectionLabel("Harnesses (${harnesses.size})") }
+                    if (harnesses.isEmpty()) {
                         item {
                             PapercupPanel(contentPadding = PaddingValues(16.dp)) {
                                 PapercupMetaText("No harnesses currently running.")
                             }
                         }
                     } else {
-                        items(s.running) { running ->
-                            RunningHarnessRow(running, onClick = { onSelectHarness(running.harnessSlug) })
+                        items(harnesses) { running ->
+                            RunningHarnessRow(running, nowMs = nowMs, onClick = { onSelectHarness(running.harnessSlug) })
                         }
                     }
                 }
@@ -143,8 +155,78 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun RunningHarnessRow(running: Running, onClick: () -> Unit) {
-    val total = running.passedCount + running.todoCount + running.blockedCount
+private fun RunningScanCard(creds: DeviceCredentials, scan: RunningScan, nowMs: Long) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
+    var pauseError by remember { mutableStateOf<String?>(null) }
+
+    PapercupPanel(contentPadding = PaddingValues(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PapercupStatusChip(
+                    text = "scanning",
+                    containerColor = PapercupColors.AccentSoft,
+                    contentColor = PapercupColors.AccentStrong,
+                )
+                PapercupStatusChip(
+                    text = relativeTime(scan.startedAt, nowMs),
+                    containerColor = PapercupColors.WarningSoft,
+                    contentColor = PapercupColors.Warning,
+                )
+            }
+            Text(
+                text = scan.requestText ?: "(no request text)",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium,
+                color = PapercupColors.Text,
+            )
+            PapercupMetaText(formatCost(scan.costUsd))
+            if (paused) {
+                PapercupMetaText("Paused — current scan will finish, no new dispatches.")
+            } else {
+                PapercupStatusChip(
+                    text = if (busy) "Pausing…" else "Pause operator",
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = PapercupColors.WarningSoft,
+                    contentColor = PapercupColors.Warning,
+                    onClick = {
+                        if (busy) return@PapercupStatusChip
+                        busy = true
+                        pauseError = null
+                        scope.launch {
+                            try {
+                                creds.client().pauseSet(true)
+                                paused = true
+                            } catch (t: Throwable) {
+                                pauseError = "Pause failed: ${t.message ?: t::class.simpleName ?: "unknown error"}"
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    },
+                )
+            }
+            pauseError?.let { message ->
+                Text(
+                    text = message,
+                    color = PapercupColors.Error,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RunningHarnessRow(running: Running, nowMs: Long, onClick: () -> Unit) {
+    val total = running.totalFeatures
     val passedPct = if (total > 0) running.passedCount.toFloat() / total.toFloat() else 0f
 
     PapercupPanel(
@@ -160,12 +242,20 @@ private fun RunningHarnessRow(running: Running, onClick: () -> Unit) {
                 Text(running.harnessSlug, style = MaterialTheme.typography.titleSmall)
                 PapercupMetaText(running.phase.uppercase())
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(running.status, color = PapercupColors.AccentStrong, style = MaterialTheme.typography.labelSmall)
                 PapercupMetaText("iter ${running.iteration}")
                 PapercupMetaText("${running.passedCount}/$total done")
                 if (running.blockedCount > 0) {
-                    PapercupMetaText("${running.blockedCount} blocked", modifier = Modifier.weight(1f))
+                    PapercupMetaText("${running.blockedCount} blocked")
+                }
+                Spacer(Modifier.weight(1f))
+                running.lastActiveTs?.let { lastActiveTs ->
+                    PapercupMetaText(relativeTime(lastActiveTs, nowMs))
                 }
             }
             Box(
@@ -199,5 +289,19 @@ private fun RunningHarnessRow(running: Running, onClick: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+private fun formatCost(costUsd: Double): String =
+    "$" + String.format(Locale.US, "%.4f", costUsd)
+
+private fun relativeTime(timestamp: Long, nowMs: Long): String {
+    val timestampMs = if (timestamp < 10_000_000_000L) timestamp * 1_000L else timestamp
+    val seconds = ((nowMs - timestampMs) / 1_000L).coerceAtLeast(0L)
+    return when {
+        seconds < 60L -> "${seconds}s"
+        seconds < 3_600L -> "${seconds / 60L}m"
+        seconds < 86_400L -> "${seconds / 3_600L}h"
+        else -> "${seconds / 86_400L}d"
     }
 }

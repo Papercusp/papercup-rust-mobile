@@ -109,11 +109,20 @@ pub struct AuditRow {
 
 // ── /api/mobile/running ────────────────────────────────────────────────
 
-// `scan` field on the wire is elided here; mobile UI doesn't render the
-// operator scan summary yet.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunningResp {
+    #[serde(default)]
+    pub scan: Option<RunningScan>,
     pub harnesses: Vec<RunningHarnessPhase>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningScan {
+    pub id: i64,
+    pub started_at: i64,
+    #[serde(default)]
+    pub request_text: Option<String>,
+    pub cost_usd: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -233,6 +233,18 @@ dictionary Running {
     i64? last_active_ts;
 };
 
+dictionary RunningScan {
+    i64 id;
+    i64 started_at;
+    string? request_text;
+    f64 cost_usd;
+};
+
+dictionary RunningSnapshot {
+    RunningScan? scan;
+    sequence<Running> harnesses;
+};
+
 dictionary Toast {
     i64 id;
     string level;
@@ -369,6 +381,11 @@ interface OperatorClient {
     /// `GET /api/mobile/running` — currently-running phases per harness.
     [Throws=ApiError, Async]
     sequence<Running> list_running();
+
+    /// `GET /api/mobile/running` — full running snapshot including
+    /// the current operator scan summary when one is active.
+    [Throws=ApiError, Async]
+    RunningSnapshot running_snapshot();
 
     /// `GET /api/mobile/notifications/recent`.
     [Throws=ApiError, Async]

@@ -80,6 +80,45 @@ async fn list_harnesses_maps_401() {
 }
 
 #[tokio::test]
+async fn running_snapshot_decodes_scan_and_harnesses() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/mobile/running"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "scan": {
+                "id": 42,
+                "started_at": 1_700_000_000_000i64,
+                "request_text": "scan auth",
+                "cost_usd": 0.0123
+            },
+            "harnesses": [
+                {
+                    "harness_slug": "alpha",
+                    "phase": "planning",
+                    "status": "running",
+                    "iteration": 7,
+                    "total_features": 12,
+                    "passed_count": 4,
+                    "todo_count": 6,
+                    "blocked_count": 2,
+                    "active_roles": ["architect"],
+                    "last_active_ts": 1_700_000_000
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let (scan, harnesses) = client.running_snapshot().await.unwrap();
+    let scan = scan.expect("scan");
+    assert_eq!(scan.id, 42);
+    assert_eq!(scan.request_text.as_deref(), Some("scan auth"));
+    assert_eq!(harnesses.len(), 1);
+    assert_eq!(harnesses[0].harness_slug, "alpha");
+    assert_eq!(harnesses[0].active_roles, vec!["architect"]);
+}
+
+#[tokio::test]
 async fn list_harnesses_maps_500_with_detail() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))

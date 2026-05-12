@@ -14,7 +14,7 @@
 use crate::types::{
     AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
     ListResp, OperatorCard, OperatorCardActionResp, OperatorCardsResp, PairBody, PairResp,
-    PauseInfo, PushRegisterBody, RunningHarnessPhase, RunningResp, StandingCandidate,
+    PauseInfo, PushRegisterBody, RunningHarnessPhase, RunningResp, RunningScan, StandingCandidate,
     StandingCandidatesResp, StandingDecisionBody, ToastRow, ToastsResp, VoiceLeaseRead,
     VoiceLeaseShape, WorkspaceItem, WorkspaceSwitchBody, WorkspaceSwitchResp, WorkspacesResp,
 };
@@ -166,6 +166,17 @@ impl OperatorClient {
         self.bearer_get_json::<RunningResp>(&url)
             .await
             .map(|r| r.harnesses)
+    }
+
+    /// `GET /api/mobile/running` — full running snapshot including the
+    /// current operator scan summary when one is active.
+    pub async fn running_snapshot(
+        &self,
+    ) -> Result<(Option<RunningScan>, Vec<RunningHarnessPhase>), ApiError> {
+        let url = format!("{}/api/mobile/running", self.base_url());
+        self.bearer_get_json::<RunningResp>(&url)
+            .await
+            .map(|r| (r.scan, r.harnesses))
     }
 
     /// `GET /api/mobile/voice-lease` — current lease holder (or `None`
