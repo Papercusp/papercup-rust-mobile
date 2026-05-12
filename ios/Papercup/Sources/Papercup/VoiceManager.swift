@@ -466,7 +466,10 @@ final class VoiceManager: ObservableObject {
             req.httpMethod = "POST"
             req.setValue("Bearer \(creds.deviceToken)", forHTTPHeaderField: "Authorization")
             req.setValue("application/json", forHTTPHeaderField: "content-type")
-            req.timeoutInterval = 20
+            // Must outlive server-side ask_operator timeout (25s) so we
+            // receive the server's diagnostic fallback message rather
+            // than timing out client-side.
+            req.timeoutInterval = 35
             req.httpBody = try JSONSerialization.data(
                 withJSONObject: ["parameters": params]
             )
