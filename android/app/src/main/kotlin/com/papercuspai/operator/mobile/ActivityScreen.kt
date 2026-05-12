@@ -2,23 +2,26 @@
 package com.papercuspai.operator.mobile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.ui.res.stringResource
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
-import com.papercuspai.operator.mobile.theme.PapercupCard
-import com.papercuspai.operator.mobile.theme.PapercupColors
-import com.papercuspai.operator.mobile.theme.PapercupMetaText
-import com.papercuspai.operator.mobile.theme.PapercupPanel
-import com.papercuspai.operator.mobile.theme.PapercupStatusChip
-import com.papercuspai.operator.mobile.theme.PapercupCardHeader
-import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.papercuspai.operator.mobile.theme.PapercupCard
+import com.papercuspai.operator.mobile.theme.PapercupCardHeader
+import com.papercuspai.operator.mobile.theme.PapercupColors
+import com.papercuspai.operator.mobile.theme.PapercupMetaText
+import com.papercuspai.operator.mobile.theme.PapercupPanel
+import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
+import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -32,15 +35,24 @@ private sealed interface ActivityState {
     data class Failed(val message: String) : ActivityState
 }
 
+enum class ActivitySurface {
+    Notifications,
+    History,
+    Actions,
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ActivityScreen(
     creds: DeviceCredentials,
     invalidationTick: Int,
     onSelectHarness: (String) -> Unit,
+    mode: ActivitySurface = ActivitySurface.Notifications,
+    onOpenHistory: (() -> Unit)? = null,
+    onOpenRecentActions: (() -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
 ) {
     var state by remember { mutableStateOf<ActivityState>(ActivityState.Loading) }
-    var tab by remember { mutableStateOf(0) }
 
     LaunchedEffect(creds.deviceToken, invalidationTick) {
         state = ActivityState.Loading
@@ -59,49 +71,51 @@ fun ActivityScreen(
 
     Scaffold(
         topBar = {
-            Column {
-                PapercupScreenHeader(title = "Notifications")
-                TabRow(
-                    selectedTabIndex = tab,
-                    containerColor = PapercupColors.InkRaised.copy(alpha = 0.96f),
-                    contentColor = PapercupColors.AccentStrong,
-                ) {
-                    Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.activity_tab_notifications)) })
-                    Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.activity_tab_actions)) })
-                }
-            }
+            PapercupScreenHeader(
+                title = when (mode) {
+                    ActivitySurface.Notifications -> stringResource(R.string.activity_title_notifications)
+                    ActivitySurface.History -> stringResource(R.string.activity_title_history)
+                    ActivitySurface.Actions -> stringResource(R.string.activity_title_recent_actions)
+                },
+                subtitle = subtitleFor(state, mode),
+                navigationIcon = onBack?.let {
+                    {
+                        IconButton(onClick = it) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                },
+                actions = {
+                    if (mode != ActivitySurface.History && onOpenHistory != null) {
+                        HeaderActionButton(
+                            label = stringResource(R.string.activity_header_history),
+                            onClick = onOpenHistory,
+                        )
+                    }
+                    if (mode != ActivitySurface.Actions && onOpenRecentActions != null) {
+                        HeaderActionButton(
+                            label = stringResource(R.string.activity_header_recent_actions),
+                            onClick = onOpenRecentActions,
+                        )
+                    }
+                },
+            )
         },
         containerColor = PapercupColors.Ink,
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize().background(PapercupColors.ScreenGradient)) {
+        Box(
+            Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .background(PapercupColors.ScreenGradient),
+        ) {
             when (val s = state) {
-                ActivityState.Loading -> Box(
-                    Modifier.fillMaxWidth().padding(top = 32.dp).padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    PapercupCard(contentPadding = PaddingValues(18.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(strokeWidth = 2.dp)
-                            Spacer(Modifier.width(12.dp))
-                            Text(stringResource(R.string.loading_activity))
-                        }
-                    }
-                }
-                is ActivityState.Failed -> Box(
-                    Modifier.fillMaxSize().padding(16.dp),
-                ) {
-                    PapercupCard(accent = PapercupColors.ErrorSoft) {
-                        Text(
-                            s.message,
-                            color = PapercupColors.Error,
-                            fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-                is ActivityState.Ready -> {
-                    if (tab == 0) ToastList(s.toasts, onSelectHarness)
-                    else AuditList(s.audit, onSelectHarness)
+                ActivityState.Loading -> LoadingState()
+                is ActivityState.Failed -> ErrorState(s.message)
+                is ActivityState.Ready -> when (mode) {
+                    ActivitySurface.Notifications -> ToastFeedList(s.toasts, onSelectHarness)
+                    ActivitySurface.History -> ToastHistoryList(s.toasts, onSelectHarness)
+                    ActivitySurface.Actions -> AuditList(s.audit, onSelectHarness)
                 }
             }
         }
@@ -109,19 +123,89 @@ fun ActivityScreen(
 }
 
 @Composable
-private fun ToastList(toasts: List<ToastEntry>, onSelectHarness: (String) -> Unit) {
+private fun subtitleFor(state: ActivityState, mode: ActivitySurface): String = when (state) {
+    ActivityState.Loading -> stringResource(R.string.loading)
+    is ActivityState.Failed -> stringResource(R.string.activity_subtitle_unavailable)
+    is ActivityState.Ready -> when (mode) {
+        ActivitySurface.Notifications -> stringResource(R.string.activity_subtitle_recent_count, state.toasts.size)
+        ActivitySurface.History -> stringResource(R.string.activity_subtitle_history_count, state.toasts.size)
+        ActivitySurface.Actions -> stringResource(R.string.activity_subtitle_actions_count, state.audit.size)
+    }
+}
+
+@Composable
+private fun HeaderActionButton(label: String, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+        border = BorderStroke(1.dp, PapercupColors.Stroke),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = PapercupColors.AccentSoft.copy(alpha = 0.18f),
+            contentColor = PapercupColors.AccentStrong,
+        ),
+        modifier = Modifier.heightIn(min = 30.dp),
+    ) {
+        Text(label.uppercase(), style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun LoadingState() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 32.dp)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        PapercupCard(contentPadding = PaddingValues(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(strokeWidth = 2.dp)
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.loading_activity))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ErrorState(message: String) {
+    Box(Modifier.fillMaxSize().padding(16.dp)) {
+        PapercupCard(accent = PapercupColors.ErrorSoft) {
+            Text(
+                message,
+                color = PapercupColors.Error,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToastFeedList(toasts: List<ToastEntry>, onSelectHarness: (String) -> Unit) {
     if (toasts.isEmpty()) {
         EmptyState(stringResource(R.string.activity_no_notifications))
         return
     }
-    PapercupCard(contentPadding = PaddingValues(12.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            PapercupCardHeader("Notifications", meta = toasts.size.toString())
-            LazyColumn(
-                modifier = Modifier.heightIn(max = 640.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(toasts) { t -> ToastCard(t, onSelectHarness) }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            PapercupCard(contentPadding = PaddingValues(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PapercupCardHeader(
+                        stringResource(R.string.activity_section_recent),
+                        meta = toasts.size.toString(),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        toasts.forEach { t ->
+                            ToastCard(t, onSelectHarness)
+                        }
+                    }
+                }
             }
         }
     }
@@ -146,14 +230,19 @@ private fun ToastCard(t: ToastEntry, onSelectHarness: (String) -> Unit) {
         accent = accent,
         contentPadding = PaddingValues(12.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top,
             ) {
-                Text(t.message, style = MaterialTheme.typography.titleSmall)
-                PapercupStatusChip(text = t.level, containerColor = accent, contentColor = tone)
+                Text(
+                    t.message,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                PapercupMetaText(relativeTime(t.createdAt))
             }
             t.description?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall)
@@ -163,11 +252,78 @@ private fun ToastCard(t: ToastEntry, onSelectHarness: (String) -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                PapercupMetaText(formatTs(t.createdAt), monospace = true)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PapercupStatusChip(text = t.level.uppercase(), containerColor = accent, contentColor = tone)
+                    PapercupMetaText(formatTs(t.createdAt), monospace = true)
+                }
                 t.harnessSlug?.let { slug ->
-                    TextButton(onClick = { onSelectHarness(slug) }) { Text(slug) }
+                    TextButton(onClick = { onSelectHarness(slug) }) {
+                        Text(slug, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ToastHistoryList(toasts: List<ToastEntry>, onSelectHarness: (String) -> Unit) {
+    if (toasts.isEmpty()) {
+        EmptyState(stringResource(R.string.activity_no_history))
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        item {
+            PapercupPanel(contentPadding = PaddingValues(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    PapercupCardHeader(
+                        stringResource(R.string.activity_section_history),
+                        meta = toasts.size.toString(),
+                    )
+                    toasts.forEachIndexed { index, toast ->
+                        if (index > 0) {
+                            HorizontalDivider(color = PapercupColors.StrokeSoft)
+                        }
+                        ToastHistoryRow(toast, onSelectHarness)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToastHistoryRow(t: ToastEntry, onSelectHarness: (String) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PapercupMetaText(
+                "${t.level.uppercase()} · ${formatTs(t.createdAt)}",
+                monospace = true,
+            )
+            t.harnessSlug?.let { slug ->
+                TextButton(onClick = { onSelectHarness(slug) }, contentPadding = PaddingValues(0.dp)) {
+                    Text(slug, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+        Text(t.message, style = MaterialTheme.typography.bodyMedium)
+        t.description?.takeIf { it.isNotBlank() }?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = PapercupColors.TextFaint)
         }
     }
 }
@@ -178,48 +334,67 @@ private fun AuditList(entries: List<AuditEntry>, onSelectHarness: (String) -> Un
         EmptyState(stringResource(R.string.activity_no_actions))
         return
     }
-    PapercupPanel(contentPadding = PaddingValues(12.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            PapercupCardHeader("Actions", meta = entries.size.toString())
-            LazyColumn(
-                modifier = Modifier.heightIn(max = 640.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items(entries) { e -> AuditCard(e, onSelectHarness) }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        item {
+            PapercupPanel(contentPadding = PaddingValues(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    PapercupCardHeader(
+                        stringResource(R.string.activity_section_actions),
+                        meta = entries.size.toString(),
+                    )
+                    entries.forEachIndexed { index, entry ->
+                        if (index > 0) {
+                            HorizontalDivider(color = PapercupColors.StrokeSoft)
+                        }
+                        AuditRow(entry, onSelectHarness)
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun AuditCard(e: AuditEntry, onSelectHarness: (String) -> Unit) {
-    PapercupPanel(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(e.action, style = MaterialTheme.typography.titleSmall)
-                PapercupMetaText(formatTs(e.ts), monospace = true)
-            }
-            Text("by ${e.actor}", style = MaterialTheme.typography.bodySmall)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PapercupMetaText(
-                    e.subject,
-                    monospace = true,
-                    modifier = Modifier.weight(1f),
-                )
-                val slug = e.subject
-                    .removePrefix("harness:")
-                    .substringBefore(':')
-                    .takeIf { it.isNotBlank() && it != e.subject }
-                slug?.let {
-                    TextButton(onClick = { onSelectHarness(it) }) { Text(it) }
+private fun AuditRow(e: AuditEntry, onSelectHarness: (String) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                e.actor.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = PapercupColors.AccentStrong,
+            )
+            PapercupMetaText(relativeTime(e.ts), monospace = true)
+        }
+        Text(
+            text = e.action,
+            style = MaterialTheme.typography.bodyMedium,
+            color = PapercupColors.Text,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PapercupMetaText(
+                e.subject,
+                monospace = true,
+                modifier = Modifier.weight(1f),
+            )
+            harnessSlugFromSubject(e.subject)?.let { slug ->
+                TextButton(onClick = { onSelectHarness(slug) }) {
+                    Text(slug, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -235,7 +410,23 @@ private fun EmptyState(text: String) {
     }
 }
 
+private fun harnessSlugFromSubject(subject: String): String? =
+    subject
+        .removePrefix("harness:")
+        .substringBefore(':')
+        .takeIf { it.isNotBlank() && it != subject }
+
 private val FMT = SimpleDateFormat("MMM d HH:mm:ss", Locale.US)
 
 private fun formatTs(unixSeconds: Long): String =
     FMT.format(Date(unixSeconds * 1000))
+
+private fun relativeTime(unixSeconds: Long): String {
+    val seconds = ((System.currentTimeMillis() / 1000) - unixSeconds).coerceAtLeast(0)
+    return when {
+        seconds < 60 -> "${seconds}s"
+        seconds < 3600 -> "${seconds / 60}m"
+        seconds < 86_400 -> "${seconds / 3600}h"
+        else -> "${seconds / 86_400}d"
+    }
+}

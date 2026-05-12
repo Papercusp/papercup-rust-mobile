@@ -58,12 +58,22 @@
     <string name="recent_activity">Recent activity</string>
     <string name="this_device">This device</string>
 
-    <!-- Activity screen -->
-    <string name="activity_tab_notifications">Notifications</string>
-    <string name="activity_tab_actions">Actions</string>
+    <!-- Activity / Inbox screen -->
+    <string name="activity_title_notifications">Notifications</string>
+    <string name="activity_title_history">Notification history</string>
+    <string name="activity_title_recent_actions">Recent actions</string>
+    <string name="activity_header_history">History</string>
+    <string name="activity_header_recent_actions">Recent actions</string>
+    <string name="activity_section_recent">Recent</string>
+    <string name="activity_section_history">History</string>
+    <string name="activity_section_actions">Recent actions</string>
+    <string name="activity_subtitle_unavailable">Unavailable</string>
+    <string name="activity_subtitle_recent_count">%1$d recent</string>
+    <string name="activity_subtitle_history_count">%1$d notifications</string>
+    <string name="activity_subtitle_actions_count">%1$d actions</string>
     <string name="activity_no_notifications">No recent notifications</string>
+    <string name="activity_no_history">No history yet</string>
     <string name="activity_no_actions">No recent actions</string>
-
     <!-- Diagnostics screen -->
     <string name="diagnostics_title">Diagnostics</string>
     <string name="diagnostics_status">Status</string>

@@ -321,6 +321,22 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         Route.StandingApprovals -> StandingApprovalsScreen(creds = current, onBack = { route = Route.Settings })
         Route.VoiceSettings -> VoiceSettingsScreen(onBack = { route = Route.Settings })
         Route.Diagnostics -> DiagnosticsScreen(creds = current, monitor = monitor, onBack = { route = Route.Settings })
+        Route.NotificationHistory -> ActivityScreen(
+            creds = current,
+            invalidationTick = liveTick,
+            onSelectHarness = { slug -> route = Route.Detail(slug) },
+            mode = ActivitySurface.History,
+            onOpenRecentActions = { route = Route.RecentActions },
+            onBack = { route = Route.Activity },
+        )
+        Route.RecentActions -> ActivityScreen(
+            creds = current,
+            invalidationTick = liveTick,
+            onSelectHarness = { slug -> route = Route.Detail(slug) },
+            mode = ActivitySurface.Actions,
+            onOpenHistory = { route = Route.NotificationHistory },
+            onBack = { route = Route.Activity },
+        )
         Route.Operator, Route.List, Route.Running, Route.Activity, Route.Settings -> PairedShell(
             current = current,
             voice = voice,
@@ -407,6 +423,9 @@ private fun PairedShell(
                     creds = current,
                     invalidationTick = liveTick,
                     onSelectHarness = onSelectHarness,
+                    mode = ActivitySurface.Notifications,
+                    onOpenHistory = { onRouteChange(Route.NotificationHistory) },
+                    onOpenRecentActions = { onRouteChange(Route.RecentActions) },
                 )
                 Route.Settings -> SettingsScreen(
                     creds = current,
@@ -489,6 +508,8 @@ private sealed interface Route {
     data object StandingApprovals : Route
     data object VoiceSettings : Route
     data object Diagnostics : Route
+    data object NotificationHistory : Route
+    data object RecentActions : Route
 }
 
 private sealed interface ScreenState {
