@@ -178,6 +178,9 @@ private struct PairedShell: View {
                     .tabItem { Label(NSLocalizedString("tab.settings", comment: ""), systemImage: "gearshape.fill") }
                     .tag(AppRoot.Tab.settings)
                 }
+                .tint(PapercupTheme.accentStrong)
+                .toolbarBackground(PapercupTheme.inkRaised, for: .tabBar)
+                .toolbarColorScheme(.dark, for: .tabBar)
 
                 if let slug = pushedDetailSlug {
                     HarnessDetailView(

@@ -31,7 +31,11 @@ struct OperatorView: View {
                 }
                 .padding(16)
             }
+            .papercupScreenChrome()
             .navigationTitle("Operator")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(PapercupTheme.inkRaised, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .task(id: "\(creds.deviceToken)|\(invalidationTick)") { await load() }
         }
     }
@@ -39,21 +43,23 @@ struct OperatorView: View {
     private func errorCard(_ message: String) -> some View {
         Text(message)
             .font(.footnote.monospaced())
-            .foregroundStyle(.red)
+            .foregroundStyle(PapercupTheme.error)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            .background(PapercupTheme.cardBackground(accent: PapercupTheme.error.opacity(0.16)))
     }
 
     private var pauseCard: some View {
         let isPaused = paused == true
         let label: String = paused == nil ? "…" : (isPaused ? "PAUSED" : "RUNNING")
+        let accent = isPaused
+            ? PapercupTheme.error.opacity(0.16)
+            : PapercupTheme.success.opacity(0.14)
         return Button {
             guard let p = paused else { return }
             Task {
                 do {
-                    paused = try await creds.client()
-                        .pauseSet(paused: !p)
+                    paused = try await creds.client().pauseSet(paused: !p)
                 } catch {
                     // Surface failures via the error card at the top of
                     // the screen rather than the previous silent swallow.
@@ -61,14 +67,18 @@ struct OperatorView: View {
                 }
             }
         } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(NSLocalizedString("operator.label", comment: "")).font(.caption)
-                Text(label).font(.title3.bold())
-                Text(isPaused ? "operator.tapToResume" : "operator.tapToPause").font(.caption)
+            VStack(alignment: .leading, spacing: 4) {
+                PapercupSectionTitle(text: NSLocalizedString("operator.label", comment: ""))
+                Text(label)
+                    .font(.title3.bold())
+                    .foregroundStyle(isPaused ? PapercupTheme.error : PapercupTheme.success)
+                Text(isPaused ? "operator.tapToResume" : "operator.tapToPause")
+                    .font(.caption)
+                    .foregroundStyle(PapercupTheme.textMuted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
-            .background(isPaused ? Color.red.opacity(0.15) : Color.gray.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            .background(PapercupTheme.cardBackground(accent: accent))
         }
         .buttonStyle(.plain)
         .disabled(paused == nil)
@@ -89,6 +99,9 @@ struct OperatorView: View {
         case (_, let l?, _):
             title = "DESKTOP"; sub = String(l.ownerId.prefix(8)) + "…"
         }
+        let cardAccent = active
+            ? PapercupTheme.accent.opacity(0.18)
+            : PapercupTheme.info.opacity(0.10)
         return Button {
             if active { voice.stop() } else { voice.start() }
         } label: {
@@ -100,16 +113,19 @@ struct OperatorView: View {
                                height: 80 + CGFloat(voice.micLevel) * 80)
                         .animation(.easeOut(duration: 0.08), value: voice.micLevel)
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(NSLocalizedString("operator.voice", comment: "")).font(.caption)
-                    Text(title).font(.title3.bold())
-                    Text(sub).font(.caption)
+                VStack(alignment: .leading, spacing: 4) {
+                    PapercupSectionTitle(text: NSLocalizedString("operator.voice", comment: ""))
+                    Text(title)
+                        .font(.title3.bold())
+                        .foregroundStyle(PapercupTheme.accentStrong)
+                    Text(sub)
+                        .font(.caption)
+                        .foregroundStyle(PapercupTheme.textMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
             }
-            .background(active ? Color.cyan.opacity(0.15) : Color.gray.opacity(0.1),
-                        in: RoundedRectangle(cornerRadius: 12))
+            .background(PapercupTheme.cardBackground(accent: cardAccent))
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
@@ -125,46 +141,39 @@ struct OperatorView: View {
         case .connecting: return "connecting…"
         case .listening: return "listening"
         case .speaking(_, let source): return "speaking · \(source)"
-        case .failed(let m): return m.prefix(40) + ""
+        case .failed(let m): return String(m.prefix(40))
         }
     }
 
     private var runningCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(NSLocalizedString("operator.currentlyRunning", comment: "")).font(.headline)
+                PapercupSectionTitle(text: NSLocalizedString("operator.currentlyRunning", comment: ""))
                 Spacer()
-                Text("\(running.count)")
-                    .font(.caption)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(.gray.opacity(0.2), in: Capsule())
+                PapercupChip(text: "\(running.count)", role: .info)
             }
             if running.isEmpty {
-                Text(NSLocalizedString("operator.noActiveRuns", comment: "")).font(.callout).foregroundStyle(.secondary)
+                Text(NSLocalizedString("operator.noActiveRuns", comment: "")).font(.callout).foregroundStyle(PapercupTheme.textMuted)
             } else {
                 ForEach(running, id: \.harnessSlug) { r in runningRow(r) }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color.gray.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .papercupCardContainer()
     }
 
     private func runningRow(_ r: Running) -> some View {
         Button { onSelectHarness(r.harnessSlug) } label: {
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(r.harnessSlug).font(.subheadline)
+                    Text(r.harnessSlug).font(.subheadline.weight(.semibold)).foregroundStyle(PapercupTheme.text)
                     Spacer()
-                    Text("\(r.phase) · \(r.status)").font(.caption)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(.gray.opacity(0.2), in: Capsule())
+                    PapercupChip(text: "\(r.phase) · \(r.status)", role: .accent)
                 }
                 let blocked = r.blockedCount > 0 ? " · ⚠\(r.blockedCount)" : ""
                 Text("✓\(r.passedCount) · ☐\(r.todoCount)\(blocked) · iter \(r.iteration)")
-                    .font(.caption.monospaced())
+                    .papercupMonoMeta()
                 if !r.activeRoles.isEmpty {
-                    Text("roles: \(r.activeRoles.joined(separator: ", "))").font(.caption)
+                    Text("roles: \(r.activeRoles.joined(separator: ", "))").font(.caption).foregroundStyle(PapercupTheme.textMuted)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -175,20 +184,20 @@ struct OperatorView: View {
 
     private var recentHarnessesCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(NSLocalizedString("operator.recentHarnesses", comment: "")).font(.headline)
+            PapercupSectionTitle(text: NSLocalizedString("operator.recentHarnesses", comment: ""))
             ForEach(harnesses.prefix(5), id: \.slug) { h in
                 Button { onSelectHarness(h.slug) } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(h.slug).font(.subheadline)
+                            Text(h.slug).font(.subheadline.weight(.semibold)).foregroundStyle(PapercupTheme.text)
                             let meta = harnessMeta(h)
                             if !meta.isEmpty {
-                                Text(meta).font(.caption)
+                                Text(meta).papercupMonoMeta()
                             }
                         }
                         Spacer()
                         if let s = h.status {
-                            Text(s).font(.caption).padding(.horizontal, 6).padding(.vertical, 2).background(.gray.opacity(0.2), in: Capsule())
+                            PapercupChip(text: s, role: .accent)
                         }
                     }
                     .padding(.vertical, 4)
@@ -196,46 +205,40 @@ struct OperatorView: View {
                 .buttonStyle(.plain)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color.gray.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .papercupCardContainer()
     }
 
     private var recentNotificationsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(NSLocalizedString("operator.recentActivity", comment: "")).font(.headline)
+            PapercupSectionTitle(text: NSLocalizedString("operator.recentActivity", comment: ""))
             ForEach(toasts.prefix(3), id: \.id) { t in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(t.message).font(.caption)
+                    Text(t.message).font(.caption).foregroundStyle(PapercupTheme.text)
                     if let slug = t.harnessSlug {
-                        Button(slug) { onSelectHarness(slug) }.font(.caption2)
+                        Button(slug) { onSelectHarness(slug) }.font(.caption2).foregroundStyle(PapercupTheme.accentStrong)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color.gray.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .papercupCardContainer()
     }
 
     private var identityCard: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(NSLocalizedString("operator.thisDevice", comment: "")).font(.headline)
+            PapercupSectionTitle(text: NSLocalizedString("operator.thisDevice", comment: ""))
             kv("workspace", creds.workspaceId)
             kv("device", String(creds.deviceId.prefix(12)) + "…")
             if let ip = creds.meshAssignedIp { kv("mesh", ip) }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color.gray.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .papercupCardContainer(accent: PapercupTheme.info.opacity(0.08))
     }
 
     private func kv(_ key: String, _ value: String) -> some View {
         HStack {
-            Text(key).font(.caption).foregroundStyle(.secondary)
+            Text(key).font(.caption).foregroundStyle(PapercupTheme.textMuted)
             Spacer()
-            Text(value).font(.caption.monospaced())
+            Text(value).papercupMonoMeta()
         }
     }
 

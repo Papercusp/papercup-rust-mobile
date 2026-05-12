@@ -25,10 +25,39 @@ enum PapercupTheme {
 
     static func cardBackground(accent accentColor: Color = PapercupTheme.accent.opacity(0.12)) -> some View {
         let shape = RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-        return shape
-            .fill(surface.opacity(0.92))
-            .overlay(shape.fill(accentColor))
-            .overlay(shape.stroke(stroke.opacity(0.72), lineWidth: 1))
+        return ZStack {
+            shape.fill(surface.opacity(0.92))
+            shape.fill(
+                LinearGradient(
+                    colors: [
+                        accentStrong.opacity(0.12),
+                        accentColor.opacity(0.72),
+                        warning.opacity(0.035),
+                        success.opacity(0.045),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            PapercupCornerRails()
+                .stroke(accentStrong.opacity(0.38), style: StrokeStyle(lineWidth: 1, lineCap: .round))
+                .clipShape(shape)
+            shape.stroke(stroke.opacity(0.72), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.28), radius: 14, x: 0, y: 10)
+    }
+}
+
+private struct PapercupCornerRails: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: .zero)
+        path.addLine(to: CGPoint(x: min(84, rect.width * 0.45), y: 0))
+        path.move(to: .zero)
+        path.addLine(to: CGPoint(x: 0, y: min(72, rect.height * 0.45)))
+        path.move(to: CGPoint(x: max(0, rect.width - 104), y: 0))
+        path.addLine(to: CGPoint(x: rect.width, y: 0))
+        return path
     }
 }
 
@@ -92,6 +121,13 @@ extension View {
         self
             .listRowBackground(PapercupTheme.cardBackground(accent: accent))
             .listRowSeparator(.hidden)
+    }
+
+    func papercupCardContainer(accent: Color = PapercupTheme.accent.opacity(0.12)) -> some View {
+        self
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(PapercupTheme.cardBackground(accent: accent))
     }
 
     func papercupMonoMeta() -> some View {
