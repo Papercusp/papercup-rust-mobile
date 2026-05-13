@@ -83,7 +83,7 @@
     <!-- Pair screen -->
     <string name="pair_title">Pair with your desktop</string>
     <string name="pair_scan_qr">Scan QR</string>
-    <string name="pair_paste_payload">Paste payload</string>
+    <string name="pair_paste_payload">Paste manually</string>
     <string name="pair_back">Back</string>
     <string name="pair_button">Pair</string>
     <string name="pair_payload_label">QR payload (JSON)</string>

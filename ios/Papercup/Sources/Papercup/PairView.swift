@@ -46,7 +46,7 @@ struct PairView: View {
                     PrimaryPairButton(title: redeeming ? "Pairing…" : "Scan QR", disabled: redeeming) {
                         mode = .scan
                     }
-                    Button("Paste payload") { mode = .paste }
+                    Button("Paste manually") { mode = .paste }
                         .buttonStyle(.plain)
                         .foregroundStyle(PapercupTheme.accentStrong)
                         .disabled(redeeming)
@@ -62,7 +62,7 @@ struct PairView: View {
                     HStack(spacing: 12) {
                         Button("Back") { mode = .choose }
                             .buttonStyle(.bordered)
-                        Button("Paste payload") { mode = .paste }
+                        Button("Paste manually") { mode = .paste }
                             .buttonStyle(.bordered)
                     }
 

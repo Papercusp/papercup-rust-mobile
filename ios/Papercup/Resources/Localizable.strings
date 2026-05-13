@@ -56,7 +56,7 @@
 /* Pair */
 "pair.title" = "Pair with your desktop";
 "pair.scanQr" = "Scan QR";
-"pair.pastePayload" = "Paste payload";
+"pair.pastePayload" = "Paste manually";
 "pair.button" = "Pair";
 
 /* Standing approvals */

@@ -1,0 +1,53 @@
+<svg width="432" height="432" viewBox="0 0 432 432" xmlns="http://www.w3.org/2000/svg">
+  <!-- Foreground for Android adaptive icon. Content sized to fit center
+       66% of 432px (~286px), well within the 72dp safe area. Transparent
+       background — the launcher composites this over ic_launcher_background. -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="68%">
+      <stop offset="0%" stop-color="#17324a"/>
+      <stop offset="58%" stop-color="#0b1624"/>
+      <stop offset="100%" stop-color="#07101d"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#b9efff"/>
+      <stop offset="52%" stop-color="#57d8ff"/>
+      <stop offset="100%" stop-color="#178db8"/>
+    </linearGradient>
+    <linearGradient id="cup" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#f3eef9" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#d7d2e2" stop-opacity="0.78"/>
+    </linearGradient>
+    <linearGradient id="coffee" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#c8a57b"/>
+      <stop offset="100%" stop-color="#8b5e3d"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Logo content. Source viewBox is 18 12 92 92 (92 wide, 92 tall).
+       Scale to 286 (66% of 432). 286/92 = 3.108. Center it: translate
+       to (216 - 64*3.108, 216 - 58*3.108) = (216 - 198.9, 216 - 180.2) = (17.1, 35.8) -->
+  <g transform="translate(17.1 35.8) scale(3.108)">
+    <circle cx="64" cy="64" r="59" fill="url(#bg)" stroke="rgba(185,239,255,0.10)" stroke-width="0.8"/>
+    <circle cx="64" cy="64" r="56" fill="none" stroke="url(#ring)" stroke-opacity="0.38" stroke-width="1.4"/>
+    <path d="M64 18c0 8-9 13-17 20" fill="none" stroke="#d9a977" stroke-width="3.45" stroke-linecap="round"/>
+    <path d="M64 18c0 8 9 13 17 20" fill="none" stroke="#d9a977" stroke-width="3.45" stroke-linecap="round"/>
+    <g filter="url(#glow)">
+      <circle cx="64" cy="29" r="2.8" fill="#7ce2ff"/>
+    </g>
+    <g transform="translate(0 3)">
+      <path d="M31 39h66l-4.5 48c0 6.8-10.8 12.2-28.5 12.2S35.5 93.8 35.5 87z" fill="url(#cup)" fill-opacity="0.16" stroke="#d8f4ff" stroke-opacity="0.88" stroke-width="2.45" stroke-linejoin="round"/>
+      <ellipse cx="64" cy="39" rx="33" ry="6.8" fill="url(#cup)" fill-opacity="0.2" stroke="#d8f4ff" stroke-opacity="0.88" stroke-width="2.45"/>
+      <ellipse cx="64" cy="39" rx="25.5" ry="4.1" fill="url(#coffee)" fill-opacity="0.9"/>
+      <path d="M43.5 59c11.8-3.2 29.2-3.2 41 0" fill="none" stroke="#d9a977" stroke-opacity="0.74" stroke-width="2.25" stroke-linecap="round"/>
+      <rect x="60.6" y="56" width="6.8" height="22" rx="3.2" fill="#7ce2ff" fill-opacity="0.84"/>
+      <path d="M54 88c2.6 3.3 6 4.9 10 4.9s7.4-1.6 10-4.9" fill="none" stroke="#7ce2ff" stroke-opacity="0.84" stroke-width="2.1" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
