@@ -5,10 +5,14 @@
 
 ## Re-render PNGs (after editing the SVG)
 
+Use **rsvg-convert** (`apt install librsvg2-bin` on Ubuntu, `brew install
+librsvg` on macOS). ImageMagick's internal SVG renderer mangles the radial
+gradients + nested transforms in this file and produces the wrong cup mascot.
+
 ```bash
 cd docs/wordmark-source
-convert -background none -density 600 -resize 1560x510 wordmark.svg ../../android/app/src/main/res/drawable-nodpi/pairing_wordmark.png
-convert -background none -density 200 -resize 520x170  wordmark.svg ../../ios/Papercup/Resources/Assets.xcassets/PairingWordmark.imageset/PairingWordmark.png
-convert -background none -density 400 -resize 1040x340 wordmark.svg ../../ios/Papercup/Resources/Assets.xcassets/PairingWordmark.imageset/PairingWordmark@2x.png
-convert -background none -density 600 -resize 1560x510 wordmark.svg ../../ios/Papercup/Resources/Assets.xcassets/PairingWordmark.imageset/PairingWordmark@3x.png
+rsvg-convert -w 1560 -h 510 wordmark.svg -o ../../android/app/src/main/res/drawable-nodpi/pairing_wordmark.png
+rsvg-convert -w  520 -h 170 wordmark.svg -o ../../ios/Papercup/Resources/Assets.xcassets/PairingWordmark.imageset/PairingWordmark.png
+rsvg-convert -w 1040 -h 340 wordmark.svg -o ../../ios/Papercup/Resources/Assets.xcassets/PairingWordmark.imageset/PairingWordmark@2x.png
+rsvg-convert -w 1560 -h 510 wordmark.svg -o ../../ios/Papercup/Resources/Assets.xcassets/PairingWordmark.imageset/PairingWordmark@3x.png
 ```
