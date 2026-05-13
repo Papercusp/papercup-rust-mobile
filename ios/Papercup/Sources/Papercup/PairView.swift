@@ -46,6 +46,10 @@ struct PairView: View {
                     PrimaryPairButton(title: redeeming ? "Pairing…" : "Scan QR", disabled: redeeming) {
                         mode = .scan
                     }
+                    Button("Paste payload") { mode = .paste }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(PapercupTheme.accentStrong)
+                        .disabled(redeeming)
 
                 case .scan:
                     QRScannerView(disabled: redeeming) { raw in redeem(raw: raw) }

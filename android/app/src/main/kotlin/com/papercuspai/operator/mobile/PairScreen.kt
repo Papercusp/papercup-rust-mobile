@@ -137,6 +137,16 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                     enabled = !redeeming,
                     onClick = { mode = PairMode.Scan },
                 )
+                Spacer(Modifier.height(10.dp))
+                TextButton(
+                    onClick = { mode = PairMode.Paste },
+                    enabled = !redeeming,
+                ) {
+                    Text(
+                        text = stringResource(R.string.pair_paste_payload),
+                        color = PapercupColors.AccentStrong,
+                    )
+                }
             }
 
             PairMode.Scan -> ScanPanel(
