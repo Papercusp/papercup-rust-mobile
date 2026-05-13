@@ -72,3 +72,24 @@ jobs:
             --language swift \
             --out-dir /tmp/sw-out
           test -f /tmp/sw-out/papercup.swift
+
+  design-tokens:
+    name: Design tokens drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need sibling papercup repo for mirror.mjs hash check.
+          fetch-depth: 1
+      - uses: actions/checkout@v4
+        with:
+          repository: papercupai/papercup
+          path: ../papercup
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm ci --ignore-scripts || npm install --ignore-scripts
+      - name: Regen + verify clean
+        run: npm run tokens:check
