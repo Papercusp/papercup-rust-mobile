@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "description": "Dev-only tooling for papercup-rust-mobile. Currently used for design-token codegen via Style Dictionary.",
   "scripts": {
-    "tokens": "style-dictionary build --config design-tokens/style-dictionary.config.mjs"
+    "tokens": "node design-tokens/mirror.mjs && style-dictionary build --config design-tokens/style-dictionary.config.mjs"
   },
   "devDependencies": {
     "style-dictionary": "^4.4.0"

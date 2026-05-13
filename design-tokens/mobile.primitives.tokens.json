@@ -1,0 +1,13 @@
+{
+  "color": {
+    "shade": {
+      "raised":   { "$value": "#081421", "$type": "color" },
+      "surface":  { "$value": "#081421", "$type": "color" },
+      "popover":  { "$value": "#0B1827", "$type": "color" },
+      "deep":     { "$value": "#04080F", "$type": "color" },
+      "button":   { "$value": "#031118", "$type": "color" },
+      "btn-text": { "$value": "#031712", "$type": "color" }
+    },
+    "white-tint": { "$value": "#F3FBFF", "$type": "color" }
+  }
+}

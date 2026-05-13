@@ -7,8 +7,16 @@ import androidx.compose.ui.graphics.Color
 
 object PapercupTokens {
     val PrimaryButtonText = Color(0xFF031712)
+    /** Mobile-specific pale cyan for the pair button gradient top — distinct from desktop's sky-cool (#D7F3FF) which serves a different role */
     val PrimaryButtonGradTop = Color(0xFFD3FAFF)
     val PrimaryButtonGradBottom = Color(0xFF0369A1)
+    val ShadeRaised = Color(0xFF081421)
+    val ShadeSurface = Color(0xFF081421)
+    val ShadePopover = Color(0xFF0B1827)
+    val ShadeDeep = Color(0xFF04080F)
+    val ShadeButton = Color(0xFF031118)
+    val ShadeBtnText = Color(0xFF031712)
+    val WhiteTint = Color(0xFFF3FBFF)
     val Ink = Color(0xFF04080F)
     val InkRaised = Color(0xFF081421)
     val Surface = Color(0xFF081421)
@@ -34,13 +42,13 @@ object PapercupTokens {
     val Teal = Color(0xFF34D399)
     /** Color(0xFF34D399) @ 0.14 */
     val TealSoft = Color(0x2434D399)
-    val Gold = Color(0xFFF6C453)
     /** Color(0xFFF6C453) @ 0.14 */
     val GoldSoft = Color(0x24F6C453)
     val ButtonInk = Color(0xFF031118)
     val Success = Color(0xFF34D399)
     /** Color(0xFF34D399) @ 0.19 */
     val SuccessSoft = Color(0x3034D399)
+    /** Mobile uses gold-400 (Papercusp custom) where desktop uses amber-400 (Tailwind) — intentional divergence */
     val Warning = Color(0xFFF6C453)
     /** Color(0xFFF6C453) @ 0.20 */
     val WarningSoft = Color(0x33F6C453)
@@ -54,20 +62,18 @@ object PapercupTokens {
     val Sky200 = Color(0xFFBAE6FD)
     val Sky300 = Color(0xFF7DD3FC)
     val Sky400 = Color(0xFF38BDF8)
+    val Sky500 = Color(0xFF0EA5E9)
     val Sky700 = Color(0xFF0369A1)
-    val SkyCool = Color(0xFFD3FAFF)
+    /** Desktop accent-cool — between sky-100 and sky-200 */
+    val SkyCool = Color(0xFFD7F3FF)
     /** Operator hero cyan — orb chrome */
     val SkyHero = Color(0xFF13F5FF)
     val Emerald400 = Color(0xFF34D399)
-    val Amber400 = Color(0xFFF6C453)
+    /** Tailwind amber-400 — desktop --warn */
+    val Amber400 = Color(0xFFFBBF24)
+    /** Papercusp custom yellow — mobile uses this instead of amber-400 for warmer feel */
+    val Gold400 = Color(0xFFF6C453)
     val Rose400 = Color(0xFFFB7185)
     val Slate300 = Color(0xFFCBD5E1)
     val Slate400 = Color(0xFF94A3B8)
-    val ShadeRaised = Color(0xFF081421)
-    val ShadeSurface = Color(0xFF081421)
-    val ShadePopover = Color(0xFF0B1827)
-    val ShadeDeep = Color(0xFF04080F)
-    val ShadeButton = Color(0xFF031118)
-    val ShadeBtnText = Color(0xFF031712)
-    val WhiteTint = Color(0xFFF3FBFF)
 }

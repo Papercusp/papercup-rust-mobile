@@ -28,7 +28,7 @@ object PapercupColors {
     val AccentSoft = PapercupTokens.AccentSoft
     val Teal = PapercupTokens.Teal
     val TealSoft = PapercupTokens.TealSoft
-    val Gold = PapercupTokens.Gold
+    val Gold = PapercupTokens.Gold400
     val GoldSoft = PapercupTokens.GoldSoft
     val ButtonInk = PapercupTokens.ButtonInk
     val Success = PapercupTokens.Success

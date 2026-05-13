@@ -1,7 +1,7 @@
 {
   "color": {
     "primary-button-text":        { "$value": "{color.shade.btn-text}", "$type": "color" },
-    "primary-button-grad-top":    { "$value": "{color.sky-cool}",       "$type": "color" },
+    "primary-button-grad-top":    { "$value": "#D3FAFF",                "$type": "color", "$description": "Mobile-specific pale cyan for the pair button gradient top — distinct from desktop's sky-cool (#D7F3FF) which serves a different role" },
     "primary-button-grad-bottom": { "$value": "{color.sky.700}",        "$type": "color" }
   }
 }

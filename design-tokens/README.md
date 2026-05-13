@@ -6,9 +6,11 @@ Source of truth for color/dimension/typography tokens consumed by Android (Compo
 
 | File | Tier | Editable? |
 |---|---|---|
-| `primitives.tokens.json` | Brand palette — sky/emerald/amber/rose/slate scales, ink shades | After Phase 4: **mirrored from `papercup/design-tokens/primitives.tokens.json`** — do not edit here |
+| `primitives.tokens.json` | Brand palette — sky/emerald/amber/gold/rose/slate. **MIRRORED from `papercup/design-tokens/primitives.tokens.json`** | No — edit the canonical source instead |
+| `mobile.primitives.tokens.json` | Mobile-only primitives — `shade.*` (ink scale), `white-tint`. Not in canonical because mobile's ink runs darker than desktop's `--bg`. | Yes |
 | `mobile.semantic.tokens.json` | Mobile-specific semantics — `accent`, `surface`, `text-muted`, etc. References primitives via `{color.x.y}` aliases | Yes |
 | `mobile.component.tokens.json` | Component-specific tokens — `primary-button-grad-top`, etc. | Yes |
+| `mirror.mjs` | Pulls `primitives.tokens.json` from `../papercup/design-tokens/`; fails on hash drift. Runs before SD codegen | Rarely |
 | `style-dictionary.config.mjs` | SD v4 build config with custom Compose + SwiftUI transforms | Rarely |
 
 ## Generated outputs (DO NOT EDIT)
@@ -22,7 +24,19 @@ Source of truth for color/dimension/typography tokens consumed by Android (Compo
 make tokens          # or: npm run tokens
 ```
 
-Both `make build-android` and `make build-ios` auto-run this first.
+Both `make build-android` and `make build-ios` auto-run this first. The pipeline is:
+
+1. **`mirror.mjs`** — copies `../papercup/design-tokens/primitives.tokens.json` here, fails on hash drift. Set `REQUIRE_PRIMITIVES_SOURCE=1` to fail when the canonical source is missing (default: soft-skip). Set `PAPERCUP_DESIGN_TOKENS_DIR` to override the source path in CI.
+2. **`style-dictionary build`** — emits `PapercupTokens.{kt,swift}`
+
+## Editing the brand palette
+
+The brand palette is **canonical in `papercup/design-tokens/primitives.tokens.json`**. To retune a brand color (e.g., shift `accent` from sky-400 to sky-500):
+
+1. Edit `papercup/design-tokens/primitives.tokens.json` (or `desktop.semantic.tokens.json` for an alias)
+2. Run `pnpm tokens` in `papercup/` — regenerates desktop CSS
+3. Run `make tokens` in `papercup-rust-mobile/` — pulls the new primitives + regenerates mobile Kotlin/Swift
+4. Commit both repos
 
 ## Editing tokens
 
