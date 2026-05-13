@@ -33,4 +33,12 @@ if (diff.trim()) {
   console.error(diff);
   process.exit(1);
 }
+
+// Coverage: every source token must appear in Kotlin + Swift outputs.
+try {
+  execSync("node design-tokens/verify-coverage.mjs", { stdio: "inherit" });
+} catch (e) {
+  process.exit(e.status || 1);
+}
+
 console.log("✓ design tokens in sync");
