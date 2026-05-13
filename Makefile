@@ -6,7 +6,7 @@
 
 .PHONY: help build-rust build-android build-ios install-android \
         bindings-kotlin bindings-swift test test-ios test-ios-ui check \
-        fmt fmt-check clippy lint-android install-hooks clean tokens
+        fmt fmt-check clippy lint-android install-hooks clean tokens tokens-check
 
 help:
 	@echo "Targets:"
@@ -27,11 +27,32 @@ help:
 	@echo "  make build-ios          — build iOS xcframework + Xcode project (macOS only)"
 	@echo "  make install-ios        — build-ios + install + launch on iPhone 16 sim (macOS only)"
 	@echo "  make tokens             — regenerate PapercupTokens.{kt,swift} from design-tokens/*.tokens.json"
+	@echo "  make tokens-check       — regen tokens then fail if anything changed (drift guard; part of 'make check')"
 	@echo "  make clean              — remove all build artifacts"
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test
+check: fmt-check clippy test tokens-check
+
+# Regenerate design-token outputs and fail if the working tree differs.
+# Catches the drift case where someone edits *.tokens.json but forgets
+# `make tokens`. Auto-installs node deps if missing.
+tokens-check:
+	@command -v node >/dev/null || { echo "node required for tokens-check"; exit 1; }
+	@test -d node_modules/style-dictionary || npm install --silent
+	@$(MAKE) -s tokens
+	@if ! git diff --quiet \
+	    design-tokens/primitives.tokens.json \
+	    android/app/src/main/kotlin/com/papercuspai/operator/mobile/theme/PapercupTokens.kt \
+	    ios/Papercup/Sources/Papercup/PapercupTokens.swift; then \
+	    echo "✗ design-token outputs drifted from sources. Run 'make tokens' and commit the diff."; \
+	    git --no-pager diff --stat \
+	        design-tokens/primitives.tokens.json \
+	        android/app/src/main/kotlin/com/papercuspai/operator/mobile/theme/PapercupTokens.kt \
+	        ios/Papercup/Sources/Papercup/PapercupTokens.swift; \
+	    exit 1; \
+	fi
+	@echo "✓ design tokens in sync"
 
 fmt:
 	cargo fmt --all

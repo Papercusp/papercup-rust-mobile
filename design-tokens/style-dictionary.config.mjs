@@ -7,7 +7,11 @@
 //   android/.../theme/PapercupTokens.kt
 //   ios/Papercup/Sources/Papercup/PapercupTokens.swift
 
+import { globSync } from "node:fs";
 import StyleDictionary from "style-dictionary";
+import { preflight } from "./_preflight.mjs";
+
+preflight(globSync("design-tokens/*.tokens.json"));
 
 // ─── Custom transforms ─────────────────────────────────────────────────────
 
