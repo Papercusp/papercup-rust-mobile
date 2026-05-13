@@ -30,7 +30,7 @@ enum PapercupTheme {
         endPoint: .bottom
     )
 
-    static let cardCornerRadius: CGFloat = PapercupTokens.radiusCard
+    static let cardCornerRadius: CGFloat = 20
 
     static func cardBackground(accent accentColor: Color = PapercupTheme.accent.opacity(0.12)) -> some View {
         let shape = RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
