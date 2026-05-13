@@ -879,7 +879,6 @@ private fun MobileBottomNav(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(if (active) PapercupColors.AccentSoft else Color.Transparent)
                         .clickable { onRouteChange(item.route) }
                         .semantics {
                             contentDescription = item.label
@@ -905,6 +904,13 @@ private fun MobileBottomNav(
                         text = item.label.uppercase(),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (active) PapercupColors.AccentStrong else PapercupColors.TextFaint,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(28.dp)
+                            .height(2.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (active) PapercupColors.AccentStrong else Color.Transparent),
                     )
                 }
             }

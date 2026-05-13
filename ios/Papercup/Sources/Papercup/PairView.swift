@@ -21,10 +21,16 @@ struct PairView: View {
             PapercupTheme.screenGradient.ignoresSafeArea()
 
             VStack(spacing: 24) {
-                PapercuspWordmark()
-                    .frame(width: 256, height: 84)
-                    .accessibilityLabel(Text("Papercusp"))
-                    .accessibilityAddTraits(.isImage)
+                VStack(spacing: 6) {
+                    PapercuspWordmark()
+                        .frame(width: 256, height: 84)
+                        .accessibilityLabel(Text("Papercusp"))
+                        .accessibilityAddTraits(.isImage)
+                    Text("MISSION CONSOLE")
+                        .font(.caption2.weight(.semibold))
+                        .tracking(1.4)
+                        .foregroundStyle(PapercupTheme.accentStrong.opacity(0.62))
+                }
 
                 Text("Pair with your desktop")
                     .font(.title2.weight(.semibold))

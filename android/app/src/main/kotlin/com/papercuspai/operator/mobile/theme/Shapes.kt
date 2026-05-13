@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.papercuspai.operator.mobile.theme
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,10 +34,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -63,7 +71,19 @@ fun PapercupScreen(modifier: Modifier = Modifier, content: @Composable () -> Uni
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(PapercupColors.ScreenGradient),
+            .drawBehind {
+                drawRect(PapercupColors.ScreenGradient)
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            PapercupColors.Accent.copy(alpha = 0.24f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(size.width * 0.5f, -size.height * 0.08f),
+                        radius = size.width * 1.45f,
+                    ),
+                )
+            },
     ) {
         content()
     }
@@ -143,16 +163,37 @@ fun Modifier.papercupCardChrome() =
         .background(PapercupColors.CardGradient)
         .border(BorderStroke(1.dp, PapercupColors.Stroke.copy(alpha = 0.72f)), PapercupCardShape)
         .drawBehind {
-            val cyan = PapercupColors.AccentStrong.copy(alpha = 0.36f)
-            val gold = PapercupColors.Gold.copy(alpha = 0.22f)
-            drawLine(cyan, Offset.Zero, Offset(84.dp.toPx(), 0f), strokeWidth = 1.dp.toPx())
-            drawLine(cyan.copy(alpha = 0.28f), Offset.Zero, Offset(0f, 72.dp.toPx()), strokeWidth = 1.dp.toPx())
-            drawLine(
-                gold,
-                Offset(size.width - 104.dp.toPx(), 0f),
-                Offset(size.width, 0f),
-                strokeWidth = 1.dp.toPx(),
-            )
+            val cyan = PapercupColors.AccentStrong.copy(alpha = 0.38f)
+            val cyanSoft = PapercupColors.AccentStrong.copy(alpha = 0.26f)
+            val gold = PapercupColors.Gold.copy(alpha = 0.30f)
+            val goldSoft = PapercupColors.Gold.copy(alpha = 0.18f)
+            val rail = 1.dp.toPx()
+            val longRail = 84.dp.toPx()
+            val shortRail = 72.dp.toPx()
+            val rightRail = 104.dp.toPx()
+            val dotInset = 16.dp.toPx()
+            val haloRadius = 7.dp.toPx()
+            val dotRadius = 1.6.dp.toPx()
+
+            drawLine(cyan, Offset.Zero, Offset(longRail, 0f), strokeWidth = rail)
+            drawLine(cyanSoft, Offset.Zero, Offset(0f, shortRail), strokeWidth = rail)
+            drawLine(cyan, Offset(size.width - rightRail, 0f), Offset(size.width, 0f), strokeWidth = rail)
+            drawLine(cyanSoft, Offset(size.width, 0f), Offset(size.width, shortRail), strokeWidth = rail)
+
+            drawLine(gold, Offset(0f, size.height), Offset(longRail, size.height), strokeWidth = rail)
+            drawLine(goldSoft, Offset(0f, size.height - shortRail), Offset(0f, size.height), strokeWidth = rail)
+            drawLine(gold, Offset(size.width - rightRail, size.height), Offset(size.width, size.height), strokeWidth = rail)
+            drawLine(goldSoft, Offset(size.width, size.height - shortRail), Offset(size.width, size.height), strokeWidth = rail)
+
+            listOf(
+                Offset(dotInset, dotInset),
+                Offset(size.width - dotInset, dotInset),
+                Offset(dotInset, size.height - dotInset),
+                Offset(size.width - dotInset, size.height - dotInset),
+            ).forEach { dot ->
+                drawCircle(PapercupColors.Gold.copy(alpha = 0.18f), radius = haloRadius, center = dot)
+                drawCircle(PapercupColors.AccentStrong.copy(alpha = 0.92f), radius = dotRadius, center = dot)
+            }
         }
 
 @Composable
@@ -249,9 +290,38 @@ fun PapercupStatusChip(
     borderColor: Color = contentColor.copy(alpha = 0.45f),
     onClick: (() -> Unit)? = null,
 ) {
+    val normalized = text.lowercase().replace('_', ' ')
+    val pulses = normalized.contains("progress") ||
+        normalized.contains("validating") ||
+        normalized.contains("running") ||
+        normalized.contains("pairing") ||
+        normalized.contains("scanning") ||
+        normalized == "live"
+    val pulseAlpha by rememberInfiniteTransition(label = "status-pulse").animateFloat(
+        initialValue = 0.42f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_200),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "status-pulse-alpha",
+    )
     AssistChip(
         onClick = onClick ?: {},
-        label = { Text(text, style = MaterialTheme.typography.labelSmall) },
+        label = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (pulses) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(PapercupChipShape)
+                            .background(contentColor.copy(alpha = pulseAlpha)),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(text, style = MaterialTheme.typography.labelSmall)
+            }
+        },
         modifier = modifier.semantics { contentDescription = "Status $text" },
         shape = PapercupChipShape,
         border = BorderStroke(1.dp, borderColor),

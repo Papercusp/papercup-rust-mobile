@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanner
@@ -105,6 +106,13 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
             modifier = Modifier
                 .width(256.dp)
                 .aspectRatio(520f / 170f),
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "MISSION CONSOLE",
+            style = MaterialTheme.typography.labelSmall,
+            color = PapercupColors.AccentStrong.copy(alpha = 0.62f),
+            letterSpacing = 1.4.sp,
         )
         Spacer(Modifier.height(24.dp))
         Text(

@@ -751,7 +751,6 @@ private struct MobileBottomNav: View {
         HStack(spacing: 0) {
             ForEach(items, id: \.tab) { item in
                 let selected = tab == item.tab
-                let background = selected ? PapercupTheme.accent.opacity(0.10) : Color.clear
                 Button {
                     tab = item.tab
                 } label: {
@@ -767,14 +766,14 @@ private struct MobileBottomNav: View {
                         Text(item.label.uppercased())
                             .font(.system(size: 10, weight: .semibold))
                             .tracking(0.8)
+                        Capsule()
+                            .fill(selected ? PapercupTheme.accentStrong : Color.clear)
+                            .frame(width: 28, height: 2)
+                            .shadow(color: selected ? PapercupTheme.accentStrong.opacity(0.48) : .clear, radius: 8, x: 0, y: 0)
                     }
                     .foregroundStyle(selected ? PapercupTheme.accentStrong : PapercupTheme.textMuted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 7)
-                    .background(
-                        background,
-                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    )
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(accessibilityLabel(for: item.label, badge: item.badge)))

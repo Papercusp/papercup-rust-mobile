@@ -12,32 +12,34 @@ object PapercupColors {
     val Surface = Color(0xFF081421)
     val SurfaceStrong = Color(0xFF0B1827)
     val Popover = Color(0xFF0B1827)
-    val Stroke = Color(0x3867E8F9)
-    val StrokeStrong = Color(0x5767E8F9)
-    val StrokeSoft = Color(0x1F67E8F9)
+    val Stroke = Color(0x387DD3FC)
+    val StrokeStrong = Color(0x577DD3FC)
+    val StrokeSoft = Color(0x1F7DD3FC)
     val Text = Color(0xFFF3FBFF)
     val TextMuted = Color(0xBDCBD5E1)
     val TextFaint = Color(0xAD94A3B8)
-    val Accent = Color(0xFF22D3EE)
-    val AccentStrong = Color(0xFF67E8F9)
-    val AccentCool = Color(0xFF8FF7FF)
-    val AccentSoft = Color(0x2422D3EE)
-    val Teal = Color(0xFF2DD4BF)
-    val TealSoft = Color(0x242DD4BF)
+    val Accent = Color(0xFF38BDF8)
+    val AccentStrong = Color(0xFF7DD3FC)
+    val AccentCool = Color(0xFFBAE6FD)
+    val OperatorHeroCyan = Color(0xFF13F5FF)
+    val AccentSoft = Color(0x2438BDF8)
+    val Teal = Color(0xFF34D399)
+    val TealSoft = Color(0x2434D399)
     val Gold = Color(0xFFF6C453)
     val GoldSoft = Color(0x24F6C453)
     val ButtonInk = Color(0xFF031118)
-    val Success = Color(0xFF2DD4BF)
-    val SuccessSoft = Color(0x302DD4BF)
+    val Success = Color(0xFF34D399)
+    val SuccessSoft = Color(0x3034D399)
     val Warning = Color(0xFFF6C453)
     val WarningSoft = Color(0x33F6C453)
     val Error = Color(0xFFFB7185)
     val ErrorSoft = Color(0x33FB7185)
     val Info = AccentStrong
-    val InfoSoft = Color(0x2E67E8F9)
+    val InfoSoft = Color(0x2E7DD3FC)
 
     val ScreenGradient = Brush.verticalGradient(
         listOf(
+            Color(0xFF0A2137),
             Color(0xFF07111D),
             Ink,
             Color(0xFF020409),
@@ -53,9 +55,9 @@ object PapercupColors {
 
     val CardGradient = Brush.linearGradient(
         listOf(
-            Color(0x2167E8F9),
+            Color(0x217DD3FC),
             Color(0x0BF6C453),
-            Color(0x0F2DD4BF),
+            Color(0x0F34D399),
         ),
     )
 
