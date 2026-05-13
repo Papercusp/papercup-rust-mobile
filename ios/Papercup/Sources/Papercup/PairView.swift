@@ -46,10 +46,9 @@ struct PairView: View {
                     PrimaryPairButton(title: redeeming ? "Pairing…" : "Scan QR", disabled: redeeming) {
                         mode = .scan
                     }
-                    Button("Paste manually") { mode = .paste }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(PapercupTheme.accentStrong)
-                        .disabled(redeeming)
+                    SecondaryPairButton(title: "Paste manually", disabled: redeeming) {
+                        mode = .paste
+                    }
 
                 case .scan:
                     QRScannerView(disabled: redeeming) { raw in redeem(raw: raw) }
@@ -170,15 +169,15 @@ private struct PrimaryPairButton: View {
         Button(action: action) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color(red: 0.01, green: 0.07, blue: 0.09))
+                .foregroundStyle(PapercupTokens.primaryButtonText)
                 .frame(minWidth: 144, minHeight: 46)
                 .padding(.horizontal, 20)
                 .background(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.83, green: 0.98, blue: 1.0),
-                            PapercupTheme.accent,
-                            Color(red: 0.03, green: 0.57, blue: 0.70),
+                            PapercupTokens.primaryButtonGradTop,
+                            PapercupTokens.accent,
+                            PapercupTokens.primaryButtonGradBottom,
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -187,6 +186,27 @@ private struct PrimaryPairButton: View {
                 )
                 .overlay(Capsule().stroke(PapercupTheme.accentStrong.opacity(0.48), lineWidth: 1))
                 .shadow(color: PapercupTheme.accent.opacity(0.18), radius: 18, x: 0, y: 10)
+                .opacity(disabled ? 0.56 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+    }
+}
+
+private struct SecondaryPairButton: View {
+    let title: String
+    var disabled: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(PapercupTheme.accentStrong)
+                .frame(minWidth: 144, minHeight: 46)
+                .padding(.horizontal, 20)
+                .background(PapercupTheme.accent.opacity(0.14), in: Capsule())
+                .overlay(Capsule().stroke(PapercupTheme.accentStrong.opacity(0.48), lineWidth: 1))
                 .opacity(disabled ? 0.56 : 1)
         }
         .buttonStyle(.plain)

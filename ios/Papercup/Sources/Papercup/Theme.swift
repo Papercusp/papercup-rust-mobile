@@ -1,28 +1,36 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
 
+// Thin override layer over PapercupTokens (generated from design-tokens/tokens.json).
+// Keep this enum for: gradients, shapes, platform-specific tweaks. Single-color tokens
+// live in PapercupTokens and should not be redefined here.
 enum PapercupTheme {
-    static let ink = Color(red: 0.02, green: 0.03, blue: 0.07)
-    static let inkRaised = Color(red: 0.04, green: 0.07, blue: 0.12)
-    static let surface = Color(red: 0.06, green: 0.10, blue: 0.16)
-    static let stroke = Color(red: 0.14, green: 0.20, blue: 0.27)
-    static let text = Color(red: 0.90, green: 0.95, blue: 1.00)
-    static let textMuted = Color(red: 0.56, green: 0.64, blue: 0.72)
-    static let accent = Color(red: 0.22, green: 0.74, blue: 0.97)
-    static let accentStrong = Color(red: 0.49, green: 0.83, blue: 0.99)
-    static let operatorHeroCyan = Color(red: 0.07, green: 0.96, blue: 1.00)
-    static let success = Color(red: 0.20, green: 0.83, blue: 0.60)
-    static let warning = Color(red: 0.96, green: 0.71, blue: 0.25)
-    static let error = Color(red: 0.98, green: 0.44, blue: 0.52)
-    static let info = Color(red: 0.49, green: 0.83, blue: 0.99)
+    static let ink = PapercupTokens.ink
+    static let inkRaised = PapercupTokens.inkRaised
+    static let surface = PapercupTokens.surface
+    static let stroke = PapercupTokens.stroke
+    static let text = PapercupTokens.text
+    static let textMuted = PapercupTokens.textMuted
+    static let accent = PapercupTokens.accent
+    static let accentStrong = PapercupTokens.accentStrong
+    static let operatorHeroCyan = PapercupTokens.operatorHeroCyan
+    static let success = PapercupTokens.success
+    static let warning = PapercupTokens.warning
+    static let error = PapercupTokens.error
+    static let info = PapercupTokens.info
 
     static let screenGradient = LinearGradient(
-        colors: [Color(red: 0.04, green: 0.13, blue: 0.22), Color(red: 0.03, green: 0.07, blue: 0.11), ink, Color.black],
+        colors: [
+            Color(.sRGB, red: 0.0392, green: 0.1294, blue: 0.2157, opacity: 1),
+            Color(.sRGB, red: 0.0275, green: 0.0667, blue: 0.1137, opacity: 1),
+            ink,
+            Color(.sRGB, red: 0.0078, green: 0.0157, blue: 0.0353, opacity: 1),
+        ],
         startPoint: .top,
         endPoint: .bottom
     )
 
-    static let cardCornerRadius: CGFloat = 20
+    static let cardCornerRadius: CGFloat = PapercupTokens.radiusCard
 
     static func cardBackground(accent accentColor: Color = PapercupTheme.accent.opacity(0.12)) -> some View {
         let shape = RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)

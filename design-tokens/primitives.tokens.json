@@ -1,0 +1,36 @@
+{
+  "$schema": "https://design-tokens.org/dtcg/format/draft-1.json",
+  "color": {
+    "sky": {
+      "100": { "$value": "#E0F2FE", "$type": "color" },
+      "200": { "$value": "#BAE6FD", "$type": "color" },
+      "300": { "$value": "#7DD3FC", "$type": "color" },
+      "400": { "$value": "#38BDF8", "$type": "color" },
+      "700": { "$value": "#0369A1", "$type": "color" }
+    },
+    "sky-cool":  { "$value": "#D3FAFF", "$type": "color" },
+    "sky-hero":  { "$value": "#13F5FF", "$type": "color", "$description": "Operator hero cyan — orb chrome" },
+    "emerald": {
+      "400": { "$value": "#34D399", "$type": "color" }
+    },
+    "amber": {
+      "400": { "$value": "#F6C453", "$type": "color" }
+    },
+    "rose": {
+      "400": { "$value": "#FB7185", "$type": "color" }
+    },
+    "slate": {
+      "300": { "$value": "#CBD5E1", "$type": "color" },
+      "400": { "$value": "#94A3B8", "$type": "color" }
+    },
+    "shade": {
+      "raised":   { "$value": "#081421", "$type": "color" },
+      "surface":  { "$value": "#081421", "$type": "color" },
+      "popover":  { "$value": "#0B1827", "$type": "color" },
+      "deep":     { "$value": "#04080F", "$type": "color" },
+      "button":   { "$value": "#031118", "$type": "color" },
+      "btn-text": { "$value": "#031712", "$type": "color" }
+    },
+    "white-tint": { "$value": "#F3FBFF", "$type": "color" }
+  }
+}

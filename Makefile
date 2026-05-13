@@ -6,7 +6,7 @@
 
 .PHONY: help build-rust build-android build-ios install-android \
         bindings-kotlin bindings-swift test test-ios test-ios-ui check \
-        fmt fmt-check clippy lint-android install-hooks clean
+        fmt fmt-check clippy lint-android install-hooks clean tokens
 
 help:
 	@echo "Targets:"
@@ -26,6 +26,7 @@ help:
 	@echo "  make install-android    — build-android then adb install -r"
 	@echo "  make build-ios          — build iOS xcframework + Xcode project (macOS only)"
 	@echo "  make install-ios        — build-ios + install + launch on iPhone 16 sim (macOS only)"
+	@echo "  make tokens             — regenerate PapercupTokens.{kt,swift} from design-tokens/*.tokens.json"
 	@echo "  make clean              — remove all build artifacts"
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
@@ -88,7 +89,12 @@ bindings-swift:
 	    --language swift \
 	    --out-dir ios/PapercupCore
 
-build-android: bindings-kotlin
+tokens:
+	@command -v node >/dev/null || { echo "node required for design-token codegen"; exit 1; }
+	@test -d node_modules/style-dictionary || npm install --silent
+	npm run tokens
+
+build-android: tokens bindings-kotlin
 	tools/build-scripts/build-android.sh
 	tools/build-scripts/install-and-launch.sh
 
@@ -97,7 +103,7 @@ install-android: build-android
 	# (physical + emulator) via install-and-launch.sh. Kept as an alias.
 	@true
 
-build-ios: bindings-swift
+build-ios: tokens bindings-swift
 	tools/build-scripts/build-ios.sh
 
 install-ios: build-ios

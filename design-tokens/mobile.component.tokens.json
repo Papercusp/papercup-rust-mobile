@@ -1,0 +1,7 @@
+{
+  "color": {
+    "primary-button-text":        { "$value": "{color.shade.btn-text}", "$type": "color" },
+    "primary-button-grad-top":    { "$value": "{color.sky-cool}",       "$type": "color" },
+    "primary-button-grad-bottom": { "$value": "{color.sky.700}",        "$type": "color" }
+  }
+}

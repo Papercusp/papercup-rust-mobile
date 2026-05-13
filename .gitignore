@@ -33,3 +33,7 @@
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Node tooling (Style Dictionary for design-token codegen)
+/node_modules/
+/build/
