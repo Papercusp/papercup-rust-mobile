@@ -9,7 +9,7 @@
     text and the migration target for the existing inline strings.
 -->
 <resources>
-    <string name="app_name">Papercup</string>
+    <string name="app_name">Papercusp</string>
 
     <!-- Tab nav (MainActivity bottom bar) -->
     <string name="tab_operator">Operator</string>

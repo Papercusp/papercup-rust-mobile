@@ -25,7 +25,7 @@
     <!-- Phase 4+: RECORD_AUDIO, etc. -->
 
     <application
-        android:label="Papercup"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Papercup.Starting"
         android:icon="@mipmap/ic_launcher"

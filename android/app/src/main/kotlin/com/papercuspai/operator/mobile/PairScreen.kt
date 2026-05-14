@@ -138,15 +138,11 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                     onClick = { mode = PairMode.Scan },
                 )
                 Spacer(Modifier.height(10.dp))
-                TextButton(
-                    onClick = { mode = PairMode.Paste },
+                SecondaryPairButton(
+                    text = stringResource(R.string.pair_paste_payload),
                     enabled = !redeeming,
-                ) {
-                    Text(
-                        text = stringResource(R.string.pair_paste_payload),
-                        color = PapercupColors.AccentStrong,
-                    )
-                }
+                    onClick = { mode = PairMode.Paste },
+                )
             }
 
             PairMode.Scan -> ScanPanel(
@@ -229,6 +225,36 @@ private fun PrimaryPairButton(
             contentColor = PapercupColors.ButtonInk,
             disabledContainerColor = Color.Transparent,
             disabledContentColor = PapercupColors.ButtonInk.copy(alpha = 0.56f),
+        ),
+        contentPadding = PaddingValues(horizontal = 32.dp, vertical = 12.dp),
+    ) {
+        Text(text, style = MaterialTheme.typography.titleSmall)
+    }
+}
+
+@Composable
+private fun SecondaryPairButton(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(999.dp)
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .widthIn(min = 144.dp)
+            .height(48.dp)
+            .clip(shape)
+            .background(PapercupColors.AccentSoft)
+            .border(1.dp, PapercupColors.AccentStrong.copy(alpha = 0.48f), shape),
+        shape = shape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.Transparent,
+            contentColor = PapercupColors.AccentStrong,
+            disabledContainerColor = Color.Transparent,
+            disabledContentColor = PapercupColors.AccentStrong.copy(alpha = 0.56f),
         ),
         contentPadding = PaddingValues(horizontal = 32.dp, vertical = 12.dp),
     ) {
