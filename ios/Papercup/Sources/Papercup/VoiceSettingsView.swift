@@ -411,7 +411,7 @@ private enum VoicePathProbe {
 
         // Heartbeat
         let hbStart = Date()
-        guard let hbUrl = URL(string: "\(creds.server)/api/mobile/heartbeat") else {
+        guard let hbUrl = URL(string: "\(creds.server)/api/device/heartbeat") else {
             return .failure(stage: "bad server url", detail: creds.server)
         }
         var hbReq = URLRequest(url: hbUrl, timeoutInterval: 15)
@@ -442,7 +442,7 @@ private enum VoicePathProbe {
 
         // Session init
         let initStart = Date()
-        guard let initUrl = URL(string: "\(creds.server)/api/mobile/voice-session-init?surface=mobile-ios&mode=continuous&probe=1") else {
+        guard let initUrl = URL(string: "\(creds.server)/api/device/voice-session-init?surface=mobile-ios&mode=continuous&probe=1") else {
             return .failure(stage: "bad server url", detail: creds.server)
         }
         var initReq = URLRequest(url: initUrl, timeoutInterval: 15)

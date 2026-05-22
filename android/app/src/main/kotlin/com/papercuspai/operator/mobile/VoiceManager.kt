@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit
 ///
 /// Phone is an ElevenLabs Conv AI client of the SAME agent the desktop
 /// uses. Phone fetches a short-lived conversation token from
-/// `/api/mobile/voice-session-init` (operator mints via EL API key),
+/// `/api/device/voice-session-init` (operator mints via EL API key),
 /// then starts a WebRTC session via the EL Android SDK. All STT/TTS/
 /// VAD/AEC happen on the EL side. Tools the agent calls fall into:
 ///   - browser:'required' → invoked here as clientTools, mapped to a
@@ -527,7 +527,7 @@ class VoiceManager(
     /// above so taps + route changes happen sub-100ms. The remaining
     /// query+brain tools (harness_status, harness_list, ask_operator,
     /// etc.) need server-side data we don't have locally. Each one
-    /// proxies through POST /api/mobile/voice-tool/{name} — operator
+    /// proxies through POST /api/device/voice-tool/{name} — operator
     /// runs runQuery/runCommand server-side and returns JSON the
     /// agent speaks. Same authority surface as the desktop client
     /// (same registry, same per-tool schemas).
@@ -588,7 +588,7 @@ class VoiceManager(
             put("parameters", JSONObject(params))
         }.toString()
         val req = Request.Builder()
-            .url("${creds.server}/api/mobile/voice-tool/$name")
+            .url("${creds.server}/api/device/voice-tool/$name")
             .header("Authorization", "Bearer ${creds.deviceToken}")
             .header("content-type", "application/json")
             .post(bodyJson.toRequestBody(JSON_MEDIA))
@@ -624,7 +624,7 @@ class VoiceManager(
             if (prefs.sessionMaxMin > 0) append("&sessionMaxMin=").append(prefs.sessionMaxMin)
         }
         val req = Request.Builder()
-            .url("${creds.server}/api/mobile/voice-session-init$params")
+            .url("${creds.server}/api/device/voice-session-init$params")
             .header("Authorization", "Bearer ${creds.deviceToken}")
             .build()
         http.newCall(req).execute().use { resp ->

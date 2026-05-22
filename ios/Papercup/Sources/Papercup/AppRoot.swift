@@ -54,7 +54,7 @@ struct AppRoot: View {
 
     /// Consume a pendingPair (papercup://pair?...) without going through
     /// PairView. Mirrors PairView.redeem(): generate WG key + POST
-    /// /api/mobile/pair + persist DeviceCredentials. Used for pair-by-link
+    /// /api/device/pair + persist DeviceCredentials. Used for pair-by-link
     /// (email, scanning a QR with the system camera, etc.).
     @MainActor
     private func autoPair(_ p: PendingPair) async {

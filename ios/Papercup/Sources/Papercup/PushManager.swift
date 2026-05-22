@@ -20,7 +20,7 @@
 // The code below is correct as-is; it just won't actually receive a
 // device token until the entitlement is signed in.
 //
-// Server contract: POST /api/mobile/push/register
+// Server contract: POST /api/device/push/register
 //   body: { platform: "apns", token: "<hex>" }
 // Same endpoint Android hits with platform "fcm".
 
@@ -53,7 +53,7 @@ final class PushManager: NSObject {
         }
     }
 
-    /// Hex-encode and POST to /api/mobile/push/register. Idempotent
+    /// Hex-encode and POST to /api/device/push/register. Idempotent
     /// server-side; safe to call on every cold-start + on token rotation.
     func register(deviceTokenData: Data) async {
         let hex = deviceTokenData.map { String(format: "%02x", $0) }.joined()

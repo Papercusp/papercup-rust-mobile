@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Mobile sync stream — consumes `GET /api/mobile/sync/sse?token=<jwt>`.
+// Mobile sync stream — consumes `GET /api/device/sync/sse?token=<jwt>`.
 // Backend emits one event type today, `invalidate`, with a JSON body
 // `{ "id": "<ulid>", "name": "<key>", "args": <json|null> }`. The server
 // also keeps a 60s ring of recent ids so reconnects can resume via
@@ -59,7 +59,7 @@ impl SyncStream {
     /// unrecoverable error.
     pub fn connect(base_url: &str, device_token: &str) -> Self {
         let url = format!(
-            "{}/api/mobile/sync/sse?token={}",
+            "{}/api/device/sync/sse?token={}",
             base_url.trim_end_matches('/'),
             urlencode(device_token),
         );

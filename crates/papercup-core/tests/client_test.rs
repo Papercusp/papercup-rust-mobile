@@ -34,7 +34,7 @@ async fn paired_client() -> (OperatorClient, MockServer) {
 async fn list_harnesses_happy_path() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/harnesses"))
+        .and(path("/api/device/harnesses"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "harnesses": [
@@ -71,7 +71,7 @@ async fn list_harnesses_unauthorized_when_no_token() {
 async fn list_harnesses_maps_401() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/harnesses"))
+        .and(path("/api/device/harnesses"))
         .respond_with(ResponseTemplate::new(401).set_body_json(json!({"error":"bad token"})))
         .mount(&server)
         .await;
@@ -83,7 +83,7 @@ async fn list_harnesses_maps_401() {
 async fn running_snapshot_decodes_scan_and_harnesses() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/running"))
+        .and(path("/api/device/running"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "scan": {
@@ -122,7 +122,7 @@ async fn running_snapshot_decodes_scan_and_harnesses() {
 async fn list_harnesses_maps_500_with_detail() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/harnesses"))
+        .and(path("/api/device/harnesses"))
         .respond_with(ResponseTemplate::new(500).set_body_json(json!({"error":"db down"})))
         .mount(&server)
         .await;
@@ -141,7 +141,7 @@ async fn pair_serialises_camel_case_and_returns_outcome() {
     let client = OperatorClient::new(server.uri(), None);
 
     Mock::given(method("POST"))
-        .and(path("/api/mobile/pair"))
+        .and(path("/api/device/pair"))
         .and(body_json(json!({
             "pairToken": "PT-123",
             "wireguardPubkey": "PUBKEY"
@@ -180,7 +180,7 @@ async fn pair_serialises_camel_case_and_returns_outcome() {
 async fn get_harness_status_decodes_status_resp() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/harnesses/alpha"))
+        .and(path("/api/device/harnesses/alpha"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "project": { "slug": "alpha", "path": "/p/alpha" },
@@ -211,7 +211,7 @@ async fn get_harness_status_decodes_status_resp() {
 async fn register_push_serialises_body() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
-        .and(path("/api/mobile/push/register"))
+        .and(path("/api/device/push/register"))
         .and(bearer_token(TOKEN))
         .and(body_json(json!({"platform":"fcm","token":"FCM-TOK"})))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
@@ -232,7 +232,7 @@ async fn register_push_serialises_body() {
 async fn heartbeat_posts_with_bearer() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
-        .and(path("/api/mobile/heartbeat"))
+        .and(path("/api/device/heartbeat"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
         .expect(1)
@@ -245,7 +245,7 @@ async fn heartbeat_posts_with_bearer() {
 async fn list_workspaces_unwraps_envelope() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/workspaces"))
+        .and(path("/api/device/workspaces"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "workspaces": [
                 { "id": "default", "name": "Default", "current": true, "last_activity_at": 1_700_000_000 },
@@ -264,7 +264,7 @@ async fn list_workspaces_unwraps_envelope() {
 async fn list_desktop_devices_unwraps_envelope() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/devices"))
+        .and(path("/api/device/devices"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "devices": [
                 {
@@ -287,7 +287,7 @@ async fn list_desktop_devices_unwraps_envelope() {
 async fn revoke_device_uses_delete_method() {
     let (client, server) = paired_client().await;
     Mock::given(method("DELETE"))
-        .and(path("/api/mobile/devices/d-other"))
+        .and(path("/api/device/devices/d-other"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
         .expect(1)
@@ -300,7 +300,7 @@ async fn revoke_device_uses_delete_method() {
 async fn pause_get_decodes_pause_info() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/operator/pause"))
+        .and(path("/api/device/operator/pause"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "paused": true,
             "at": "2026-05-09T08:00:00Z",
@@ -317,13 +317,13 @@ async fn pause_get_decodes_pause_info() {
 async fn pause_set_post_then_delete_for_unpause() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
-        .and(path("/api/mobile/operator/pause"))
+        .and(path("/api/device/operator/pause"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"paused":true})))
         .expect(1)
         .mount(&server)
         .await;
     Mock::given(method("DELETE"))
-        .and(path("/api/mobile/operator/pause"))
+        .and(path("/api/device/operator/pause"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"paused":false})))
         .expect(1)
         .mount(&server)
@@ -336,7 +336,7 @@ async fn pause_set_post_then_delete_for_unpause() {
 async fn recent_notifications_unwraps_toasts_envelope() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/notifications/recent"))
+        .and(path("/api/device/notifications/recent"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "toasts": [
                 {
@@ -360,7 +360,7 @@ async fn recent_notifications_unwraps_toasts_envelope() {
 async fn recent_actions_unwraps_entries_envelope() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/actions/recent"))
+        .and(path("/api/device/actions/recent"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "entries": [
                 {
@@ -385,7 +385,7 @@ async fn recent_actions_unwraps_entries_envelope() {
 async fn list_operator_cards_unwraps_envelope() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/operator/cards"))
+        .and(path("/api/device/operator/cards"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "cards": [
@@ -419,7 +419,7 @@ async fn list_operator_cards_unwraps_envelope() {
 async fn dispatch_operator_card_returns_message() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
-        .and(path("/api/mobile/operator/cards/c1/dispatch"))
+        .and(path("/api/device/operator/cards/c1/dispatch"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "ok": true,
@@ -435,7 +435,7 @@ async fn dispatch_operator_card_returns_message() {
 async fn dismiss_operator_card_returns_message() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
-        .and(path("/api/mobile/operator/cards/c2/dismiss"))
+        .and(path("/api/device/operator/cards/c2/dismiss"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "ok": true,
@@ -451,7 +451,7 @@ async fn dismiss_operator_card_returns_message() {
 async fn standing_candidates_unwraps_envelope() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/operator/standing-candidates"))
+        .and(path("/api/device/operator/standing-candidates"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "candidates": [
@@ -490,7 +490,7 @@ async fn standing_candidates_unwraps_envelope() {
 async fn standing_candidate_decide_approve_posts_correct_body() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
-        .and(path("/api/mobile/operator/standing-candidates/decide"))
+        .and(path("/api/device/operator/standing-candidates/decide"))
         .and(bearer_token(TOKEN))
         .and(body_json(json!({
             "capability": "shell:run",
@@ -510,7 +510,7 @@ async fn standing_candidate_decide_approve_posts_correct_body() {
 async fn standing_candidate_decide_dismiss_posts_correct_body() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
-        .and(path("/api/mobile/operator/standing-candidates/decide"))
+        .and(path("/api/device/operator/standing-candidates/decide"))
         .and(bearer_token(TOKEN))
         .and(body_json(json!({
             "capability": "git:push",
@@ -530,7 +530,7 @@ async fn standing_candidate_decide_dismiss_posts_correct_body() {
 async fn standing_candidate_decide_surfaces_server_error() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
-        .and(path("/api/mobile/operator/standing-candidates/decide"))
+        .and(path("/api/device/operator/standing-candidates/decide"))
         .respond_with(ResponseTemplate::new(500))
         .mount(&server)
         .await;
@@ -550,7 +550,7 @@ async fn fallback_url_used_when_primary_unreachable() {
     // Fallback is a real wiremock server. Client should silently swap.
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/harnesses"))
+        .and(path("/api/device/harnesses"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "harnesses": [
                 {"slug": "alpha", "path": "/p/alpha", "has_state": false}
@@ -575,7 +575,7 @@ async fn fallback_url_used_when_primary_unreachable() {
 async fn fallback_not_used_for_4xx() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/api/mobile/harnesses"))
+        .and(path("/api/device/harnesses"))
         .respond_with(ResponseTemplate::new(503))
         .mount(&server)
         .await;

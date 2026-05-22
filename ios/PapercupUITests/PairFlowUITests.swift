@@ -43,7 +43,7 @@ final class PairFlowUITests: XCTestCase {
     /// End-to-end pair flow + paired-state navigation in one go (the
     /// pair token is one-shot, so we can only spend it once per test
     /// run). Validates: launch-arg backdoor → DeepLinkRouter →
-    /// AppRoot.autoPair → /api/mobile/pair → DeviceCredentials persist
+    /// AppRoot.autoPair → /api/device/pair → DeviceCredentials persist
     /// → PairedShell mounts → tab bar visible → Settings nav rows
     /// (Standing approvals / Voice / Diagnostics) open correctly.
     func testPairAndPairedNavigation() throws {

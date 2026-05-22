@@ -4,7 +4,7 @@
 //
 // Phone is an ElevenLabs Conv AI client of the SAME agent the desktop
 // uses. Phone fetches a short-lived conversation token from
-// /api/mobile/voice-session-init (operator mints via EL API key),
+// /api/device/voice-session-init (operator mints via EL API key),
 // then starts a WebRTC session via ElevenLabsSDK. All STT/TTS/VAD/AEC
 // happen on the EL side. Tools the agent calls fall into:
 //   • browser:'required' → invoked here via the SDK's pendingToolCalls
@@ -442,7 +442,7 @@ final class VoiceManager: ObservableObject {
             // pending_reviews_list, actions_recent, notifications_recent,
             // scans_*, delegates_*, panel_cards/state/dispatch/dismiss,
             // workspace_list) is server data — proxy through
-            // /api/mobile/voice-tool/<name>. Same registry, same auth,
+            // /api/device/voice-tool/<name>. Same registry, same auth,
             // same shape as desktop. Server has special handling for
             // ask_operator (drains operator-converse SSE). The SDK
             // invokes us on the main actor; URLSession.shared.data is
@@ -453,12 +453,12 @@ final class VoiceManager: ObservableObject {
     }
 
     /// Forward an unhandled-on-phone tool call to the operator's
-    /// /api/mobile/voice-tool/<name> proxy and surface the response
+    /// /api/device/voice-tool/<name> proxy and surface the response
     /// back to ElevenLabs. Mirrors the Android proxy flow but uses
     /// async URLSession — no thread hop needed.
     private func proxyTool(_ name: String, params: [String: Any], toolId: String, conv: Conversation) async {
         do {
-            guard let url = URL(string: "\(creds.server)/api/mobile/voice-tool/\(name)") else {
+            guard let url = URL(string: "\(creds.server)/api/device/voice-tool/\(name)") else {
                 try? await conv.sendToolResult(for: toolId, result: ["error": "bad-url"], isError: true)
                 return
             }
@@ -508,7 +508,7 @@ final class VoiceManager: ObservableObject {
         var params = "?surface=mobile-ios&mode=\(prefs.voiceMode.rawValue)"
         if prefs.idleTimeoutMin > 0 { params += "&idleMin=\(prefs.idleTimeoutMin)" }
         if prefs.sessionMaxMin > 0 { params += "&sessionMaxMin=\(prefs.sessionMaxMin)" }
-        guard let url = URL(string: "\(creds.server)/api/mobile/voice-session-init\(params)") else {
+        guard let url = URL(string: "\(creds.server)/api/device/voice-session-init\(params)") else {
             throw URLError(.badURL)
         }
         var req = URLRequest(url: url)

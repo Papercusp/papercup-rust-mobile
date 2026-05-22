@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-// ── /api/mobile/harnesses ──────────────────────────────────────────────
+// ── /api/device/harnesses ──────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListResp {
@@ -30,7 +30,7 @@ pub struct HarnessLite {
     pub status: Option<String>,
 }
 
-// ── /api/mobile/harnesses/:slug ────────────────────────────────────────
+// ── /api/device/harnesses/:slug ────────────────────────────────────────
 //
 // Stage 2.6 (backend) folded the desktop StatusResp shape into the mobile
 // route. Field names are camelCase to match the wire contract.
@@ -65,7 +65,7 @@ pub struct ProjectShort {
     pub path: String,
 }
 
-// ── /api/mobile/notifications/recent ───────────────────────────────────
+// ── /api/device/notifications/recent ───────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToastsResp {
@@ -88,7 +88,7 @@ pub struct ToastRow {
     pub action_label: Option<String>,
 }
 
-// ── /api/mobile/actions/recent ─────────────────────────────────────────
+// ── /api/device/actions/recent ─────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditResp {
@@ -107,7 +107,7 @@ pub struct AuditRow {
     pub details: serde_json::Value,
 }
 
-// ── /api/mobile/running ────────────────────────────────────────────────
+// ── /api/device/running ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunningResp {
@@ -140,7 +140,7 @@ pub struct RunningHarnessPhase {
     pub last_active_ts: Option<i64>,
 }
 
-// ── /api/mobile/voice-lease ────────────────────────────────────────────
+// ── /api/device/voice-lease ────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceLeaseRead {
@@ -158,7 +158,7 @@ pub struct VoiceLeaseShape {
     pub expires_at_ms: i64,
 }
 
-// ── /api/mobile/operator/pause ─────────────────────────────────────────
+// ── /api/device/operator/pause ─────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PauseInfo {
@@ -175,7 +175,7 @@ pub struct PauseToggleResp {
     pub paused: bool,
 }
 
-// ── /api/mobile/workspace/switch ───────────────────────────────────────
+// ── /api/device/workspace/switch ───────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceSwitchBody {
@@ -191,7 +191,7 @@ pub struct WorkspaceSwitchResp {
     pub workspace_id: String,
 }
 
-// ── /api/mobile/workspaces ─────────────────────────────────────────────
+// ── /api/device/workspaces ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspacesResp {
@@ -207,7 +207,7 @@ pub struct WorkspaceItem {
     pub last_activity_at: Option<i64>,
 }
 
-// ── /api/mobile/desktop/devices ────────────────────────────────────────
+// ── /api/device/desktop/devices ────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesktopDevicesResp {
@@ -228,7 +228,7 @@ pub struct DeviceRow {
     pub paired_at: Option<String>,
 }
 
-// ── /api/mobile/push/register ──────────────────────────────────────────
+// ── /api/device/push/register ──────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushRegisterBody {
@@ -237,7 +237,7 @@ pub struct PushRegisterBody {
     pub token: String,
 }
 
-// ── /api/mobile/pair ───────────────────────────────────────────────────
+// ── /api/device/pair ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairBody {

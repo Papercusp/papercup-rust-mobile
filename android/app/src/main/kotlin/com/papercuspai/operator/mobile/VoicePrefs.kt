@@ -19,7 +19,7 @@ enum class VoiceMode(val wire: String) {
 
 /// Device-local voice preferences. Distinct from the workspace-shared
 /// prefs in operator_voice_prefs (PG) — these stay on the device and
-/// get passed to /api/mobile/voice-session-init as query params so
+/// get passed to /api/device/voice-session-init as query params so
 /// the server can resolve mode-dependent behavior (idle timer floor
 /// for single-utterance, voice_mode dynamic_variable for the agent
 /// prompt, etc.) without overwriting another device's choice.

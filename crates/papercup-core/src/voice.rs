@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Voice WebSocket client for `/api/mobile/voice`.
+// Voice WebSocket client for `/api/device/voice`.
 //
 // Wire protocol (mirrors the Tauri-era impl, see legacy/VOICE_FEEDBACK_RESPONSE.md):
 //   Auth   : Sec-WebSocket-Protocol: papercusp.bearer.<jwt>
@@ -312,7 +312,7 @@ fn build_ws_url(base_url: &str) -> String {
     } else {
         format!("ws://{trimmed}")
     };
-    format!("{scheme_swapped}/api/mobile/voice")
+    format!("{scheme_swapped}/api/device/voice")
 }
 
 #[cfg(test)]
@@ -323,7 +323,7 @@ mod tests {
     fn ws_url_https_to_wss() {
         assert_eq!(
             build_ws_url("https://api.papercuspai.com/"),
-            "wss://api.papercuspai.com/api/mobile/voice"
+            "wss://api.papercuspai.com/api/device/voice"
         );
     }
 
@@ -331,7 +331,7 @@ mod tests {
     fn ws_url_http_to_ws() {
         assert_eq!(
             build_ws_url("http://10.0.2.2:3055"),
-            "ws://10.0.2.2:3055/api/mobile/voice"
+            "ws://10.0.2.2:3055/api/device/voice"
         );
     }
 

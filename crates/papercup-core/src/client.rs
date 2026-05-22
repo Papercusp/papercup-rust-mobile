@@ -118,20 +118,20 @@ impl OperatorClient {
         }
     }
 
-    /// `GET /api/mobile/harnesses` — returns the user's harnesses.
+    /// `GET /api/device/harnesses` — returns the user's harnesses.
     /// Requires a paired device token.
     pub async fn list_harnesses(&self) -> Result<Vec<HarnessLite>, ApiError> {
-        self.bearer_get_json::<ListResp>("/api/mobile/harnesses")
+        self.bearer_get_json::<ListResp>("/api/device/harnesses")
             .await
             .map(|r| r.harnesses)
     }
 
-    /// `GET /api/mobile/harnesses/{slug}` — returns the per-harness
+    /// `GET /api/device/harnesses/{slug}` — returns the per-harness
     /// status. Today this is thin (slug/status/iteration/last_active_ts);
     /// backend has the rich `StatusResp` shape on the desktop endpoint
     /// and will fold it into this route in a later stage.
     pub async fn get_harness_status(&self, slug: &str) -> Result<HarnessStatusFull, ApiError> {
-        let url = format!("{}/api/mobile/harnesses/{}", self.base_url(), slug);
+        let url = format!("{}/api/device/harnesses/{}", self.base_url(), slug);
         let mut req = self.http.get(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -158,54 +158,54 @@ impl OperatorClient {
             .map_err(|e| ApiError::Decode(e.to_string()))
     }
 
-    /// `GET /api/mobile/running` — per-phase status of every active
+    /// `GET /api/device/running` — per-phase status of every active
     /// harness (passed/todo/blocked counts + active_roles). Tauri-parity
     /// "Currently running" view.
     pub async fn list_running(&self) -> Result<Vec<RunningHarnessPhase>, ApiError> {
-        let url = format!("{}/api/mobile/running", self.base_url());
+        let url = format!("{}/api/device/running", self.base_url());
         self.bearer_get_json::<RunningResp>(&url)
             .await
             .map(|r| r.harnesses)
     }
 
-    /// `GET /api/mobile/running` — full running snapshot including the
+    /// `GET /api/device/running` — full running snapshot including the
     /// current operator scan summary when one is active.
     pub async fn running_snapshot(
         &self,
     ) -> Result<(Option<RunningScan>, Vec<RunningHarnessPhase>), ApiError> {
-        let url = format!("{}/api/mobile/running", self.base_url());
+        let url = format!("{}/api/device/running", self.base_url());
         self.bearer_get_json::<RunningResp>(&url)
             .await
             .map(|r| (r.scan, r.harnesses))
     }
 
-    /// `GET /api/mobile/voice-lease` — current lease holder (or `None`
+    /// `GET /api/device/voice-lease` — current lease holder (or `None`
     /// if no one is listening).
     pub async fn voice_lease_get(&self) -> Result<Option<VoiceLeaseShape>, ApiError> {
-        let url = format!("{}/api/mobile/voice-lease", self.base_url());
+        let url = format!("{}/api/device/voice-lease", self.base_url());
         self.bearer_get_json::<VoiceLeaseRead>(&url)
             .await
             .map(|r| r.lease)
     }
 
-    /// `POST /api/mobile/voice-lease/claim` — phone always pre-empts.
+    /// `POST /api/device/voice-lease/claim` — phone always pre-empts.
     /// 12-second TTL server-side; refresh via `voice_lease_heartbeat`.
     pub async fn voice_lease_claim(&self) -> Result<(), ApiError> {
-        self.bearer_post_empty("/api/mobile/voice-lease/claim")
+        self.bearer_post_empty("/api/device/voice-lease/claim")
             .await
     }
 
-    /// `POST /api/mobile/voice-lease/heartbeat` — refresh-if-mine; the
+    /// `POST /api/device/voice-lease/heartbeat` — refresh-if-mine; the
     /// server returns 409 if another owner holds the lease (the phone
     /// then surfaces "you've been preempted" and stops listening).
     pub async fn voice_lease_heartbeat(&self) -> Result<(), ApiError> {
-        self.bearer_post_empty("/api/mobile/voice-lease/heartbeat")
+        self.bearer_post_empty("/api/device/voice-lease/heartbeat")
             .await
     }
 
-    /// `DELETE /api/mobile/voice-lease` — release-if-mine; idempotent.
+    /// `DELETE /api/device/voice-lease` — release-if-mine; idempotent.
     pub async fn voice_lease_release(&self) -> Result<(), ApiError> {
-        let url = format!("{}/api/mobile/voice-lease", self.base_url());
+        let url = format!("{}/api/device/voice-lease", self.base_url());
         self.bearer_delete_empty(&url).await
     }
 
@@ -251,11 +251,11 @@ impl OperatorClient {
         Ok(())
     }
 
-    /// `POST /api/mobile/heartbeat` — bumps `last_seen` server-side so
+    /// `POST /api/device/heartbeat` — bumps `last_seen` server-side so
     /// the desktop's "is the phone connected" badge stays fresh. Cheap;
     /// safe to call every minute while foregrounded.
     pub async fn heartbeat(&self) -> Result<(), ApiError> {
-        let url = format!("{}/api/mobile/heartbeat", self.base_url());
+        let url = format!("{}/api/device/heartbeat", self.base_url());
         let mut req = self.http.post(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -275,27 +275,27 @@ impl OperatorClient {
         Ok(())
     }
 
-    /// `GET /api/mobile/notifications/recent` — most recent toast_log
+    /// `GET /api/device/notifications/recent` — most recent toast_log
     /// entries scoped to the device's workspace. Limit defaults to 50.
     pub async fn recent_notifications(&self) -> Result<Vec<ToastRow>, ApiError> {
-        let url = format!("{}/api/mobile/notifications/recent", self.base_url());
+        let url = format!("{}/api/device/notifications/recent", self.base_url());
         self.bearer_get_json::<ToastsResp>(&url)
             .await
             .map(|r| r.toasts)
     }
 
-    /// `GET /api/mobile/actions/recent` — most recent audit_log entries
+    /// `GET /api/device/actions/recent` — most recent audit_log entries
     /// scoped to the device's workspace.
     pub async fn recent_actions(&self) -> Result<Vec<AuditRow>, ApiError> {
-        let url = format!("{}/api/mobile/actions/recent", self.base_url());
+        let url = format!("{}/api/device/actions/recent", self.base_url());
         self.bearer_get_json::<AuditResp>(&url)
             .await
             .map(|r| r.entries)
     }
 
-    /// `GET /api/mobile/operator/pause` — current global pause state.
+    /// `GET /api/device/operator/pause` — current global pause state.
     pub async fn pause_get(&self) -> Result<PauseInfo, ApiError> {
-        let url = format!("{}/api/mobile/operator/pause", self.base_url());
+        let url = format!("{}/api/device/operator/pause", self.base_url());
         self.bearer_get_json::<PauseInfo>(&url).await
     }
 
@@ -303,7 +303,7 @@ impl OperatorClient {
     /// the new state. The server fires a `sync_invalidate` for
     /// `operatorPauseFlag` so peer clients converge instantly.
     pub async fn pause_set(&self, paused: bool) -> Result<bool, ApiError> {
-        let url = format!("{}/api/mobile/operator/pause", self.base_url());
+        let url = format!("{}/api/device/operator/pause", self.base_url());
         let mut req = if paused {
             self.http.post(&url)
         } else {
@@ -334,14 +334,14 @@ impl OperatorClient {
             .map_err(|e| ApiError::Decode(e.to_string()))
     }
 
-    /// `POST /api/mobile/workspace/switch` — re-issues a deviceToken
+    /// `POST /api/device/workspace/switch` — re-issues a deviceToken
     /// scoped to the new workspace. The phone must persist the new
     /// token in place of the old one immediately.
     pub async fn workspace_switch(
         &self,
         workspace_id: &str,
     ) -> Result<WorkspaceSwitchResp, ApiError> {
-        let url = format!("{}/api/mobile/workspace/switch", self.base_url());
+        let url = format!("{}/api/device/workspace/switch", self.base_url());
         let mut req = self.http.post(&url).json(&WorkspaceSwitchBody {
             workspace_id: workspace_id.to_string(),
         });
@@ -370,36 +370,36 @@ impl OperatorClient {
             .map_err(|e| ApiError::Decode(e.to_string()))
     }
 
-    /// `GET /api/mobile/workspaces` — list of workspaces the device can
+    /// `GET /api/device/workspaces` — list of workspaces the device can
     /// see, with the currently-selected one flagged.
     pub async fn list_workspaces(&self) -> Result<Vec<WorkspaceItem>, ApiError> {
-        let url = format!("{}/api/mobile/workspaces", self.base_url());
+        let url = format!("{}/api/device/workspaces", self.base_url());
         self.bearer_get_json::<WorkspacesResp>(&url)
             .await
             .map(|r| r.workspaces)
     }
 
-    /// `GET /api/mobile/devices` — every paired device, including
+    /// `GET /api/device/devices` — every paired device, including
     /// this one (matched by device_id).
     pub async fn list_desktop_devices(&self) -> Result<Vec<DeviceRow>, ApiError> {
-        let url = format!("{}/api/mobile/devices", self.base_url());
+        let url = format!("{}/api/device/devices", self.base_url());
         self.bearer_get_json::<DesktopDevicesResp>(&url)
             .await
             .map(|r| r.devices)
     }
 
-    /// `GET /api/mobile/operator/cards`
+    /// `GET /api/device/operator/cards`
     pub async fn list_operator_cards(&self) -> Result<Vec<OperatorCard>, ApiError> {
-        let url = format!("{}/api/mobile/operator/cards", self.base_url());
+        let url = format!("{}/api/device/operator/cards", self.base_url());
         self.bearer_get_json::<OperatorCardsResp>(&url)
             .await
             .map(|r| r.cards)
     }
 
-    /// `POST /api/mobile/operator/cards/{id}/dispatch`
+    /// `POST /api/device/operator/cards/{id}/dispatch`
     pub async fn dispatch_operator_card(&self, card_id: &str) -> Result<String, ApiError> {
         let url = format!(
-            "{}/api/mobile/operator/cards/{card_id}/dispatch",
+            "{}/api/device/operator/cards/{card_id}/dispatch",
             self.base_url()
         );
         let mut req = self.http.post(&url);
@@ -431,10 +431,10 @@ impl OperatorClient {
             .ok_or_else(|| ApiError::Decode("missing message".into()))
     }
 
-    /// `POST /api/mobile/operator/cards/{id}/dismiss`
+    /// `POST /api/device/operator/cards/{id}/dismiss`
     pub async fn dismiss_operator_card(&self, card_id: &str) -> Result<String, ApiError> {
         let url = format!(
-            "{}/api/mobile/operator/cards/{card_id}/dismiss",
+            "{}/api/device/operator/cards/{card_id}/dismiss",
             self.base_url()
         );
         let mut req = self.http.post(&url);
@@ -466,10 +466,10 @@ impl OperatorClient {
             .ok_or_else(|| ApiError::Decode("missing message".into()))
     }
 
-    /// `GET /api/mobile/operator/standing-candidates`
+    /// `GET /api/device/operator/standing-candidates`
     pub async fn standing_candidates(&self) -> Result<Vec<StandingCandidate>, ApiError> {
         let url = format!(
-            "{}/api/mobile/operator/standing-candidates",
+            "{}/api/device/operator/standing-candidates",
             self.base_url()
         );
         self.bearer_get_json::<StandingCandidatesResp>(&url)
@@ -477,7 +477,7 @@ impl OperatorClient {
             .map(|r| r.candidates)
     }
 
-    /// `POST /api/mobile/operator/standing-candidates/decide`
+    /// `POST /api/device/operator/standing-candidates/decide`
     pub async fn standing_candidate_decide(
         &self,
         capability: &str,
@@ -485,7 +485,7 @@ impl OperatorClient {
         decision: &str,
     ) -> Result<(), ApiError> {
         let url = format!(
-            "{}/api/mobile/operator/standing-candidates/decide",
+            "{}/api/device/operator/standing-candidates/decide",
             self.base_url()
         );
         let mut req = self.http.post(&url).json(&StandingDecisionBody {
@@ -511,10 +511,10 @@ impl OperatorClient {
         Ok(())
     }
 
-    /// `DELETE /api/mobile/devices/{id}` — unpair the given device.
+    /// `DELETE /api/device/devices/{id}` — unpair the given device.
     /// Server also invokes Defguard revoke_user.
     pub async fn revoke_device(&self, device_id: &str) -> Result<(), ApiError> {
-        let url = format!("{}/api/mobile/devices/{}", self.base_url(), device_id);
+        let url = format!("{}/api/device/devices/{}", self.base_url(), device_id);
         let mut req = self.http.delete(&url);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -581,11 +581,11 @@ impl OperatorClient {
         }
     }
 
-    /// `POST /api/mobile/push/register` — registers an FCM/APNS token
+    /// `POST /api/device/push/register` — registers an FCM/APNS token
     /// with the backend so the desktop can deliver push notifications.
     /// Idempotent (server upserts).
     pub async fn register_push(&self, body: PushRegisterBody) -> Result<(), ApiError> {
-        let url = format!("{}/api/mobile/push/register", self.base_url());
+        let url = format!("{}/api/device/push/register", self.base_url());
         let mut req = self.http.post(&url).json(&body);
         req = match &self.device_token {
             Some(tok) => req.bearer_auth(tok),
@@ -610,11 +610,11 @@ impl OperatorClient {
         Ok(())
     }
 
-    /// `POST /api/mobile/pair` — exchanges a one-time pair token (from
+    /// `POST /api/device/pair` — exchanges a one-time pair token (from
     /// the desktop's QR code) for a long-lived device JWT. No bearer
     /// auth required for this call.
     pub async fn pair(&self, body: PairBody) -> Result<PairResp, ApiError> {
-        let url = format!("{}/api/mobile/pair", self.base_url());
+        let url = format!("{}/api/device/pair", self.base_url());
         let resp = self.http.post(&url).json(&body).send().await?;
         let status = resp.status();
         if !status.is_success() {

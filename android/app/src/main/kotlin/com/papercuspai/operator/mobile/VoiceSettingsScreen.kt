@@ -502,7 +502,7 @@ private suspend fun runVoicePathProbe(ctx: android.content.Context): ProbeResult
     val heartbeatT0 = System.currentTimeMillis()
     try {
         val req = okhttp3.Request.Builder()
-            .url("${creds.server}/api/mobile/heartbeat")
+            .url("${creds.server}/api/device/heartbeat")
             .header("Authorization", "Bearer ${creds.deviceToken}")
             .header("content-type", "application/json")
             .post("{}".toRequestBody("application/json".toMediaTypeOrNull()))
@@ -528,7 +528,7 @@ private suspend fun runVoicePathProbe(ctx: android.content.Context): ProbeResult
     val initT0 = System.currentTimeMillis()
     try {
         val req = okhttp3.Request.Builder()
-            .url("${creds.server}/api/mobile/voice-session-init?surface=mobile-android&mode=continuous&probe=1")
+            .url("${creds.server}/api/device/voice-session-init?surface=mobile-android&mode=continuous&probe=1")
             .header("Authorization", "Bearer ${creds.deviceToken}")
             .build()
         http.newCall(req).execute().use { resp ->
