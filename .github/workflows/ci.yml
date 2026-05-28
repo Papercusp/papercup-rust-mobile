@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: CI
 
-# Triggers are manual-only after the papercupai org hit its Actions
+# Triggers are manual-only after the Papercusp org hit its Actions
 # spending cap (run 25647070739 burned the budget; runs 25648261681
 # and 25648317810 then failed in seconds before any step executed).
 # Re-enable push/PR triggers below once billing is sorted; until then,
@@ -83,7 +83,7 @@ jobs:
           fetch-depth: 1
       - uses: actions/checkout@v4
         with:
-          repository: papercupai/papercup
+          repository: Papercusp/papercup
           path: ../papercup
           fetch-depth: 1
       - uses: actions/setup-node@v4

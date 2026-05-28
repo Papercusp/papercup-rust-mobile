@@ -16,7 +16,7 @@ with the desktop where it makes sense.
 
 ## Repo + entrypoints
 
-- Repo: github.com/papercupai/papercup-rust-mobile (clone via deploy key
+- Repo: github.com/Papercusp/papercup-rust-mobile (clone via deploy key
   if needed; ask if you don't have access)
 - Android sources: `android/app/src/main/kotlin/com/papercuspai/operator/mobile/`
 - iOS sources: `ios/Papercup/Sources/Papercup/`
