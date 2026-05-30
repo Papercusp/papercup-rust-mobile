@@ -9,7 +9,7 @@
 
 import { globSync } from "node:fs";
 import StyleDictionary from "style-dictionary";
-import { preflight } from "./_preflight.mjs";
+import { preflight } from "@papercusp/token-kit";
 
 preflight(globSync("design-tokens/*.tokens.json"));
 

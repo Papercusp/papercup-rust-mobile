@@ -8,6 +8,7 @@
     "tokens:check": "node design-tokens/tokens-check.mjs"
   },
   "devDependencies": {
+    "@papercusp/token-kit": "file:libs/token-kit",
     "style-dictionary": "^4.4.0"
   }
 }
