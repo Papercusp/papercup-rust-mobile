@@ -110,6 +110,10 @@ fun PlansScreen(
 ) {
     var selected by remember { mutableStateOf<PlanSummary?>(null) }
 
+    // System back pops the internal detail instead of exiting the activity
+    // (found by the on-device E2E pass — back from a plan detail left the app).
+    androidx.activity.compose.BackHandler(enabled = selected != null) { selected = null }
+
     val current = selected
     if (current == null) {
         PlansListView(

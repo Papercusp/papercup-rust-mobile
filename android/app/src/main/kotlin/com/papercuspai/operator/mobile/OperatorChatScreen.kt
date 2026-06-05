@@ -325,7 +325,11 @@ private fun ChatComposer(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                // End padding clears the shell's floating voice FAB, which sits
+                // bottom-right ABOVE this composer — without it the Send button
+                // is rendered underneath the FAB and untappable (found by the
+                // on-device E2E pass).
+                .padding(start = 12.dp, end = 104.dp, top = 10.dp, bottom = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -114,6 +114,21 @@ private fun AppRoot(
         deepLinkInbox.value = false
     }
 
+    // System back walks the route hierarchy instead of exiting the activity
+    // (found by the on-device E2E pass — back from a pushed screen left the
+    // app). Inbox is the root: back there exits as normal.
+    androidx.activity.compose.BackHandler(enabled = creds != null && route != Route.Inbox) {
+        route = when (val r = route) {
+            is Route.Detail -> Route.Brew
+            is Route.RunLog -> Route.Detail(r.slug)
+            Route.Running -> Route.Brew
+            Route.PushTapTest -> Route.Diagnostics
+            Route.StandingApprovals, Route.VoiceSettings,
+            Route.Diagnostics, Route.WorkspaceSelector -> Route.Settings
+            else -> Route.Inbox
+        }
+    }
+
     // Android 13+ runtime grant for showing notifications. Best-effort:
     // a denied permission just means pushes silently won't appear.
     val notifLauncher = rememberLauncherForActivityResult(
@@ -1129,21 +1144,18 @@ fun HarnessListScreen(
                 }
                 is ScreenState.Ready -> {
                     PapercupCard(contentPadding = PaddingValues(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column {
-                                PapercupCardHeader(
-                                    title = "${s.harnesses.size} ${if (s.harnesses.size == 1) "harness" else "harnesses"}",
-                                    meta = "core ${version()}",
-                                )
-                            }
+                        // Stacked header-then-chips: a side-by-side SpaceBetween row
+                        // overflowed once the chip set grew (E2E pass) — Rows don't
+                        // wrap, so the chips ran off the card edge.
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PapercupCardHeader(
+                                title = "${s.harnesses.size} ${if (s.harnesses.size == 1) "pot" else "pots"}",
+                                meta = "core ${version()}",
+                            )
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 PauseButton(creds = creds, liveTick = liveTick)
                                 PapercupStatusChip(
-                                    text = "running",
+                                    text = "runs ▸",
                                     containerColor = PapercupColors.AccentSoft,
                                     contentColor = PapercupColors.AccentStrong,
                                     onClick = onOpenRunning,
