@@ -100,14 +100,18 @@ struct DiagnosticsView: View {
     }
 
     private var meshSection: some View {
-        sectionShell("WireGuard mesh") {
-            infoRow("Mesh URL", value: creds.meshUrl ?? "not assigned", mono: creds.meshUrl != nil)
-            dividerLine()
-            infoRow("Mesh address", value: creds.meshAssignedIp ?? "not assigned", mono: creds.meshAssignedIp != nil)
+        sectionShell("Mesh (Defguard)") {
+            infoRow(
+                "Enrollment",
+                value: creds.defguardEnrollmentUrl ?? "not provided",
+                mono: creds.defguardEnrollmentUrl != nil
+            )
             dividerLine()
             infoRow(
-                "Tunnel",
-                value: "down — NEPacketTunnelProvider extension not built (requires Apple Dev Program)",
+                "Reachability",
+                value: creds.defguardEnrollmentUrl != nil
+                    ? "Defguard mesh + public tunnel / LAN fallback"
+                    : "public tunnel / LAN",
                 isLast: true
             )
         }

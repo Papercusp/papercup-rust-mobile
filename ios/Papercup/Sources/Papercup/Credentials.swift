@@ -7,30 +7,18 @@ struct DeviceCredentials: Equatable {
     var deviceToken: String
     let deviceId: String
     var workspaceId: String
-    /// Phase 6a: present when the desktop's pair response carried a Defguard
-    /// mesh config. Display only for now.
-    var meshAssignedIp: String? = nil
-    /// Phase 6b: full wg-quick INI ready for WireGuardKit's tunnelConfiguration.
-    var wgQuickConfig: String? = nil
-    /// Phase 6b: device's WireGuard private key, base64.
-    var wgPrivateKey: String? = nil
-    /// Phase 6c: mesh URL the OperatorClient prefers when reachable
-    /// (e.g. `http://10.10.0.2:3070`). Falls back to `server` on
-    /// transport errors via OperatorClient::new_with_fallback.
-    var meshUrl: String? = nil
+    /// Mesh = Defguard self-enrollment (mobile-apps-revival D-005). The
+    /// pair response carries an enrollment URL the user opens to join the
+    /// mesh via Defguard; the app no longer brings up a WireGuard tunnel
+    /// itself. Reachability falls back to the public `server` URL (and
+    /// LAN) transparently, so there's no mesh URL to prefer at the client.
+    var defguardEnrollmentUrl: String? = nil
 
-    /// Build an OperatorClient that prefers the mesh URL (if known)
-    /// and auto-falls back to the public `server` URL on transport
-    /// failure. Use this everywhere instead of OperatorClient(_:_:).
+    /// Build an OperatorClient against the desktop. Mesh routing (when the
+    /// device is Defguard-enrolled) is transparent at the network layer;
+    /// otherwise the public tunnel / LAN `server` URL reaches the desktop.
     func client() -> OperatorClient {
-        if let mesh = meshUrl, !mesh.isEmpty, mesh != server {
-            return OperatorClient.newWithFallback(
-                primary: mesh,
-                fallback: server,
-                deviceToken: deviceToken
-            )
-        }
-        return OperatorClient(baseUrl: server, deviceToken: deviceToken)
+        OperatorClient(baseUrl: server, deviceToken: deviceToken)
     }
 }
 
@@ -66,10 +54,7 @@ enum CredentialStore {
             deviceToken: token,
             deviceId: deviceId,
             workspaceId: workspaceId,
-            meshAssignedIp: dict["meshAssignedIp"],
-            wgQuickConfig: dict["wgQuickConfig"],
-            wgPrivateKey: dict["wgPrivateKey"],
-            meshUrl: dict["meshUrl"]
+            defguardEnrollmentUrl: dict["defguardEnrollmentUrl"]
         )
     }
 
@@ -80,10 +65,7 @@ enum CredentialStore {
             "deviceId": creds.deviceId,
             "workspaceId": creds.workspaceId,
         ]
-        if let ip = creds.meshAssignedIp { dict["meshAssignedIp"] = ip }
-        if let q = creds.wgQuickConfig { dict["wgQuickConfig"] = q }
-        if let p = creds.wgPrivateKey { dict["wgPrivateKey"] = p }
-        if let m = creds.meshUrl { dict["meshUrl"] = m }
+        if let u = creds.defguardEnrollmentUrl { dict["defguardEnrollmentUrl"] = u }
         let data = try! JSONSerialization.data(withJSONObject: dict)
         clear()
         let query: [String: Any] = [

@@ -1,39 +1,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Phase 3 — SwiftUI host for the UDL SyncCache.
+// SwiftUI host for the UDL SyncCache.
 //
-// Lifts the cache to a @StateObject scope so it survives SSE reconnects
-// (previous wiring put SyncCache in a function-local of runSync(),
-// which dropped + recreated on every retry). Bridges CacheSubscriber
-// callbacks into a @Published `tick` so SwiftUI views observing the
-// CacheHost re-evaluate after any registered query refetches.
+// The server's SSE invalidation stream is retired (mobile-apps-revival
+// D-001.1); the cache now POLLS GET /api/device/rest-query and notifies
+// only when a payload actually changes (push notifications, D-004, cover
+// interrupt latency). This host lifts the cache to a @StateObject scope
+// so polling survives view churn, and bridges CacheSubscriber callbacks
+// into a @Published `tick` so SwiftUI views observing the CacheHost
+// re-evaluate after any registered query refetches.
 //
-// Each screen reading from the cache should add `@EnvironmentObject
-// var cache: CacheHost` and re-run their fetch when `cache.tick`
-// changes — same pattern as the existing `liveTick` for SSE events.
+// Each screen reading from the cache observes `cache.tick` and re-runs
+// its fetch when it changes — same pattern as the existing `liveTick`.
 
 import Foundation
 import SwiftUI
 
 @MainActor
 final class CacheHost: ObservableObject {
-    /// Bumps on every cache refetch (Updated or Failed). UI screens
-    /// observe this to know when to re-pull from REST.
+    /// Bumps on every cache change (Updated only — polling stays quiet
+    /// when the payload is unchanged). UI screens observe this to know
+    /// when to re-pull from REST.
     @Published var tick: Int = 0
     @Published var lastInvalidate: String? = nil
+
+    /// Foreground poll cadence. Push (D-004) handles the urgent-event
+    /// latency; this is the steady-state refresh for an open screen.
+    private static let pollIntervalMs: UInt64 = 5_000
 
     let cache: SyncCache
 
     init(creds: DeviceCredentials) {
         self.cache = SyncCache(client: creds.client())
-        // Backend Rust server emits these 4 invalidate names today.
-        // (Verified against papercup-rust-server sync_invalidate::notify
-        //  call sites.) Names that aren't on this list silently no-op.
+        // Only names the bindings ClientFetcher maps onto a device route
+        // are pollable; unmapped names would just Fail every tick.
         for name in [
             "toastLog.recent",
             "auditLog.recent",
-            "operatorPauseFlag",
-            "harnessIdentity",
+            "operatorScans.running",
+            "harnesses.list",
         ] {
             cache.registerQuery(name: name)
         }
@@ -48,6 +53,18 @@ final class CacheHost: ObservableObject {
         })
     }
 
+    /// Begin polling. Idempotent — safe to call on every `.task` entry.
+    func start() {
+        cache.startPolling(intervalMs: Self.pollIntervalMs)
+    }
+
+    /// Stop polling (e.g. when the app backgrounds).
+    func stop() {
+        cache.stopPolling()
+    }
+
+    /// Force-refresh one query now (e.g. a push named a changed surface,
+    /// or pull-to-refresh).
     func handleInvalidate(_ name: String) async {
         await cache.handleInvalidate(name: name)
     }

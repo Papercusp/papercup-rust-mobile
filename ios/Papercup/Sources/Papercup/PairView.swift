@@ -129,22 +129,17 @@ struct PairView: View {
             defer { redeeming = false }
             do {
                 let payload = try parseQrPayload(text: raw)
-                let keys = generateWgKeypair()
                 let client = OperatorClient(baseUrl: payload.server, deviceToken: nil)
-                let outcome = try await client.pair(
-                    pairToken: payload.pairToken,
-                    wireguardPubkeyB64: keys.publicKeyB64
-                )
-                let wgQuick = outcome.mesh.map { meshToWgQuick(privateKeyB64: keys.privateKeyB64, config: $0) }
+                // Mesh is Defguard self-enrollment now (D-005): no WG
+                // keypair at pair time; the response carries an enrollment
+                // URL the user opens to join the mesh.
+                let outcome = try await client.pair(pairToken: payload.pairToken)
                 onPaired(DeviceCredentials(
                     server: payload.server,
                     deviceToken: outcome.deviceToken,
                     deviceId: outcome.deviceId,
                     workspaceId: outcome.workspaceId,
-                    meshAssignedIp: outcome.mesh?.assignedIp,
-                    wgQuickConfig: wgQuick,
-                    wgPrivateKey: outcome.mesh != nil ? keys.privateKeyB64 : nil,
-                    meshUrl: outcome.desktopMeshUrl
+                    defguardEnrollmentUrl: outcome.defguardEnrollmentUrl
                 ))
             } catch let err as PairError {
                 if case .InvalidQr(_) = err {

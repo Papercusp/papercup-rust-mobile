@@ -53,33 +53,25 @@ struct AppRoot: View {
     }
 
     /// Consume a pendingPair (papercup://pair?...) without going through
-    /// PairView. Mirrors PairView.redeem(): generate WG key + POST
-    /// /api/device/pair + persist DeviceCredentials. Used for pair-by-link
-    /// (email, scanning a QR with the system camera, etc.).
+    /// PairView. Mirrors PairView.redeem(): POST /api/device/pair + persist
+    /// DeviceCredentials. Used for pair-by-link (email, scanning a QR with
+    /// the system camera, etc.). Mesh is Defguard self-enrollment (D-005).
     @MainActor
     private func autoPair(_ p: PendingPair) async {
         let log = OSLog(subsystem: "com.papercuspai.operator.mobile", category: "AutoPair")
         os_log(.info, log: log, "starting server=%{public}@ ws=%{public}@",
                p.server, p.workspaceId)
         deepLink.pendingPair = nil
-        let keys = generateWgKeypair()
         let client = OperatorClient(baseUrl: p.server, deviceToken: nil)
         do {
-            let outcome = try await client.pair(
-                pairToken: p.pairToken,
-                wireguardPubkeyB64: keys.publicKeyB64
-            )
+            let outcome = try await client.pair(pairToken: p.pairToken)
             os_log(.info, log: log, "pair OK deviceId=%{public}@", outcome.deviceId)
-            let wgQuick = outcome.mesh.map { meshToWgQuick(privateKeyB64: keys.privateKeyB64, config: $0) }
             let fresh = DeviceCredentials(
                 server: p.server,
                 deviceToken: outcome.deviceToken,
                 deviceId: outcome.deviceId,
                 workspaceId: outcome.workspaceId,
-                meshAssignedIp: outcome.mesh?.assignedIp,
-                wgQuickConfig: wgQuick,
-                wgPrivateKey: outcome.mesh != nil ? keys.privateKeyB64 : nil,
-                meshUrl: outcome.desktopMeshUrl
+                defguardEnrollmentUrl: outcome.defguardEnrollmentUrl
             )
             CredentialStore.save(fresh)
             creds = fresh
@@ -253,10 +245,14 @@ private struct PairedShell: View {
         }
         .task(id: current.deviceToken) { monitor.start(); await runSync() }
         .onReceive(cacheHost.$tick) { _ in
-            // Bump the SSE-shared liveTick so existing screens that
-            // observe `invalidationTick: liveTick` refresh when any
-            // cache-tracked query refetches.
+            // The polling cache refetched a tracked query (D-001.1). Bump
+            // the shared liveTick so screens observing `invalidationTick:
+            // liveTick` refresh, and refresh badges when the changed
+            // surface is a notification/scan feed.
             liveTick += 1
+            if let name = cacheHost.lastInvalidate, Self.shouldRefreshBadges(for: name) {
+                Task { await badgeHost.refresh(showToast: true) }
+            }
         }
         .task(id: current.deviceToken) {
             await badgeHost.run()
@@ -373,24 +369,16 @@ private struct PairedShell: View {
     }
 
     private func runSync() async {
-        // Cache lives on cacheHost (@StateObject) so it survives SSE
-        // reconnects + lets the UI observe deltas via cacheHost.tick.
-        let stream = SyncStream(baseUrl: current.server, deviceToken: current.deviceToken)
-        defer { stream.disconnect() }
+        // SSE is retired (mobile-apps-revival D-001.1): the cache polls
+        // GET /api/device/rest-query and surfaces deltas via cacheHost.tick
+        // (observed by `.onReceive(cacheHost.$tick)` below, which bumps
+        // liveTick + refreshes badges). We just keep polling alive for the
+        // lifetime of the paired shell.
+        cacheHost.start()
+        defer { cacheHost.stop() }
         while !Task.isCancelled {
-            do {
-                let ev = try await stream.nextEvent()
-                lastInvalidate = ev.name
-                await cacheHost.handleInvalidate(ev.name)
-                if Self.shouldRefreshBadges(for: ev.name) {
-                    Task { await badgeHost.refresh(showToast: true) }
-                }
-                if ev.name.hasPrefix("harness") {
-                    liveTick += 1
-                }
-            } catch {
-                break
-            }
+            do { try await Task.sleep(nanoseconds: 30_000_000_000) }
+            catch { break }
         }
     }
 
@@ -404,7 +392,10 @@ private struct PairedShell: View {
 
 
 private struct ShellBadgeCounts: Equatable {
-    var pendingCards: Int = 0
+    /// Standing-approval candidates awaiting a decision (the operator-card
+    /// feed is retired — unify-agent-launches D-005; this is the surviving
+    /// "needs your call" signal).
+    var pendingApprovals: Int = 0
     var recentAlerts: Int = 0
 }
 
@@ -432,10 +423,10 @@ private final class ShellBadgeHost: ObservableObject {
 
     func refresh(showToast: Bool = true) async {
         let client = creds.client()
-        let pending = await pendingCardCount(client: client)
+        let pending = await pendingApprovalCount(client: client)
         let loadedNotifications = await recentNotifications(client: client)
         let fresh = ShellBadgeCounts(
-            pendingCards: pending,
+            pendingApprovals: pending,
             recentAlerts: loadedNotifications?.filter { Self.isAlertLevel($0.level) }.count ?? counts.recentAlerts
         )
         if counts != fresh {
@@ -452,11 +443,11 @@ private final class ShellBadgeHost: ObservableObject {
         }
     }
 
-    private func pendingCardCount(client: OperatorClient) async -> Int {
+    private func pendingApprovalCount(client: OperatorClient) async -> Int {
         do {
-            return (try await client.listOperatorCards()).count
+            return (try await client.standingCandidates()).count
         } catch {
-            return counts.pendingCards
+            return counts.pendingApprovals
         }
     }
 
@@ -733,13 +724,13 @@ private struct MobileBottomNav: View {
     let counts: ShellBadgeCounts
 
     private enum BadgeKind {
-        case pendingCards
+        case pendingApprovals
         case recentAlerts
     }
 
     private var items: [(tab: AppRoot.Tab, icon: String, label: String, badge: BadgeKind?)] {
         [
-            (.operatorTab, "●", NSLocalizedString("tab.operator", comment: ""), .pendingCards),
+            (.operatorTab, "●", NSLocalizedString("tab.operator", comment: ""), .pendingApprovals),
             (.harnesses, "⌘", NSLocalizedString("tab.harnesses", comment: ""), nil),
             (.running, "▶", NSLocalizedString("tab.running", comment: ""), nil),
             (.activity, "◆", NSLocalizedString("tab.activity", comment: ""), .recentAlerts),
@@ -799,7 +790,7 @@ private struct MobileBottomNav: View {
 
     private func count(for badge: BadgeKind) -> Int {
         switch badge {
-        case .pendingCards: return counts.pendingCards
+        case .pendingApprovals: return counts.pendingApprovals
         case .recentAlerts: return counts.recentAlerts
         }
     }
@@ -808,7 +799,7 @@ private struct MobileBottomNav: View {
         guard let badge else { return label }
         let count = count(for: badge)
         guard count > 0 else { return label }
-        return "\(label), \(count) \(badge == .pendingCards ? "pending" : "alerts")"
+        return "\(label), \(count) \(badge == .pendingApprovals ? "pending" : "alerts")"
     }
 }
 

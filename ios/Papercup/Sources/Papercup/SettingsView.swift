@@ -57,10 +57,14 @@ struct SettingsView: View {
             infoRow("Desktop", value: creds.server)
             infoRow("Workspace", value: creds.workspaceId)
             infoRow("Device ID", value: creds.deviceId, mono: true)
-            if let ip = creds.meshAssignedIp {
-                infoRow("Mesh address", value: ip, mono: true, isLast: true)
+            // Mesh = Defguard self-enrollment (D-005): if the pair response
+            // carried an enrollment URL, the device can join the mesh via
+            // Defguard. Reachability otherwise falls back to the public
+            // tunnel / LAN, so this is informational.
+            if creds.defguardEnrollmentUrl != nil {
+                infoRow("Mesh", value: "Defguard enrollment available", isLast: true)
             } else {
-                infoRow("Mesh address", value: "not assigned", isLast: true)
+                infoRow("Mesh", value: "public tunnel / LAN", isLast: true)
             }
         }
     }

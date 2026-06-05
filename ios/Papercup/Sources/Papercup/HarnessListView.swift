@@ -54,8 +54,8 @@ struct HarnessListView: View {
                              (harnesses.count == 1 ? "harness" : "harnesses"))
                         .font(.headline)
                         Spacer()
-                        if let ip = creds.meshAssignedIp {
-                            PapercupChip(text: "mesh · \(ip)", role: .accent)
+                        if creds.defguardEnrollmentUrl != nil {
+                            PapercupChip(text: "mesh", role: .accent)
                         }
                         PapercupChip(text: lastInvalidate.map { "live · \($0)" } ?? "live", role: .info)
                     }
