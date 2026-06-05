@@ -298,6 +298,59 @@ dictionary Device {
     string? paired_at;
 };
 
+/// The Inbox attention feed (D-002). groups_json is the opaque
+/// attention-group payload; work_items is the decoded actionable layer.
+dictionary AttentionFeed {
+    string groups_json;
+    sequence<AttentionWorkItem> work_items;
+    i64 group_count;
+    i64 work_item_count;
+};
+
+dictionary AttentionWorkItem {
+    string id;
+    string kind;
+    string family;
+    string? harness;
+    string title;
+    string summary;
+    string state;
+    string? assignee;
+    string? assigned_by;
+    string? severity;
+    string? parent;
+    string created_at;
+    string updated_at;
+};
+
+/// One plan card. item_counts is status -> count.
+dictionary PlanSummary {
+    string slug;
+    string harness;
+    string title;
+    string? status;
+    string? updated;
+    string? owner;
+    boolean archived;
+    record<string, i64> item_counts;
+    string? now_state;
+    string? now_next;
+};
+
+/// One plan's full detail. The parser-shaped sections are JSON strings.
+dictionary PlanDetail {
+    string slug;
+    string harness;
+    boolean archived;
+    string title;
+    string? status;
+    string? owner;
+    string frontmatter_json;
+    string now_json;
+    string items_json;
+    string decisions_json;
+};
+
 dictionary StandingCandidate {
     string capability;
     string target_harness;
@@ -408,6 +461,25 @@ interface OperatorClient {
     /// SyncCache + start_polling for UI surfaces.
     [Throws=ApiError, Async]
     string rest_query(string name, string args_json);
+
+    /// `GET /api/device/attention` — the Inbox attention feed (D-002):
+    /// canonical attention groups + the work_items-native actionable layer.
+    [Throws=ApiError, Async]
+    AttentionFeed attention();
+
+    /// `GET /api/device/plans` — plan summaries. harness=null → All Pots.
+    [Throws=ApiError, Async]
+    sequence<PlanSummary> plans_list(string? harness, boolean include_archived);
+
+    /// `GET /api/device/plans/:slug` — one plan's full detail.
+    [Throws=ApiError, Async]
+    PlanDetail plan_get(string slug, string? harness);
+
+    /// `POST /api/device/plans/:slug/items/:itemId/status` — flip a plan
+    /// item's status (approve→done, nudge→wip, gate→needs-human). Returns
+    /// the server's result JSON as a string.
+    [Throws=ApiError, Async]
+    string plan_item_set_status(string slug, string item_id, string status, string? note, string? harness);
 
     /// `GET /api/device/operator/standing-candidates`.
     [Throws=ApiError, Async]

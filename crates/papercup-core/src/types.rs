@@ -346,6 +346,126 @@ pub struct RestQueryResp {
     pub version: String,
 }
 
+// ── /api/device/attention (Inbox feed) ─────────────────────────────────
+//
+// D-002/D-003. `groups` is the canonical attention-group shape from
+// plans:attention (plan items + coord escalations + messages-to-human +
+// smoke-fails + plan-reviews) — a rich, evolving structure we keep as raw
+// JSON for the UI to render generically. `workItems` is the work_items-
+// native layer (attention-worthy features/bugs/changes), which we decode.
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttentionResp {
+    /// Raw attention groups (opaque, renderer-defined). Kept as JSON so a
+    /// server-side group-shape change doesn't break decode.
+    #[serde(default)]
+    pub groups: serde_json::Value,
+    #[serde(default)]
+    pub work_items: Vec<AttentionWorkItem>,
+    pub counts: AttentionCounts,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttentionCounts {
+    pub groups: i64,
+    pub work_items: i64,
+}
+
+/// Mirrors the server's `WorkItem` (work-items.ts). Single-word fields map
+/// as-is; camelCase handles assignedBy/createdAt/updatedAt.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttentionWorkItem {
+    pub id: String,
+    pub kind: String,
+    pub family: String,
+    #[serde(default)]
+    pub harness: Option<String>,
+    pub title: String,
+    #[serde(default)]
+    pub summary: String,
+    pub state: String,
+    #[serde(default)]
+    pub assignee: Option<String>,
+    #[serde(default)]
+    pub assigned_by: Option<String>,
+    #[serde(default)]
+    pub severity: Option<String>,
+    #[serde(default)]
+    pub parent: Option<String>,
+    #[serde(default)]
+    pub payload: serde_json::Value,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+// ── /api/device/plans ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlansResp {
+    pub plans: Vec<PlanSummary>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanSummary {
+    pub slug: String,
+    pub harness: String,
+    pub title: String,
+    /// Nullable: a plan without frontmatter status reads as null (verified
+    /// live — drafts/legacy plans have no status).
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub updated: Option<String>,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub archived: bool,
+    /// status → count, e.g. {"todo":3,"done":12}.
+    #[serde(default)]
+    pub item_counts: std::collections::HashMap<String, i64>,
+    #[serde(default)]
+    pub now_state: Option<String>,
+    #[serde(default)]
+    pub now_next: Option<String>,
+}
+
+/// One plan's full parsed structure. frontmatter/now/items/decisions are
+/// the plan-parser's own shapes — kept as JSON so the UI decodes what it
+/// needs without this crate tracking the parser's evolution.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlanDetail {
+    pub slug: String,
+    pub harness: String,
+    #[serde(default)]
+    pub archived: bool,
+    pub title: String,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub frontmatter: serde_json::Value,
+    #[serde(default)]
+    pub now: serde_json::Value,
+    #[serde(default)]
+    pub items: serde_json::Value,
+    #[serde(default)]
+    pub decisions: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PlanItemStatusBody {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness: Option<String>,
+}
+
 // ── standing approvals ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

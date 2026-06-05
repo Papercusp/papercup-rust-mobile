@@ -20,11 +20,12 @@
 use serde::de::DeserializeOwned;
 
 use crate::types::{
-    AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
-    ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, RestQueryResp, RunningHarnessPhase,
-    RunningResp, RunningScan, RuntimeConfig, StandingCandidate, StandingCandidatesResp,
-    StandingDecisionBody, ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, VoiceSessionInit,
-    WorkspaceItem, WorkspaceSwitchBody, WorkspaceSwitchResp, WorkspacesResp,
+    AttentionResp, AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite,
+    HarnessStatusFull, ListResp, PairBody, PairResp, PauseInfo, PlanDetail, PlanItemStatusBody,
+    PlanSummary, PlansResp, PushRegisterBody, RestQueryResp, RunningHarnessPhase, RunningResp,
+    RunningScan, RuntimeConfig, StandingCandidate, StandingCandidatesResp, StandingDecisionBody,
+    ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, VoiceSessionInit, WorkspaceItem,
+    WorkspaceSwitchBody, WorkspaceSwitchResp, WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -419,6 +420,72 @@ impl OperatorClient {
     pub async fn revoke_device(&self, device_id: &str) -> Result<(), ApiError> {
         let path = format!("/api/device/devices/{device_id}");
         self.request_empty(reqwest::Method::DELETE, &path, None)
+            .await
+    }
+
+    /// `GET /api/device/attention` — the Inbox attention feed (D-002):
+    /// canonical attention `groups` + the work_items-native `work_items`
+    /// layer (needs-human/blocked/failing features + open bugs/changes).
+    pub async fn attention(&self) -> Result<AttentionResp, ApiError> {
+        self.request_json::<AttentionResp>(reqwest::Method::GET, "/api/device/attention", None)
+            .await
+    }
+
+    /// `GET /api/device/plans?harness=&includeArchived=` — plan summaries.
+    /// `harness=None`/`"all"` fans out across every pot ("All Pots").
+    pub async fn plans_list(
+        &self,
+        harness: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<PlanSummary>, ApiError> {
+        let mut path = String::from("/api/device/plans?");
+        if let Some(h) = harness {
+            path.push_str(&format!("harness={}&", urlencode(h)));
+        }
+        path.push_str(&format!("includeArchived={include_archived}"));
+        self.request_json::<PlansResp>(reqwest::Method::GET, &path, None)
+            .await
+            .map(|r| r.plans)
+    }
+
+    /// `GET /api/device/plans/:slug?harness=` — one plan's full parsed
+    /// structure (frontmatter + now + items + decisions).
+    pub async fn plan_get(
+        &self,
+        slug: &str,
+        harness: Option<&str>,
+    ) -> Result<PlanDetail, ApiError> {
+        let mut path = format!("/api/device/plans/{}", urlencode(slug));
+        if let Some(h) = harness {
+            path.push_str(&format!("?harness={}", urlencode(h)));
+        }
+        self.request_json::<PlanDetail>(reqwest::Method::GET, &path, None)
+            .await
+    }
+
+    /// `POST /api/device/plans/:slug/items/:itemId/status` — flip a plan
+    /// item's status (approve→done, nudge→wip, gate→needs-human). Returns
+    /// the tool's raw result JSON.
+    pub async fn plan_item_set_status(
+        &self,
+        slug: &str,
+        item_id: &str,
+        status: &str,
+        note: Option<&str>,
+        harness: Option<&str>,
+    ) -> Result<serde_json::Value, ApiError> {
+        let path = format!(
+            "/api/device/plans/{}/items/{}/status",
+            urlencode(slug),
+            urlencode(item_id),
+        );
+        let body = serde_json::to_value(PlanItemStatusBody {
+            status: status.to_string(),
+            note: note.map(str::to_string),
+            harness: harness.map(str::to_string),
+        })
+        .expect("PlanItemStatusBody serialises");
+        self.request_json::<serde_json::Value>(reqwest::Method::POST, &path, Some(body))
             .await
     }
 

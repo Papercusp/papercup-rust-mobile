@@ -107,6 +107,44 @@ async fn live_p0_contract_smoke() {
     client.pause_get().await.expect("pause_get");
     client.heartbeat().await.expect("heartbeat");
 
+    // 4b. D-002 routes — attention (Inbox) + plans. These exercise the
+    // work_items-native + PG-canonical-plans decoders against real data.
+    let att = client.attention().await.expect("attention");
+    println!(
+        "attention: {} groups, {} workItems (counts {}/{})",
+        att.groups.as_array().map(|a| a.len()).unwrap_or(0),
+        att.work_items.len(),
+        att.counts.groups,
+        att.counts.work_items
+    );
+    let plans = client
+        .plans_list(None, false)
+        .await
+        .expect("plans_list (All Pots)");
+    println!("plans (All Pots): {}", plans.len());
+    if let Some(p) = plans.first() {
+        let detail = client
+            .plan_get(&p.slug, Some(&p.harness))
+            .await
+            .unwrap_or_else(|e| panic!("plan_get {}: {e}", p.slug));
+        println!(
+            "plan_get {}: title={:?} items={}",
+            detail.slug,
+            detail.title,
+            detail.items.as_array().map(|a| a.len()).unwrap_or(0)
+        );
+    }
+    // push register — idempotent upsert; a dummy APNS token is fine, it
+    // just lands in mobile_push_tokens keyed by (device_id, 'apns').
+    client
+        .register_push(papercup_core::types::PushRegisterBody {
+            platform: "apns".into(),
+            token: format!("live-smoke-apns-{}", pair.device_id),
+        })
+        .await
+        .expect("register_push");
+    println!("push registered (apns)");
+
     // 5. voice-session-init — any outcome is fine as long as it's the
     // documented contract: a session OR a flat-envelope config error.
     match client.voice_session_init().await {

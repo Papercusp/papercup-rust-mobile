@@ -739,6 +739,189 @@ async fn workspace_switch_posts_camel_case_and_decodes_new_token() {
     assert_eq!(r.workspace_id, "side");
 }
 
+// ── D-002 routes: attention (Inbox) + plans ────────────────────────────
+// Fixtures mirror packages/operator-core/lib/endpoint-route/routes/device/
+// {attention,plans}.ts (verified 2026-06-05). workItems mirror the server
+// WorkItem interface (work-items.ts).
+
+#[tokio::test]
+async fn attention_decodes_groups_workitems_and_counts() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/attention"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "groups": [ { "kind": "plan-item", "title": "Approve X" } ],
+            "workItems": [
+                {
+                    "id": "F-001", "kind": "feature", "family": "feature",
+                    "harness": "papercup", "title": "Fix the thing",
+                    "summary": "", "state": "needs-human",
+                    "assignee": null, "assignedBy": null, "severity": null,
+                    "parent": null, "payload": null,
+                    "createdAt": "2026-06-05T08:00:00Z", "updatedAt": "2026-06-05T09:00:00Z"
+                },
+                {
+                    "id": "EI-7", "kind": "bug", "family": "issue",
+                    "harness": null, "title": "broken route",
+                    "summary": "details", "state": "open",
+                    "assignee": null, "assignedBy": "su-1", "severity": "major",
+                    "parent": null, "payload": {"x": 1},
+                    "createdAt": "2026-06-05T08:00:00Z", "updatedAt": "2026-06-05T09:00:00Z"
+                }
+            ],
+            "counts": { "groups": 1, "workItems": 2 }
+        })))
+        .mount(&server)
+        .await;
+    let a = client.attention().await.unwrap();
+    assert_eq!(a.counts.groups, 1);
+    assert_eq!(a.counts.work_items, 2);
+    assert_eq!(a.work_items.len(), 2);
+    assert_eq!(a.work_items[0].id, "F-001");
+    assert_eq!(a.work_items[0].state, "needs-human");
+    assert_eq!(a.work_items[1].severity.as_deref(), Some("major"));
+    assert_eq!(a.work_items[1].assigned_by.as_deref(), Some("su-1"));
+    assert!(a.groups.is_array());
+}
+
+// The work_items-native layer can be empty (nothing needs a human); the
+// route still returns groups + counts. Optional/default fields must hold.
+#[tokio::test]
+async fn attention_empty_workitems_ok() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/attention"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "groups": [],
+            "workItems": [],
+            "counts": { "groups": 0, "workItems": 0 }
+        })))
+        .mount(&server)
+        .await;
+    let a = client.attention().await.unwrap();
+    assert!(a.work_items.is_empty());
+    assert_eq!(a.counts.work_items, 0);
+}
+
+#[tokio::test]
+async fn plans_list_sends_filters_and_decodes_summaries() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/plans"))
+        .and(query_param("harness", "papercup"))
+        .and(query_param("includeArchived", "false"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "plans": [
+                {
+                    "slug": "mobile-apps-revival-redesign-2026-06-05",
+                    "harness": "papercup",
+                    "title": "Mobile apps revival",
+                    "status": "active",
+                    "updated": "2026-06-05",
+                    "owner": "aviynw6@gmail.com",
+                    "archived": false,
+                    "itemCounts": { "todo": 2, "done": 5 },
+                    "nowState": "P1 in flight",
+                    "nowNext": "wire the tabs"
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let plans = client.plans_list(Some("papercup"), false).await.unwrap();
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].slug, "mobile-apps-revival-redesign-2026-06-05");
+    assert_eq!(plans[0].item_counts.get("done"), Some(&5));
+    assert_eq!(plans[0].now_next.as_deref(), Some("wire the tabs"));
+}
+
+// "All Pots" view — no harness param.
+#[tokio::test]
+async fn plans_list_all_pots_omits_harness() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/plans"))
+        .and(query_param("includeArchived", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"plans": []})))
+        .mount(&server)
+        .await;
+    let plans = client.plans_list(None, true).await.unwrap();
+    assert!(plans.is_empty());
+}
+
+// Regression (caught only by the live smoke, 2026-06-05): a plan without
+// frontmatter status serialises `status: null` — the decoder must accept it.
+#[tokio::test]
+async fn plans_list_tolerates_null_status() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/plans"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "plans": [
+                {
+                    "slug": "legacy-draft", "harness": "papercup",
+                    "title": "Legacy draft", "status": null,
+                    "updated": "2026-06-05", "owner": null, "archived": false,
+                    "itemCounts": {}, "nowState": null, "nowNext": null
+                }
+            ]
+        })))
+        .mount(&server)
+        .await;
+    let plans = client.plans_list(None, false).await.unwrap();
+    assert_eq!(plans.len(), 1);
+    assert!(plans[0].status.is_none());
+    assert!(plans[0].now_state.is_none());
+}
+
+#[tokio::test]
+async fn plan_get_decodes_detail_with_opaque_sections() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/plans/some-plan"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "slug": "some-plan", "harness": "papercup", "archived": false,
+            "title": "Some Plan", "status": "active", "owner": "x@y.com",
+            "frontmatter": { "raw": {} },
+            "now": { "state": "doing", "next": "ship" },
+            "items": [ { "id": "P-001", "status": "todo" } ],
+            "decisions": [ { "id": "D-001", "title": "use rust" } ]
+        })))
+        .mount(&server)
+        .await;
+    let d = client.plan_get("some-plan", None).await.unwrap();
+    assert_eq!(d.slug, "some-plan");
+    assert_eq!(d.now["next"], "ship");
+    assert_eq!(d.items[0]["id"], "P-001");
+}
+
+#[tokio::test]
+async fn plan_item_set_status_posts_body() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/device/plans/some-plan/items/P-001/status"))
+        .and(bearer_token(TOKEN))
+        .and(body_json(
+            json!({ "status": "done", "note": "approved from phone" }),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "ok": true })))
+        .mount(&server)
+        .await;
+    let res = client
+        .plan_item_set_status(
+            "some-plan",
+            "P-001",
+            "done",
+            Some("approved from phone"),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(res["ok"], true);
+}
+
 #[tokio::test]
 async fn fallback_url_used_when_primary_unreachable() {
     // Primary URL points at a closed port → connection refused → ApiError::Network.

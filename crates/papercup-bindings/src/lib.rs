@@ -9,8 +9,9 @@
 
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
 use papercup_core::types::{
-    AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
-    PauseInfo as CorePauseInfo, PushRegisterBody, RunningHarnessPhase as CoreRunning,
+    AttentionWorkItem as CoreAttentionWorkItem, AuditRow as CoreAudit, DeviceRow as CoreDevice,
+    HarnessLite, HarnessStatusFull, PairBody, PauseInfo as CorePauseInfo,
+    PlanSummary as CorePlanSummary, PushRegisterBody, RunningHarnessPhase as CoreRunning,
     RunningScan as CoreRunningScan, RuntimeConfig as CoreRuntimeConfig,
     StandingCandidate as CoreStandingCandidate, ToastRow as CoreToast,
     VoiceLeaseShape as CoreVoiceLease, VoiceSessionInit as CoreVoiceSessionInit,
@@ -645,6 +646,118 @@ impl From<CoreStandingCandidate> for StandingCandidate {
     }
 }
 
+// ── attention (Inbox) + plans (D-002) ────────────────────────────────────
+
+/// The Inbox attention feed. `groups_json` is the opaque attention-group
+/// payload (rendered generically by the UI); `work_items` is the decoded
+/// work_items-native layer (the actionable list).
+pub struct AttentionFeed {
+    pub groups_json: String,
+    pub work_items: Vec<AttentionWorkItem>,
+    pub group_count: i64,
+    pub work_item_count: i64,
+}
+
+pub struct AttentionWorkItem {
+    pub id: String,
+    pub kind: String,
+    pub family: String,
+    pub harness: Option<String>,
+    pub title: String,
+    pub summary: String,
+    pub state: String,
+    pub assignee: Option<String>,
+    pub assigned_by: Option<String>,
+    pub severity: Option<String>,
+    pub parent: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+impl From<CoreAttentionWorkItem> for AttentionWorkItem {
+    fn from(w: CoreAttentionWorkItem) -> Self {
+        Self {
+            id: w.id,
+            kind: w.kind,
+            family: w.family,
+            harness: w.harness,
+            title: w.title,
+            summary: w.summary,
+            state: w.state,
+            assignee: w.assignee,
+            assigned_by: w.assigned_by,
+            severity: w.severity,
+            parent: w.parent,
+            created_at: w.created_at,
+            updated_at: w.updated_at,
+        }
+    }
+}
+
+/// One plan card for the Plans list. `item_counts` is status→count.
+pub struct PlanSummary {
+    pub slug: String,
+    pub harness: String,
+    pub title: String,
+    pub status: Option<String>,
+    pub updated: Option<String>,
+    pub owner: Option<String>,
+    pub archived: bool,
+    pub item_counts: std::collections::HashMap<String, i64>,
+    pub now_state: Option<String>,
+    pub now_next: Option<String>,
+}
+
+impl From<CorePlanSummary> for PlanSummary {
+    fn from(p: CorePlanSummary) -> Self {
+        Self {
+            slug: p.slug,
+            harness: p.harness,
+            title: p.title,
+            status: p.status,
+            updated: p.updated,
+            owner: p.owner,
+            archived: p.archived,
+            item_counts: p.item_counts,
+            now_state: p.now_state,
+            now_next: p.now_next,
+        }
+    }
+}
+
+/// One plan's full detail. The parser-shaped sections (frontmatter / now /
+/// items / decisions) are passed through as JSON strings — the UI decodes
+/// what it renders without this layer tracking the parser's evolution.
+pub struct PlanDetail {
+    pub slug: String,
+    pub harness: String,
+    pub archived: bool,
+    pub title: String,
+    pub status: Option<String>,
+    pub owner: Option<String>,
+    pub frontmatter_json: String,
+    pub now_json: String,
+    pub items_json: String,
+    pub decisions_json: String,
+}
+
+impl From<papercup_core::types::PlanDetail> for PlanDetail {
+    fn from(d: papercup_core::types::PlanDetail) -> Self {
+        Self {
+            slug: d.slug,
+            harness: d.harness,
+            archived: d.archived,
+            title: d.title,
+            status: d.status,
+            owner: d.owner,
+            frontmatter_json: d.frontmatter.to_string(),
+            now_json: d.now.to_string(),
+            items_json: d.items.to_string(),
+            decisions_json: d.decisions.to_string(),
+        }
+    }
+}
+
 // ── voice ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, thiserror::Error)]
@@ -1152,6 +1265,89 @@ impl OperatorClient {
                 detail: "tokio join".into(),
             })??;
         Ok(result.rows.to_string())
+    }
+
+    /// `GET /api/device/attention` — the Inbox attention feed (D-002).
+    pub async fn attention(&self) -> Result<AttentionFeed, ApiError> {
+        let core = self.inner.clone();
+        let resp = rt()
+            .spawn(async move { core.attention().await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(AttentionFeed {
+            groups_json: resp.groups.to_string(),
+            group_count: resp.counts.groups,
+            work_item_count: resp.counts.work_items,
+            work_items: resp
+                .work_items
+                .into_iter()
+                .map(AttentionWorkItem::from)
+                .collect(),
+        })
+    }
+
+    /// `GET /api/device/plans` — plan summaries. `harness=None` → All Pots.
+    pub async fn plans_list(
+        &self,
+        harness: Option<String>,
+        include_archived: bool,
+    ) -> Result<Vec<PlanSummary>, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.plans_list(harness.as_deref(), include_archived).await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(result.into_iter().map(PlanSummary::from).collect())
+    }
+
+    /// `GET /api/device/plans/:slug` — one plan's full detail.
+    pub async fn plan_get(
+        &self,
+        slug: String,
+        harness: Option<String>,
+    ) -> Result<PlanDetail, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move { core.plan_get(&slug, harness.as_deref()).await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(result.into())
+    }
+
+    /// `POST /api/device/plans/:slug/items/:itemId/status` — flip a plan
+    /// item's status (approve→done, nudge→wip, gate→needs-human). Returns
+    /// the server's result JSON as a string.
+    pub async fn plan_item_set_status(
+        &self,
+        slug: String,
+        item_id: String,
+        status: String,
+        note: Option<String>,
+        harness: Option<String>,
+    ) -> Result<String, ApiError> {
+        let core = self.inner.clone();
+        let result = rt()
+            .spawn(async move {
+                core.plan_item_set_status(
+                    &slug,
+                    &item_id,
+                    &status,
+                    note.as_deref(),
+                    harness.as_deref(),
+                )
+                .await
+            })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(result.to_string())
     }
 
     pub async fn standing_candidates(&self) -> Result<Vec<StandingCandidate>, ApiError> {
