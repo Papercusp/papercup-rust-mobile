@@ -50,6 +50,12 @@ callback interface CacheSubscriber {
     void on_update(CacheUpdate update);
 };
 
+/// Receives the operator's streamed reply fragments during
+/// operator_converse_stream (one call per SSE `delta` event).
+callback interface ConverseDelta {
+    void on_delta(string text);
+};
+
 interface SyncCache {
     /// Build a cache scoped to the given OperatorClient. The cache
     /// uses the client to refetch. Caller wires register_query at
@@ -493,6 +499,13 @@ interface OperatorClient {
     /// the persisted turns.
     [Throws=ApiError, Async]
     void operator_converse(string text);
+
+    /// Streaming variant of operator_converse — the listener receives
+    /// each `delta` text fragment as the operator's reply streams in
+    /// (live typing bubble). Resolves once the server has persisted both
+    /// turns; re-call operator_conversation() to reconcile.
+    [Throws=ApiError, Async]
+    void operator_converse_stream(string text, ConverseDelta listener);
 
     /// `GET /api/device/attention` — the Inbox attention feed (D-002):
     /// canonical attention groups + the work_items-native actionable layer.

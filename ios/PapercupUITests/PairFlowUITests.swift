@@ -100,5 +100,90 @@ final class PairFlowUITests: XCTestCase {
         diagnostics.tap()
         XCTAssertTrue(app.staticTexts["Diagnostics"].waitForExistence(timeout: 5),
                       "Diagnostics detail page should open — proves Settings navigation works")
+
+        // ── Brief 44 verify-clause legs (pair → Inbox live → chat
+        // round-trip), still on the same one-shot pair token. ──
+
+        // Grant the push-permission system alert if it's up (the paired
+        // shell requests authorization on appear — D-004). Granting here
+        // is what lets the deep-link phase's simctl push render a real
+        // notification. Springboard query, not an interruption monitor
+        // (monitors are unreliable for springboard-owned alerts).
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allowBtn = springboard.alerts.buttons["Allow"]
+        if allowBtn.waitForExistence(timeout: 8) { allowBtn.tap() }
+
+        // Tab-bar buttons carry a badge suffix in their a11y label when a
+        // count is live (e.g. "Inbox, 24 needs you"), so an exact
+        // `app.buttons[label]` match misses them — match by label-prefix.
+        func tabButton(_ label: String) -> XCUIElement {
+            app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH[c] %@", label)
+            ).firstMatch
+        }
+
+        // Inbox leg — live attention feed renders (real fetch against the
+        // staging operator; the header always says "Needs you", and the
+        // feed resolves out of `loading` into content or the explicit
+        // empty state — an errorCard fails the predicate).
+        tabButton("Inbox").tap()
+        XCTAssertTrue(app.staticTexts["Needs you"].waitForExistence(timeout: 10),
+                      "Inbox header should render")
+        let liveLoaded = app.descendants(matching: .staticText).matching(
+            NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@",
+                        "awaiting you", "All clear")
+        ).firstMatch
+        XCTAssertTrue(liveLoaded.waitForExistence(timeout: 20),
+                      "Inbox should resolve the live attention fetch (count or all-clear)")
+
+        // Chat leg — a real round-trip on the SHARED operator thread:
+        // send a marker message, then assert the persisted thread re-read
+        // brings it back as a turn (proves device→server→PG→device).
+        tabButton("Operator").tap()
+        let marker = "Live iOS sim E2E (su-e7a83) — reply with one short sentence."
+        let field = app.textFields["Message the operator…"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "chat composer should render")
+        field.tap()
+        field.typeText(marker)
+        app.buttons["Send"].firstMatch.tap()
+        // The send drains the converse SSE then re-reads the thread; the
+        // marker coming back as a persisted turn IS the round-trip.
+        let echoed = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Live iOS sim E2E (su-e7a83)")
+        ).firstMatch
+        XCTAssertTrue(echoed.waitForExistence(timeout: 30),
+                      "sent message should appear as a persisted turn")
+        // And the operator's reply lands once the converse completes (the
+        // thinking bubble clears; a fresh assistant turn renders under our
+        // marker). 120s budget — a real operator turn burns a model call.
+        let working = app.staticTexts["Operator is working…"]
+        let gone = NSPredicate(format: "exists == false")
+        expectation(for: gone, evaluatedWith: working, handler: nil)
+        waitForExpectations(timeout: 120)
+    }
+
+    /// Push deep-link routing: a notification-tap userInfo (the exact
+    /// shape attention-notify.ts sends — `kind: needs-human`) routes a
+    /// cold-launched app to the Inbox tab (D-004). Driven through the
+    /// `pushUserInfo` launch-arg backdoor, which feeds the dict to the
+    /// SAME `DeepLinkRouter.handle(notificationUserInfo:)` a real APNs tap
+    /// uses — so this tests OUR routing end-to-end (router → pendingInbox
+    /// → AppRoot nav), not Apple's springboard. Real APNs can't reach a
+    /// simulator and the cert is owner-gated; delivery itself is covered
+    /// by the runner's `simctl push` (phase B). Needs prior-phase creds.
+    func testPushTapDeepLink() throws {
+        guard ProcessInfo.processInfo.environment["PAPERCUP_PUSH_TAP_PHASE"] == "1" else {
+            throw XCTSkip("PAPERCUP_PUSH_TAP_PHASE not set — runner-only phase (needs a paired device).")
+        }
+        let app = XCUIApplication()
+        // Don't wipe credentials — the pair phase persisted them; a push
+        // tap on an already-paired device must land on the Inbox.
+        app.launchArguments = [
+            "-com.papercuspai.uitests.pushUserInfo",
+            #"{"kind":"needs-human","title":"Papercusp E2E"}"#,
+        ]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Needs you"].waitForExistence(timeout: 25),
+                      "needs-human push tap should deep-link to the Inbox tab")
     }
 }

@@ -59,6 +59,22 @@ struct PapercupApp: App {
                 }
             }
         }
+        // Push-tap backdoor: feed a notification userInfo dict through the
+        // SAME DeepLinkRouter path a real APNs tap uses (D-004). Real APNs
+        // can't reach a simulator and the APNs cert is owner-gated, so this
+        // is how the E2E exercises cold-launch → deep-link routing
+        // deterministically (the springboard Notification Center tap is
+        // Apple's UI, not ours, and is too flaky to gate on).
+        if let i = args.firstIndex(of: "-com.papercuspai.uitests.pushUserInfo"),
+           i + 1 < args.count {
+            let raw = args[i + 1]
+            if let data = raw.data(using: .utf8),
+               let info = try? JSONSerialization.jsonObject(with: data) as? [AnyHashable: Any] {
+                DispatchQueue.main.async {
+                    DeepLinkRouter.shared.handle(notificationUserInfo: info)
+                }
+            }
+        }
         #endif
     }
 

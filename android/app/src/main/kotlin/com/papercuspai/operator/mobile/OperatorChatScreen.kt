@@ -22,28 +22,19 @@ import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
-import okhttp3.sse.EventSource
-import okhttp3.sse.EventSourceListener
-import okhttp3.sse.EventSources
-import org.json.JSONObject
-import java.util.concurrent.TimeUnit
+import uniffi.papercup.ConverseDelta
 
 /**
  * The Operator tab — a real chat thread on the SHARED operator conversation
- * (the same thread the desktop + TUI use). Reads history from
- * `GET /api/device/operator/conversation` and streams the operator's reply
- * from `POST /api/device/operator/converse` (SSE). Both are device-JWT
- * routes (mobile-apps-revival-redesign D-002/D-003).
- *
- * Wire path is OkHttp-direct (the same pattern RunLogScreen uses for the
- * harness log SSE) — the conversation read/converse are simple device
- * routes the Android core doesn't need a bespoke binding for. The voice FAB
- * (hoisted in the shell) feeds the SAME thread via the EL voice path.
+ * (the same thread the desktop + TUI use). Reads history via the core
+ * client's `operatorConversation()` and streams the operator's reply via
+ * `operatorConverseStream()` (the Rust core drains the converse SSE and
+ * hands back delta fragments through the ConverseDelta callback). Both go
+ * through the SAME `OperatorClient` every other screen uses — mesh-aware
+ * URL + fallback, one auth path, one error envelope — instead of a
+ * bespoke OkHttp SSE wire (mobile-apps-revival-redesign D-002/D-003; the
+ * core-converse fold). The voice FAB (hoisted in the shell) feeds the
+ * SAME thread via the EL voice path.
  */
 private data class ChatTurn(
     val seq: Long,
@@ -58,8 +49,6 @@ private fun displayText(raw: String): String {
     val stripped = if (say.isNotBlank()) say else raw.replace(Regex("(?s)</?say>"), "")
     return stripped.trim().ifBlank { raw.trim() }
 }
-
-private val JSON = "application/json; charset=utf-8".toMediaType()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,45 +65,17 @@ fun OperatorChatScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    val http = remember {
-        OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .build()
-    }
-
-    // Load the shared thread's recent turns. Re-runs on liveTick (a push or
-    // a desktop turn invalidates) and after we send.
+    // Load the shared thread's recent turns through the core client. Re-runs
+    // on liveTick (a push or a desktop turn invalidates) and after we send.
     LaunchedEffect(creds.deviceToken, liveTick, reloadTick) {
         // Don't clobber an in-progress streamed reply.
         if (sending) return@LaunchedEffect
         try {
-            val body = withContext(Dispatchers.IO) {
-                val req = Request.Builder()
-                    .url("${creds.server}/api/device/operator/conversation?limit=50")
-                    .addHeader("Authorization", "Bearer ${creds.deviceToken}")
-                    .build()
-                http.newCall(req).execute().use { resp ->
-                    if (!resp.isSuccessful) throw RuntimeException("HTTP ${resp.code}")
-                    resp.body?.string() ?: "{}"
-                }
+            val read = withContext(Dispatchers.IO) { creds.client().operatorConversation(50u) }
+            conversationId = read.conversationId
+            turns = read.turns.map { t ->
+                ChatTurn(seq = t.seq, role = t.role, text = displayText(t.text))
             }
-            val o = JSONObject(body)
-            conversationId = o.optJSONObject("conversation")?.optString("id")
-            val arr = o.optJSONArray("turns")
-            val loaded = buildList {
-                if (arr != null) for (i in 0 until arr.length()) {
-                    val t = arr.getJSONObject(i)
-                    add(
-                        ChatTurn(
-                            seq = t.optLong("seq", i.toLong()),
-                            role = t.optString("role", "assistant"),
-                            text = displayText(t.optString("text", "")),
-                        ),
-                    )
-                }
-            }
-            turns = loaded
             error = null
         } catch (t: Throwable) {
             error = t.message ?: t::class.simpleName ?: "Failed to load conversation"
@@ -136,63 +97,43 @@ fun OperatorChatScreen(
         turns = turns + ChatTurn(userSeq, "user", text) +
             ChatTurn(userSeq + 1, "assistant", "", streaming = true)
 
-        val payload = JSONObject().put("text", text).put("modality", "text").toString()
-        val req = Request.Builder()
-            .url("${creds.server}/api/device/operator/converse")
-            .addHeader("Authorization", "Bearer ${creds.deviceToken}")
-            .post(payload.toRequestBody(JSON))
-            .build()
-
+        // The Rust core drains the converse SSE and pushes each delta back
+        // through this callback (it may arrive off the main thread, so hop
+        // to the compose scope before touching state).
         val sb = StringBuilder()
-        EventSources.createFactory(http).newEventSource(
-            req,
-            object : EventSourceListener() {
-                override fun onEvent(es: EventSource, id: String?, type: String?, data: String) {
-                    when (type) {
-                        "delta" -> {
-                            val piece = runCatching { JSONObject(data).optString("text", "") }.getOrDefault("")
-                            if (piece.isNotEmpty()) {
-                                sb.append(piece)
-                                val shown = displayText(sb.toString())
-                                scope.launch {
-                                    turns = turns.dropLast(1) +
-                                        ChatTurn(userSeq + 1, "assistant", shown, streaming = true)
-                                }
-                            }
-                        }
-                        "error" -> {
-                            val msg = runCatching { JSONObject(data).optString("message", data) }.getOrDefault(data)
-                            scope.launch { error = msg }
-                        }
-                    }
+        val listener = object : ConverseDelta {
+            override fun onDelta(text: String) {
+                sb.append(text)
+                val shown = displayText(sb.toString())
+                scope.launch {
+                    turns = turns.dropLast(1) +
+                        ChatTurn(userSeq + 1, "assistant", shown, streaming = true)
                 }
+            }
+        }
 
-                override fun onClosed(es: EventSource) {
-                    scope.launch {
-                        val finalText = displayText(sb.toString())
-                        turns = turns.dropLast(1) +
-                            ChatTurn(userSeq + 1, "assistant", finalText.ifBlank { "…" })
-                        sending = false
-                        reloadTick += 1 // reconcile against the persisted thread
-                    }
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    creds.client().operatorConverseStream(text, listener)
                 }
-
-                override fun onFailure(es: EventSource, t: Throwable?, response: Response?) {
-                    scope.launch {
-                        // If we streamed anything, keep it; otherwise drop the empty bubble.
-                        val streamed = displayText(sb.toString())
-                        turns = if (streamed.isBlank()) {
-                            turns.dropLast(1)
-                        } else {
-                            turns.dropLast(1) + ChatTurn(userSeq + 1, "assistant", streamed)
-                        }
-                        error = response?.let { "stream failed: HTTP ${it.code}" }
-                            ?: ("stream failed: " + (t?.message ?: "unknown"))
-                        sending = false
-                    }
+                val finalText = displayText(sb.toString())
+                turns = turns.dropLast(1) +
+                    ChatTurn(userSeq + 1, "assistant", finalText.ifBlank { "…" })
+                reloadTick += 1 // reconcile against the persisted thread
+            } catch (t: Throwable) {
+                // If we streamed anything, keep it; otherwise drop the empty bubble.
+                val streamed = displayText(sb.toString())
+                turns = if (streamed.isBlank()) {
+                    turns.dropLast(1)
+                } else {
+                    turns.dropLast(1) + ChatTurn(userSeq + 1, "assistant", streamed)
                 }
-            },
-        )
+                error = t.message ?: t::class.simpleName ?: "stream failed"
+            } finally {
+                sending = false
+            }
+        }
     }
 
     Scaffold(

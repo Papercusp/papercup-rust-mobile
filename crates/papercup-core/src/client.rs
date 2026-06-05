@@ -47,6 +47,26 @@ impl From<reqwest::Error> for ApiError {
     }
 }
 
+/// Parse one SSE frame (`event: x\ndata: {...}`) into `(event, data)`.
+/// Multiple `data:` lines join with newlines per the SSE spec; the event
+/// name defaults to `message` when absent. Frames with no data (e.g. a
+/// bare comment/keep-alive `: ping`) return None.
+fn parse_sse_frame(frame: &str) -> Option<(String, String)> {
+    let mut event = String::from("message");
+    let mut data_lines: Vec<&str> = Vec::new();
+    for line in frame.lines() {
+        if let Some(v) = line.strip_prefix("event:") {
+            event = v.trim().to_string();
+        } else if let Some(v) = line.strip_prefix("data:") {
+            data_lines.push(v.strip_prefix(' ').unwrap_or(v));
+        }
+    }
+    if data_lines.is_empty() {
+        return None;
+    }
+    Some((event, data_lines.join("\n")))
+}
+
 /// Map a non-success response to an `ApiError`. 401 and 403 both mean
 /// the device principal was rejected → `Unauthorized` (re-pair). Other
 /// statuses surface as `Server` with the decoded error envelope.
@@ -434,13 +454,18 @@ impl OperatorClient {
     }
 
     /// `POST /api/device/operator/converse` — send a typed message to the
-    /// operator. The route streams the assistant turn over SSE; we drain
-    /// the stream to completion (the server persists both the user and
-    /// assistant turns as it goes), then the caller re-reads the
-    /// conversation. No delta parsing — the persisted turns are the source
-    /// of truth. A brain turn can take tens of seconds, so this uses an
-    /// extended per-request timeout instead of the 15s default.
-    pub async fn operator_converse(&self, text: &str) -> Result<(), ApiError> {
+    /// operator and stream the assistant's reply deltas as they arrive.
+    /// `on_delta` is called with each `delta` event's text fragment (the
+    /// UI appends them into a live bubble). When this resolves Ok, the
+    /// server has persisted both turns — re-read operator_conversation()
+    /// to reconcile against the canonical thread. A brain turn can take
+    /// tens of seconds, so this uses an extended per-request timeout.
+    pub async fn operator_converse_stream(
+        &self,
+        text: &str,
+        mut on_delta: impl FnMut(&str),
+    ) -> Result<(), ApiError> {
+        use futures_util::StreamExt;
         let token = match &self.device_token {
             Some(t) => t.clone(),
             None => return Err(ApiError::Unauthorized),
@@ -463,11 +488,50 @@ impl OperatorClient {
         if !resp.status().is_success() {
             return Err(into_api_error(resp).await);
         }
-        // Drain the SSE body to completion — when it closes, the assistant
-        // turn has been persisted. We don't parse the deltas; the caller
-        // re-reads operator_conversation() to display the new turns.
-        let _ = resp.bytes().await?;
+        // Incrementally parse the SSE frames. `delta` events carry
+        // `{"text": "..."}` fragments; an `error` event carries
+        // `{"message": "..."}` and fails the send.
+        let mut stream = resp.bytes_stream();
+        let mut buf = String::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(pos) = buf.find("\n\n") {
+                let frame: String = buf.drain(..pos + 2).take(pos).collect();
+                match parse_sse_frame(&frame) {
+                    Some((event, data)) if event == "delta" => {
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
+                            if let Some(t) = v.get("text").and_then(|t| t.as_str()) {
+                                if !t.is_empty() {
+                                    on_delta(t);
+                                }
+                            }
+                        }
+                    }
+                    Some((event, data)) if event == "error" => {
+                        let detail = serde_json::from_str::<serde_json::Value>(&data)
+                            .ok()
+                            .and_then(|v| {
+                                v.get("message").and_then(|m| m.as_str()).map(String::from)
+                            })
+                            .unwrap_or(data);
+                        return Err(ApiError::Server {
+                            status: 502,
+                            detail,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
         Ok(())
+    }
+
+    /// Buffered variant of [`operator_converse_stream`] — drains the SSE
+    /// to completion without surfacing deltas; the caller re-reads
+    /// operator_conversation() to display the persisted turns.
+    pub async fn operator_converse(&self, text: &str) -> Result<(), ApiError> {
+        self.operator_converse_stream(text, |_| {}).await
     }
 
     /// `GET /api/device/attention` — the Inbox attention feed (D-002):

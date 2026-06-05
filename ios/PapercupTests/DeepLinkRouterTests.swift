@@ -49,6 +49,48 @@ final class DeepLinkRouterTests: XCTestCase {
         XCTAssertNil(router.pendingSlug)
     }
 
+    // ── attention-kind → Inbox routing (D-004) ──
+    // The server (attention-notify.ts) tags actionable pushes with a
+    // `kind`; an attention kind deep-links to the Inbox tab.
+
+    func testAttentionKindRoutesToInbox() {
+        let router = DeepLinkRouter.shared
+        router.pendingInbox = false
+        router.pendingSlug = nil
+        router.handle(notificationUserInfo: ["kind": "needs-human"])
+        XCTAssertTrue(router.pendingInbox, "needs-human push should open the Inbox")
+    }
+
+    func testAttentionKindWithHarnessRoutesBoth() {
+        let router = DeepLinkRouter.shared
+        router.pendingInbox = false
+        router.pendingSlug = nil
+        router.handle(notificationUserInfo: ["kind": "plan-review", "harness": "alpha-1"])
+        XCTAssertTrue(router.pendingInbox, "attention push opens the Inbox")
+        XCTAssertEqual(router.pendingSlug, "alpha-1", "and pushes the harness detail over it")
+    }
+
+    func testBareNotificationOpensInbox() {
+        let router = DeepLinkRouter.shared
+        router.pendingInbox = false
+        router.pendingSlug = nil
+        router.handle(notificationUserInfo: [:])
+        XCTAssertTrue(router.pendingInbox, "a kind-less, harness-less tap still opens the Inbox")
+    }
+
+    func testNonAttentionKindWithoutHarnessIsInert() {
+        // A kind the attention-set doesn't recognise, with no harness, is
+        // inert (the bare-tap Inbox fallback only fires when kind == nil).
+        // The server's MOBILE_KIND map only sends recognised kinds, so
+        // this branch is defensive, not a live path.
+        let router = DeepLinkRouter.shared
+        router.pendingInbox = false
+        router.pendingSlug = nil
+        router.handle(notificationUserInfo: ["kind": "completion"])
+        XCTAssertFalse(router.pendingInbox, "unrecognised kind without a harness routes nowhere")
+        XCTAssertNil(router.pendingSlug, "no harness slug to route")
+    }
+
     func testPairUrlSetsPendingPair() {
         let router = DeepLinkRouter.shared
         router.pendingPair = nil

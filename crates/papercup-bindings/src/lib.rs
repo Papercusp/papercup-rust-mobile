@@ -99,6 +99,12 @@ pub trait CacheSubscriber: Send + Sync {
     fn on_update(&self, update: CacheUpdate);
 }
 
+/// Foreign listener for operator_converse_stream — receives each SSE
+/// `delta` text fragment as the operator's reply streams in.
+pub trait ConverseDelta: Send + Sync {
+    fn on_delta(&self, text: String);
+}
+
 struct CacheSubShim(std::sync::Arc<dyn CacheSubscriber>);
 impl papercup_core::cache::Subscriber for CacheSubShim {
     fn on_update(&self, u: papercup_core::cache::CacheUpdate) {
@@ -1330,6 +1336,27 @@ impl OperatorClient {
             .map_err(|_| ApiError::Network {
                 detail: "tokio join".into(),
             })??;
+        Ok(())
+    }
+
+    /// Streaming variant of operator_converse — `listener.on_delta` fires
+    /// with each SSE `delta` fragment (UDL callbacks are Send + Sync, so
+    /// invoking from the runtime task is safe). Resolves once the server
+    /// has persisted both turns.
+    pub async fn operator_converse_stream(
+        &self,
+        text: String,
+        listener: Box<dyn ConverseDelta>,
+    ) -> Result<(), ApiError> {
+        let core = self.inner.clone();
+        rt().spawn(async move {
+            core.operator_converse_stream(&text, |d| listener.on_delta(d.to_string()))
+                .await
+        })
+        .await
+        .map_err(|_| ApiError::Network {
+            detail: "tokio join".into(),
+        })??;
         Ok(())
     }
 

@@ -1040,3 +1040,83 @@ async fn fallback_not_used_for_4xx() {
         "fallback should not be activated by HTTP errors"
     );
 }
+
+// ── operator_converse_stream (SSE delta parsing) ────────────────────────
+// routes/device/operator-converse.ts streams the assistant turn as
+// `event: delta` + `data: {"text":"…"}` frames; an `error` event carries
+// `{"message":"…"}`. The buffered operator_converse() rides the same
+// parser with a no-op callback.
+
+#[tokio::test]
+async fn operator_converse_stream_emits_deltas_in_order() {
+    let (client, server) = paired_client().await;
+    // Includes a keep-alive comment frame and a frame with no data —
+    // both must be skipped without breaking the delta sequence.
+    let sse = ": ping\n\n\
+               event: delta\ndata: {\"text\":\"Hel\"}\n\n\
+               event: delta\ndata: {\"text\":\"lo \"}\n\n\
+               event: delta\ndata: {\"text\":\"world\"}\n\n\
+               event: done\ndata: {}\n\n";
+    Mock::given(method("POST"))
+        .and(path("/api/device/operator/converse"))
+        .and(bearer_token(TOKEN))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse),
+        )
+        .mount(&server)
+        .await;
+
+    let mut got = String::new();
+    client
+        .operator_converse_stream("hi", |d| got.push_str(d))
+        .await
+        .unwrap();
+    assert_eq!(got, "Hello world");
+}
+
+#[tokio::test]
+async fn operator_converse_stream_surfaces_error_event() {
+    let (client, server) = paired_client().await;
+    let sse = "event: delta\ndata: {\"text\":\"par\"}\n\n\
+               event: error\ndata: {\"message\":\"brain unavailable\"}\n\n";
+    Mock::given(method("POST"))
+        .and(path("/api/device/operator/converse"))
+        .and(bearer_token(TOKEN))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse),
+        )
+        .mount(&server)
+        .await;
+
+    let mut got = String::new();
+    let err = client
+        .operator_converse_stream("hi", |d| got.push_str(d))
+        .await
+        .unwrap_err();
+    assert_eq!(got, "par", "deltas before the error still surface");
+    match err {
+        ApiError::Server { detail, .. } => assert_eq!(detail, "brain unavailable"),
+        other => panic!("expected Server error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn operator_converse_buffered_drains_without_deltas() {
+    let (client, server) = paired_client().await;
+    let sse = "event: delta\ndata: {\"text\":\"x\"}\n\nevent: done\ndata: {}\n\n";
+    Mock::given(method("POST"))
+        .and(path("/api/device/operator/converse"))
+        .and(bearer_token(TOKEN))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(sse),
+        )
+        .mount(&server)
+        .await;
+    client.operator_converse("hi").await.unwrap();
+}
