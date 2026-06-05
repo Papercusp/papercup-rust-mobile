@@ -190,14 +190,21 @@ private fun AppRoot(
 
     // Phase 5a: keep the FCM token registered with the operator so the
     // desktop can push to this device. Idempotent server-side; only
-    // hits the wire on credential change or app cold-start.
+    // hits the wire on credential change or app cold-start. Logged — a
+    // silent failure here meant push delivery broke undiagnosably (the
+    // E2E pass found the server holding a stale token with no trace of
+    // why the refresh never landed).
     LaunchedEffect(current.deviceToken) {
         try {
             val token = FirebaseMessaging.getInstance().token.await()
+            Log.i("PapercupPush", "startup token fetch ok (${token.take(12)}…); registering")
             current.client()
                 .registerPush(platform = "fcm", token = token)
-        } catch (_: Throwable) {
-            // Ignore here; PushService.onNewToken will retry on rotation.
+            Log.i("PapercupPush", "startup registerPush ok")
+        } catch (t: Throwable) {
+            // PushService.onNewToken retries on rotation; log so a stuck
+            // fetch / failed register is visible in logcat.
+            Log.w("PapercupPush", "startup push registration failed: ${t.message ?: t::class.simpleName}")
         }
     }
 
