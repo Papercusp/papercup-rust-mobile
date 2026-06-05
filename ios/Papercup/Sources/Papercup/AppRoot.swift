@@ -179,11 +179,12 @@ private struct PairedShell: View {
                 Group {
                     switch tab {
                     case .inbox:
-                        // Interim Inbox: the recent notifications + audit
-                        // activity feed. The unified actionable attention
-                        // feed (approvals/blocked/questions/completions)
-                        // lands with the device/attention route (D-002).
-                        ActivityView(
+                        // The actionable attention feed over GET
+                        // /api/device/attention (D-002): work_items-native
+                        // (needs-human/blocked/failing + open bugs) + the
+                        // canonical attention groups. The full activity log
+                        // is one tap away inside it.
+                        InboxView(
                             creds: current,
                             invalidationTick: liveTick,
                             onSelectHarness: onSelectHarness
@@ -322,12 +323,29 @@ private struct PairedShell: View {
                 deepLink.pendingSlug = nil
             }
         }
+        .onChange(of: deepLink.pendingInbox) { _, isInbox in
+            if isInbox {
+                tab = .inbox
+                deepLink.pendingInbox = false
+            }
+        }
         .onAppear {
             if voice.state == .idle { wakeWord.start() }
             if let slug = deepLink.pendingSlug {
                 pushedDetailSlug = slug
                 deepLink.pendingSlug = nil
             }
+            if deepLink.pendingInbox {
+                tab = .inbox
+                deepLink.pendingInbox = false
+            }
+        }
+        .task(id: current.deviceToken) {
+            // Prompt for notification permission + register the APNS token
+            // once paired (D-004). Inert without the aps-environment
+            // entitlement (Apple Developer Program) — the registration
+            // POST + tap routing are correct and activate when signed in.
+            await PushManager(creds: current).requestPermissionAndRegister()
         }
         .onDisappear { monitor.stop(); voice.stop(); wakeWord.stop() }
         // End any active voice session when the app backgrounds.
@@ -457,7 +475,9 @@ private struct ShellBadgeCounts: Equatable {
     /// feed is retired — unify-agent-launches D-005; this is the surviving
     /// "needs your call" signal).
     var pendingApprovals: Int = 0
-    var recentAlerts: Int = 0
+    /// Inbox attention count — work_items needing the human (GET
+    /// /api/device/attention, D-002). The badge on the Inbox tab.
+    var inboxAttention: Int = 0
 }
 
 @MainActor
@@ -485,10 +505,11 @@ private final class ShellBadgeHost: ObservableObject {
     func refresh(showToast: Bool = true) async {
         let client = creds.client()
         let pending = await pendingApprovalCount(client: client)
+        let inbox = await inboxAttentionCount(client: client)
         let loadedNotifications = await recentNotifications(client: client)
         let fresh = ShellBadgeCounts(
             pendingApprovals: pending,
-            recentAlerts: loadedNotifications?.filter { Self.isAlertLevel($0.level) }.count ?? counts.recentAlerts
+            inboxAttention: inbox ?? counts.inboxAttention
         )
         if counts != fresh {
             counts = fresh
@@ -509,6 +530,14 @@ private final class ShellBadgeHost: ObservableObject {
             return (try await client.standingCandidates()).count
         } catch {
             return counts.pendingApprovals
+        }
+    }
+
+    private func inboxAttentionCount(client: OperatorClient) async -> Int? {
+        do {
+            return Int((try await client.attention()).workItemCount)
+        } catch {
+            return nil
         }
     }
 
@@ -786,12 +815,12 @@ private struct MobileBottomNav: View {
 
     private enum BadgeKind {
         case pendingApprovals
-        case recentAlerts
+        case inboxAttention
     }
 
     private var items: [(tab: AppRoot.Tab, icon: String, label: String, badge: BadgeKind?)] {
         [
-            (.inbox, "◆", NSLocalizedString("tab.inbox", comment: ""), .recentAlerts),
+            (.inbox, "◆", NSLocalizedString("tab.inbox", comment: ""), .inboxAttention),
             (.operatorTab, "●", NSLocalizedString("tab.operator", comment: ""), .pendingApprovals),
             (.plans, "❒", NSLocalizedString("tab.plans", comment: ""), nil),
             (.brew, "▦", NSLocalizedString("tab.brew", comment: ""), nil),
@@ -811,7 +840,7 @@ private struct MobileBottomNav: View {
                             Text(item.icon)
                                 .font(.system(size: 18, weight: .semibold))
                             if let badge = item.badge {
-                                NavBadge(count: count(for: badge), tone: badge == .recentAlerts ? .attention : .info)
+                                NavBadge(count: count(for: badge), tone: badge == .inboxAttention ? .attention : .info)
                                     .offset(x: 12, y: -5)
                             }
                         }
@@ -852,7 +881,7 @@ private struct MobileBottomNav: View {
     private func count(for badge: BadgeKind) -> Int {
         switch badge {
         case .pendingApprovals: return counts.pendingApprovals
-        case .recentAlerts: return counts.recentAlerts
+        case .inboxAttention: return counts.inboxAttention
         }
     }
 
@@ -860,7 +889,7 @@ private struct MobileBottomNav: View {
         guard let badge else { return label }
         let count = count(for: badge)
         guard count > 0 else { return label }
-        return "\(label), \(count) \(badge == .pendingApprovals ? "pending" : "alerts")"
+        return "\(label), \(count) \(badge == .pendingApprovals ? "pending" : "needs you")"
     }
 }
 

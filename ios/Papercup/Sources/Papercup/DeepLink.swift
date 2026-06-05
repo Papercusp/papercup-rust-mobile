@@ -32,8 +32,18 @@ final class DeepLinkRouter: ObservableObject {
     static let shared = DeepLinkRouter()
     @Published var pendingSlug: String? = nil
     @Published var pendingPair: PendingPair? = nil
+    /// Set when an attention/inbox push is tapped (kind = intervention /
+    /// smoke-fail / plan-review). AppRoot routes it to the Inbox tab —
+    /// every inbox push deep-links here (mobile-apps-revival D-004).
+    @Published var pendingInbox: Bool = false
 
     private init() {}
+
+    /// Push `kind` values that mean "look at your Inbox" (mirrors the
+    /// server's MOBILE_KIND map in attention-notify.ts).
+    private static let attentionKinds: Set<String> = [
+        "intervention", "smoke-fail", "plan-review", "needs-human",
+    ]
 
     private static let log = OSLog(subsystem: "com.papercuspai.operator.mobile", category: "DeepLink")
 
@@ -72,11 +82,26 @@ final class DeepLinkRouter: ObservableObject {
         return false
     }
 
-    /// Called from the UNUserNotificationCenterDelegate on tap. Looks
-    /// for a `harnessSlug` (or fallback `slug`) string in the userInfo.
+    /// Called from the UNUserNotificationCenterDelegate on tap. The
+    /// server (attention-notify.ts) sends `kind` + an optional `harness`
+    /// slug in the push data. Every attention push deep-links to the
+    /// Inbox (D-004); a harness-scoped push also pushes that harness's
+    /// detail over it.
     func handle(notificationUserInfo info: [AnyHashable: Any]) {
-        if let slug = info["harnessSlug"] as? String ?? info["slug"] as? String {
+        let kind = info["kind"] as? String
+        if let k = kind, Self.attentionKinds.contains(k) {
+            pendingInbox = true
+        }
+        // Server key is `harness`; keep `harnessSlug`/`slug` for parity
+        // with any older payloads.
+        if let slug = info["harness"] as? String
+            ?? info["harnessSlug"] as? String
+            ?? info["slug"] as? String,
+            !slug.isEmpty {
             pendingSlug = slug
+        } else if kind == nil {
+            // No kind, no harness — a bare tap still opens the Inbox.
+            pendingInbox = true
         }
     }
 }
