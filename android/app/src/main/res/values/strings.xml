@@ -11,12 +11,16 @@
 <resources>
     <string name="app_name">Papercusp</string>
 
-    <!-- Tab nav (MainActivity bottom bar) -->
+    <!-- Tab nav (MainActivity bottom bar) — Inbox-first 5-tab redesign (D-003) -->
+    <string name="tab_inbox">Inbox</string>
     <string name="tab_operator">Operator</string>
-    <string name="tab_harnesses">Harness</string>
+    <string name="tab_plans">Plans</string>
+    <string name="tab_brew">Brew</string>
+    <string name="tab_settings">Settings</string>
+    <!-- Retained for any legacy references -->
+    <string name="tab_harnesses">Brew</string>
     <string name="tab_running">Running</string>
     <string name="tab_activity">Inbox</string>
-    <string name="tab_settings">Settings</string>
 
     <!-- Settings nav rows -->
     <string name="settings_standing_approvals">Standing approvals</string>

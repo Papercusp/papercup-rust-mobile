@@ -46,8 +46,6 @@ import uniffi.papercup.OperatorClient
 import uniffi.papercup.PairException
 import uniffi.papercup.PairOutcome
 import uniffi.papercup.QrPayload
-import uniffi.papercup.generateWgKeypair
-import uniffi.papercup.meshToWgQuick
 import uniffi.papercup.parseQrPayload
 
 /// One-shot pair flow. Either the QR scanner finds a payload, or the user
@@ -60,6 +58,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var redeeming by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     fun redeem(payload: QrPayload) {
         if (redeeming) return
@@ -67,21 +66,29 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
         error = null
         scope.launch {
             try {
-                val keys = generateWgKeypair()
+                // D-005: the server moved the mesh to Defguard self-enrollment —
+                // pair() just exchanges the token; the outcome carries a
+                // defguardEnrollmentUrl we open once so the phone joins the mesh.
+                // No WireGuard keypair / wg-config at pair time anymore.
                 val client = OperatorClient(payload.server, null)
-                val outcome: PairOutcome = client.pair(payload.pairToken, keys.publicKeyB64)
-                val mesh = outcome.mesh
-                val wgQuick = mesh?.let { meshToWgQuick(keys.privateKeyB64, it) }
+                val outcome: PairOutcome = client.pair(payload.pairToken)
+                outcome.defguardEnrollmentUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                    runCatching {
+                        val intent = android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse(url),
+                        ).apply { flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK }
+                        context.startActivity(intent)
+                    }
+                }
                 onPaired(
                     DeviceCredentials(
                         server = payload.server,
                         deviceToken = outcome.deviceToken,
                         deviceId = outcome.deviceId,
                         workspaceId = outcome.workspaceId,
-                        meshAssignedIp = mesh?.assignedIp,
-                        wgQuickConfig = wgQuick,
-                        wgPrivateKey = if (mesh != null) keys.privateKeyB64 else null,
-                        meshUrl = outcome.desktopMeshUrl,
+                        meshUrl = null,
+                        defguardEnrollmentUrl = outcome.defguardEnrollmentUrl,
                     ),
                 )
             } catch (e: PairException) {

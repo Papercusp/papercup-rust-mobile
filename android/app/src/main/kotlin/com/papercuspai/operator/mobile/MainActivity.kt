@@ -54,8 +54,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uniffi.papercup.ApiException
 import uniffi.papercup.Harness
-import uniffi.papercup.SyncException
-import uniffi.papercup.SyncStream
 import uniffi.papercup.version
 import java.time.Duration
 import java.time.Instant
@@ -63,15 +61,18 @@ import java.time.format.DateTimeParseException
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
     private val deepLinkSlug = mutableStateOf<String?>(null)
+    // Attention/inbox push tap → open the Inbox tab (D-004 deep-link target).
+    private val deepLinkInbox = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val store = CredentialStore(applicationContext)
         ensureNotificationChannel(applicationContext)
         deepLinkSlug.value = intent?.getStringExtra(EXTRA_DEEPLINK_SLUG)
+        deepLinkInbox.value = intent?.getBooleanExtra(EXTRA_DEEPLINK_INBOX, false) ?: false
         setContent {
             PapercupTheme {
-                AppRoot(store, deepLinkSlug)
+                AppRoot(store, deepLinkSlug, deepLinkInbox)
             }
         }
     }
@@ -79,16 +80,23 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra(EXTRA_DEEPLINK_SLUG)?.let { deepLinkSlug.value = it }
+        if (intent.getBooleanExtra(EXTRA_DEEPLINK_INBOX, false)) deepLinkInbox.value = true
     }
 }
 
 @Composable
-private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runtime.MutableState<String?>) {
+private fun AppRoot(
+    store: CredentialStore,
+    deepLinkSlug: androidx.compose.runtime.MutableState<String?>,
+    deepLinkInbox: androidx.compose.runtime.MutableState<Boolean>,
+) {
     val context = LocalContext.current
     var creds by remember { mutableStateOf(store.load()) }
-    var route by remember { mutableStateOf<Route>(Route.Operator) }
+    var route by remember { mutableStateOf<Route>(Route.Inbox) }
     var liveTick by remember { mutableStateOf(0) }
     var lastInvalidate by remember { mutableStateOf<String?>(null) }
+    // Pot (harness) filter for the header switcher — null = "All Pots" (D-003).
+    var selectedPot by remember { mutableStateOf<String?>(null) }
 
     // Deep-link from a tapped notification → harness detail. Cleared
     // immediately so a back-press doesn't re-navigate on recomposition.
@@ -96,6 +104,14 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         val slug = deepLinkSlug.value ?: return@LaunchedEffect
         if (creds != null) route = Route.Detail(slug)
         deepLinkSlug.value = null
+    }
+
+    // Attention/inbox push tap → open the Inbox tab (D-004). Slug deep-link
+    // (above) wins when both are present (a harness-scoped push).
+    LaunchedEffect(deepLinkInbox.value) {
+        if (!deepLinkInbox.value) return@LaunchedEffect
+        if (creds != null && deepLinkSlug.value == null) route = Route.Inbox
+        deepLinkInbox.value = false
     }
 
     // Android 13+ runtime grant for showing notifications. Best-effort:
@@ -114,7 +130,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         PairScreen(onPaired = { fresh ->
             store.save(fresh)
             creds = fresh
-            route = Route.Operator
+            route = Route.Inbox
         })
         return
     }
@@ -149,30 +165,12 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
         onDispose { cache.close() }
     }
 
-    // Single SSE subscription, lives for the duration of the paired
-    // session — pumps invalidations into the cache + bumps the
-    // liveTick the UI reads for transient "live · X" pills.
-    DisposableEffect(current.deviceToken) {
-        val stream = SyncStream(current.server, current.deviceToken)
-        val job = kotlinx.coroutines.MainScope().launch {
-            try {
-                while (true) {
-                    val ev = stream.nextEvent()
-                    lastInvalidate = ev.name
-                    cache.handleInvalidate(ev.name)
-                    if (ev.name.startsWith("harness")) {
-                        liveTick += 1
-                    }
-                }
-            } catch (_: CancellationException) {
-            } catch (_: SyncException) {
-            }
-        }
-        onDispose {
-            stream.disconnect()
-            stream.close()
-            job.cancel()
-        }
+    // Live refresh is now polling-based: the SyncCache (start_polling) +
+    // the per-screen `liveTick`-keyed reloads + the 30s shell refresh keep
+    // the UI current. The streaming SSE SyncStream was retired with the
+    // server's SSE→rest-query move (mobile-apps-revival-redesign D-001).
+    LaunchedEffect(current.deviceToken) {
+        cache.startPolling(15_000UL)
     }
 
     // Phase 5a: keep the FCM token registered with the operator so the
@@ -231,8 +229,8 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
                     route = Route.Detail(intent.slug)
                 is VoiceManager.Intent.NavigateTab -> route = when (intent.tab) {
                     VoiceManager.Intent.Tab.Operator -> Route.Operator
-                    VoiceManager.Intent.Tab.Harnesses -> Route.List
-                    VoiceManager.Intent.Tab.Activity -> Route.Activity
+                    VoiceManager.Intent.Tab.Harnesses -> Route.Brew
+                    VoiceManager.Intent.Tab.Activity -> Route.Inbox
                     VoiceManager.Intent.Tab.Settings -> Route.Settings
                 }
                 is VoiceManager.Intent.NavigateVoiceSettings ->
@@ -342,13 +340,18 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             creds = current,
             slug = r.slug,
             invalidationTick = liveTick,
-            onBack = { route = Route.List },
+            onBack = { route = Route.Brew },
             onOpenRunLog = { route = Route.RunLog(r.slug) },
         )
         is Route.RunLog -> RunLogScreen(
             creds = current,
             slug = r.slug,
             onBack = { route = Route.Detail(r.slug) },
+        )
+        Route.Running -> RunningScreen(
+            creds = current,
+            liveTick = liveTick,
+            onSelectHarness = { slug -> route = Route.Detail(slug) },
         )
         Route.StandingApprovals -> StandingApprovalsScreen(creds = current, onBack = { route = Route.Settings })
         Route.VoiceSettings -> VoiceSettingsScreen(onBack = { route = Route.Settings })
@@ -363,7 +366,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             onOpenHarnessDetail = { slug -> route = Route.Detail(slug) },
             onOpenRunLog = { slug -> route = Route.RunLog(slug) },
             onOpenOperator = { route = Route.Operator },
-            onOpenInbox = { route = Route.Activity },
+            onOpenInbox = { route = Route.Inbox },
         )
         Route.WorkspaceSelector -> WorkspaceSelectorScreen(
             creds = current,
@@ -376,7 +379,7 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             onSelectHarness = { slug -> route = Route.Detail(slug) },
             mode = ActivitySurface.History,
             onOpenRecentActions = { route = Route.RecentActions },
-            onBack = { route = Route.Activity },
+            onBack = { route = Route.Inbox },
         )
         Route.RecentActions -> ActivityScreen(
             creds = current,
@@ -384,23 +387,27 @@ private fun AppRoot(store: CredentialStore, deepLinkSlug: androidx.compose.runti
             onSelectHarness = { slug -> route = Route.Detail(slug) },
             mode = ActivitySurface.Actions,
             onOpenHistory = { route = Route.NotificationHistory },
-            onBack = { route = Route.Activity },
+            onBack = { route = Route.Inbox },
         )
-        Route.Operator, Route.List, Route.Running, Route.Activity, Route.Settings -> PairedShell(
+        Route.Inbox, Route.Operator, Route.Plans, Route.Brew, Route.Settings -> PairedShell(
             current = current,
             voice = voice,
             liveTick = liveTick,
             lastInvalidate = lastInvalidate,
             monitor = monitor,
             route = r,
+            selectedPot = selectedPot,
+            onPotChange = { selectedPot = it },
             onRouteChange = { route = it },
             onSelectHarness = { slug -> route = Route.Detail(slug) },
+            onOpenRunning = { route = Route.Running },
             onOpenWorkspaceSelector = { route = Route.WorkspaceSelector },
             onOpenStandingApprovals = { route = Route.StandingApprovals },
             onOpenVoiceSettings = { route = Route.VoiceSettings },
             onOpenDiagnostics = { route = Route.Diagnostics },
             onForget = onForget,
         )
+        else -> {}
     }
 }
 
@@ -413,8 +420,11 @@ private fun PairedShell(
     lastInvalidate: String?,
     monitor: ConnectionMonitor,
     route: Route,
+    selectedPot: String?,
+    onPotChange: (String?) -> Unit,
     onRouteChange: (Route) -> Unit,
     onSelectHarness: (String) -> Unit,
+    onOpenRunning: () -> Unit,
     onOpenWorkspaceSelector: () -> Unit,
     onOpenStandingApprovals: () -> Unit,
     onOpenVoiceSettings: () -> Unit,
@@ -423,18 +433,12 @@ private fun PairedShell(
 ) {
     val connState by monitor.state.collectAsState()
     val voiceStateForBanner by voice.state.collectAsState()
-    var pendingCardBadgeCount by remember { mutableIntStateOf(0) }
     var recentToastBadgeCount by remember { mutableIntStateOf(0) }
     var latestToastId by remember { mutableStateOf<Long?>(null) }
     var shellToast by remember { mutableStateOf<uniffi.papercup.Toast?>(null) }
 
     suspend fun refreshShellFeeds(showNewToast: Boolean) {
         val client = current.client()
-        try {
-            pendingCardBadgeCount = client.listOperatorCards().size
-        } catch (_: Throwable) {
-            // Keep the last known badge count; the screen itself surfaces load errors.
-        }
         try {
             val notifications = client.recentNotifications()
             recentToastBadgeCount = notifications.count(::isAttentionToast)
@@ -476,6 +480,11 @@ private fun PairedShell(
     Scaffold(
         topBar = {
             Column {
+                PotSwitcherBar(
+                    creds = current,
+                    selectedPot = selectedPot,
+                    onPotChange = onPotChange,
+                )
                 GlobalPausedBanner(creds = current, liveTick = liveTick)
                 if (connState.status == ConnStatus.Offline) {
                     OfflineBanner(
@@ -496,7 +505,6 @@ private fun PairedShell(
             MobileBottomNav(
                 selected = route,
                 badgeCounts = ShellBadgeCounts(
-                    pendingCards = pendingCardBadgeCount,
                     recentToasts = recentToastBadgeCount,
                 ),
                 onRouteChange = onRouteChange,
@@ -508,31 +516,27 @@ private fun PairedShell(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when (route) {
-                Route.Operator -> OperatorScreen(
+                Route.Inbox -> InboxScreen(
                     creds = current,
-                    voice = voice,
                     liveTick = liveTick,
                     onSelectHarness = onSelectHarness,
                 )
-                Route.List -> HarnessListScreen(
+                Route.Operator -> OperatorChatScreen(
+                    creds = current,
+                    liveTick = liveTick,
+                )
+                Route.Plans -> PlansScreen(
+                    creds = current,
+                    liveTick = liveTick,
+                    potFilter = selectedPot,
+                )
+                Route.Brew -> HarnessListScreen(
                     creds = current,
                     liveTick = liveTick,
                     lastInvalidate = lastInvalidate,
                     voice = voice,
                     onSelect = onSelectHarness,
-                )
-                Route.Running -> RunningScreen(
-                    creds = current,
-                    liveTick = liveTick,
-                    onSelectHarness = onSelectHarness,
-                )
-                Route.Activity -> ActivityScreen(
-                    creds = current,
-                    invalidationTick = liveTick,
-                    onSelectHarness = onSelectHarness,
-                    mode = ActivitySurface.Notifications,
-                    onOpenHistory = { onRouteChange(Route.NotificationHistory) },
-                    onOpenRecentActions = { onRouteChange(Route.RecentActions) },
+                    onOpenRunning = onOpenRunning,
                 )
                 Route.Settings -> SettingsScreen(
                     creds = current,
@@ -672,7 +676,6 @@ private fun formatPauseAge(iso: String): String {
 }
 
 private data class ShellBadgeCounts(
-    val pendingCards: Int = 0,
     val recentToasts: Int = 0,
 )
 
@@ -698,20 +701,20 @@ private fun newestToast(toasts: List<uniffi.papercup.Toast>): uniffi.papercup.To
 
 private fun routeForToast(toast: uniffi.papercup.Toast): Route {
     toast.harnessSlug?.takeIf { it.isNotBlank() }?.let { return Route.Detail(it) }
-    val rawHref = toast.actionHref ?: return Route.Activity
+    val rawHref = toast.actionHref ?: return Route.Inbox
     val href = rawHref.substringBefore('?').trimEnd('/')
     return when {
         href.isBlank() || href == "/" || href == "/operator" -> Route.Operator
-        href == "/harness" -> Route.List
+        href == "/harness" -> Route.Brew
         href.startsWith("/harness/") -> Route.Detail(href.removePrefix("/harness/"))
         href == "/running" -> Route.Running
         href == "/log" -> Route.Running
         href.startsWith("/log/") -> Route.RunLog(href.removePrefix("/log/"))
-        href == "/notifications" -> Route.Activity
+        href == "/notifications" -> Route.Inbox
         href == "/notifications/history" -> Route.NotificationHistory
         href == "/actions" -> Route.RecentActions
         href.startsWith("/settings") -> Route.Settings
-        else -> Route.Activity
+        else -> Route.Inbox
     }
 }
 
@@ -834,6 +837,73 @@ private fun shellToastTone(level: String): ShellToastTone =
         else -> ShellToastTone("ℹ", Color(0xFF06283A), Color(0xFFC8F2FF))
     }
 
+/**
+ * The header Pot switcher (D-003) — a compact bar with the current Pot and
+ * an "All Pots" option, persisting across tabs. Drives the Plans tab's
+ * filter (and is the same slug+scope two-axis model as desktop/PUI).
+ */
+@Composable
+private fun PotSwitcherBar(
+    creds: DeviceCredentials,
+    selectedPot: String?,
+    onPotChange: (String?) -> Unit,
+) {
+    var harnesses by remember { mutableStateOf<List<Harness>>(emptyList()) }
+    var expanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(creds.deviceToken) {
+        harnesses = try { creds.client().listHarnesses() } catch (_: Throwable) { emptyList() }
+    }
+
+    Surface(
+        color = Color.Transparent,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PapercupColors.HeaderGradient),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "POT",
+                style = MaterialTheme.typography.labelSmall,
+                color = PapercupColors.TextFaint,
+            )
+            Box {
+                PapercupStatusChip(
+                    text = (selectedPot ?: "All Pots") + " ▾",
+                    containerColor = PapercupColors.AccentSoft,
+                    contentColor = PapercupColors.AccentStrong,
+                    onClick = { expanded = true },
+                )
+                DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("All Pots") },
+                        onClick = { onPotChange(null); expanded = false },
+                    )
+                    harnesses.forEach { h ->
+                        DropdownMenuItem(
+                            text = { Text(h.slug) },
+                            onClick = { onPotChange(h.slug); expanded = false },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "core ${version()}",
+                style = MaterialTheme.typography.labelSmall,
+                color = PapercupColors.TextFaint,
+            )
+        }
+    }
+}
+
 @Composable
 private fun MobileBottomNav(
     selected: Route,
@@ -841,10 +911,10 @@ private fun MobileBottomNav(
     onRouteChange: (Route) -> Unit,
 ) {
     val items = listOf(
-        BottomNavItem(Route.Operator, "●", stringResource(R.string.tab_operator), badgeCounts.pendingCards, NavBadgeTone.Info),
-        BottomNavItem(Route.List, "⌘", stringResource(R.string.tab_harnesses), 0, NavBadgeTone.Info),
-        BottomNavItem(Route.Running, "▶", stringResource(R.string.tab_running), 0, NavBadgeTone.Info),
-        BottomNavItem(Route.Activity, "◆", stringResource(R.string.tab_activity), badgeCounts.recentToasts, NavBadgeTone.Attention),
+        BottomNavItem(Route.Inbox, "◆", stringResource(R.string.tab_inbox), badgeCounts.recentToasts, NavBadgeTone.Attention),
+        BottomNavItem(Route.Operator, "●", stringResource(R.string.tab_operator), 0, NavBadgeTone.Info),
+        BottomNavItem(Route.Plans, "▤", stringResource(R.string.tab_plans), 0, NavBadgeTone.Info),
+        BottomNavItem(Route.Brew, "⌘", stringResource(R.string.tab_brew), 0, NavBadgeTone.Info),
         BottomNavItem(Route.Settings, "⚙", stringResource(R.string.tab_settings), 0, NavBadgeTone.Info),
     )
 
@@ -955,16 +1025,17 @@ private fun NavBadge(
 }
 
 private sealed interface Route {
-    /// Bottom-nav primary destinations.
+    /// Bottom-nav primary destinations (Inbox-first 5-tab redesign, D-003).
+    data object Inbox : Route
     data object Operator : Route
-    data object List : Route
-    data object Running : Route
-    data object Activity : Route
+    data object Plans : Route
+    data object Brew : Route
     data object Settings : Route
 
     /// Pushed routes (not in bottom nav).
     data class Detail(val slug: String) : Route
     data class RunLog(val slug: String) : Route
+    data object Running : Route
     data object StandingApprovals : Route
     data object VoiceSettings : Route
     data object Diagnostics : Route
@@ -988,6 +1059,7 @@ fun HarnessListScreen(
     lastInvalidate: String?,
     voice: VoiceManager,
     onSelect: (String) -> Unit,
+    onOpenRunning: () -> Unit = {},
 ) {
     var state by remember { mutableStateOf<ScreenState>(ScreenState.Loading) }
 
@@ -1008,10 +1080,10 @@ fun HarnessListScreen(
         // top-level tab — not just this one.
         topBar = {
             PapercupScreenHeader(
-                title = "Harnesses",
+                title = "Brew",
                 subtitle = when (val currentState = state) {
                     ScreenState.Loading -> "Loading…"
-                    is ScreenState.Ready -> currentState.harnesses.size.toString()
+                    is ScreenState.Ready -> "${currentState.harnesses.size} pots"
                     is ScreenState.Failed -> "error"
                 },
             )
@@ -1070,9 +1142,12 @@ fun HarnessListScreen(
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 PauseButton(creds = creds, liveTick = liveTick)
-                                creds.meshAssignedIp?.let { ip ->
-                                    MeshButton(creds = creds, ip = ip)
-                                }
+                                PapercupStatusChip(
+                                    text = "running",
+                                    containerColor = PapercupColors.AccentSoft,
+                                    contentColor = PapercupColors.AccentStrong,
+                                    onClick = onOpenRunning,
+                                )
                                 PapercupStatusChip(
                                     text = lastInvalidate?.let { "live · $it" } ?: "live",
                                     containerColor = PapercupColors.InfoSoft,
@@ -1339,50 +1414,6 @@ private fun PauseButton(creds: DeviceCredentials, liveTick: Int) {
                 } catch (_: Throwable) {
                 } finally {
                     inflight = false
-                }
-            }
-        },
-        containerColor = containerColor,
-        contentColor = contentColor,
-    )
-}
-
-@Composable
-private fun MeshButton(creds: DeviceCredentials, ip: String) {
-    val context = LocalContext.current
-    val tunnelState by MeshState.state.collectAsState()
-    var pendingActivate by remember { mutableStateOf(false) }
-
-    val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (pendingActivate && result.resultCode == android.app.Activity.RESULT_OK) {
-            creds.wgQuickConfig?.let { MeshController.activate(context, it) }
-        }
-        pendingActivate = false
-    }
-
-    val isUp = tunnelState == com.wireguard.android.backend.Tunnel.State.UP
-    val isToggling = tunnelState == com.wireguard.android.backend.Tunnel.State.TOGGLE
-
-    val (label, containerColor, contentColor) = when {
-        isUp -> Triple("mesh ✓ $ip", PapercupColors.SuccessSoft, PapercupColors.Success)
-        isToggling -> Triple("mesh ⟳ $ip", PapercupColors.WarningSoft, PapercupColors.Warning)
-        else -> Triple("mesh · $ip", PapercupColors.AccentSoft, PapercupColors.AccentStrong)
-    }
-    PapercupStatusChip(
-        text = label,
-        onClick = {
-            val cfg = creds.wgQuickConfig ?: return@PapercupStatusChip
-            if (isUp) {
-                MeshController.deactivate(context)
-            } else {
-                val prepare = MeshController.prepareIntent(context)
-                if (prepare != null) {
-                    pendingActivate = true
-                    launcher.launch(prepare)
-                } else {
-                    MeshController.activate(context, cfg)
                 }
             }
         },

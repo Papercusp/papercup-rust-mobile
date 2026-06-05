@@ -37,7 +37,6 @@ fun DiagnosticsScreen(
     onOpenPushTapTest: () -> Unit,
 ) {
     val state by monitor.state.collectAsState()
-    val meshState by MeshState.state.collectAsState()
     val scope = rememberCoroutineScope()
     var pinging by remember { mutableStateOf(false) }
     var fcmToken by remember { mutableStateOf<String?>(null) }
@@ -131,12 +130,19 @@ fun DiagnosticsScreen(
                 ValueRow(label = "Token length", value = "${creds.deviceToken.length} chars", last = true)
             }
 
-            SectionShell(title = "WireGuard mesh") {
-                ValueRow(label = "State", value = meshState.toString(), last = creds.meshUrl == null && creds.meshAssignedIp == null)
+            SectionShell(title = "Mesh (Defguard)") {
+                val enroll = creds.defguardEnrollmentUrl
+                ValueRow(
+                    label = "Mode",
+                    value = "Defguard self-enrollment",
+                    last = creds.meshUrl == null && enroll == null,
+                )
                 creds.meshUrl?.let {
-                    ValueRow(label = "Peer", value = it, mono = true, last = creds.meshAssignedIp == null)
+                    ValueRow(label = "Mesh peer", value = it, mono = true, last = enroll == null)
                 }
-                creds.meshAssignedIp?.let { ValueRow(label = "Address", value = it, mono = true, last = true) }
+                enroll?.let {
+                    ValueRow(label = "Enrollment URL", value = it, mono = true, last = true)
+                }
             }
 
             SectionShell(title = "Build") {

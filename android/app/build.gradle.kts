@@ -111,8 +111,8 @@ dependencies {
     // Compose ↔ Lifecycle helpers used in the pair screen.
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
 
-    // Phase 6b.2: WireGuard tunnel binding (zx2c4 official Android lib).
-    implementation("com.wireguard.android:tunnel:1.0.20230706")
+    // (WireGuard tunnel binding removed — mesh is now Defguard self-enrollment
+    //  via the system VPN; mobile-apps-revival-redesign D-005.)
 
     // Phase 10g: Picovoice Porcupine for "hey papercup" wake word.
     // Engine is dormant unless PICOVOICE_ACCESS_KEY is set in

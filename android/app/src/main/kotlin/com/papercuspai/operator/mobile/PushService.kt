@@ -66,9 +66,14 @@ class PushService : FirebaseMessagingService() {
 
         val title = data["title"] ?: message.notification?.title ?: "Papercup"
         val body = data["body"] ?: message.notification?.body ?: return
-        val slug = data["slug"]
-        val eventId = data["eventId"] ?: message.messageId
-        showNotification(applicationContext, title, body, slug, eventId)
+        // The attention-notify backend sends `harness` (not `slug`) + a `kind`
+        // (intervention/smoke-fail/plan-review/needs-human). A harness deep-links
+        // to its detail; any attention push without a harness opens the Inbox —
+        // the actionable feed it belongs to (mobile-apps-revival-redesign D-004).
+        val slug = data["slug"] ?: data["harness"]
+        val toInbox = data["kind"] != null
+        val eventId = data["eventId"] ?: data["plan"] ?: message.messageId
+        showNotification(applicationContext, title, body, slug, toInbox, eventId)
     }
 
     /// Best-effort: poke a refresh on the named query. The full sync
@@ -97,6 +102,7 @@ class PushService : FirebaseMessagingService() {
 /// constants in lockstep with the receiver.
 const val PUSH_CHANNEL_ID = "papercup-pushes"
 const val EXTRA_DEEPLINK_SLUG = "papercup.deeplink.slug"
+const val EXTRA_DEEPLINK_INBOX = "papercup.deeplink.inbox"
 
 fun ensureNotificationChannel(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -115,12 +121,14 @@ fun showNotification(
     title: String,
     body: String,
     slug: String?,
+    toInbox: Boolean,
     eventId: String?,
 ) {
     ensureNotificationChannel(context)
     val launch = Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         if (slug != null) putExtra(EXTRA_DEEPLINK_SLUG, slug)
+        if (toInbox) putExtra(EXTRA_DEEPLINK_INBOX, true)
     }
     val pi = PendingIntent.getActivity(
         context,

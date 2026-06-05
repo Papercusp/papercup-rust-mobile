@@ -104,8 +104,8 @@ fun SettingsScreen(
                     ValueRow(label = "Desktop", value = creds.server)
                     selfDevice?.pairedAt?.let { ValueRow(label = "Paired", value = it) }
                     ValueRow(label = "Workspace", value = creds.workspaceId)
-                    ValueRow(label = "Device ID", value = creds.deviceId, mono = true, last = creds.meshAssignedIp == null)
-                    creds.meshAssignedIp?.let { ValueRow(label = "Mesh address", value = it, mono = true, last = true) }
+                    ValueRow(label = "Device ID", value = creds.deviceId, mono = true, last = creds.defguardEnrollmentUrl == null)
+                    creds.defguardEnrollmentUrl?.let { ValueRow(label = "Mesh", value = "Defguard enrolled", last = true) }
                 }
             }
 

@@ -5,9 +5,9 @@
     <!-- Phase 2: QR scanning for the pair flow. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <!-- Phase 6b.2: WireGuard mesh tunnel (foreground VpnService + post notifications). -->
+    <!-- Foreground service base perm (the wake-word mic FGS needs it). The mesh
+         is now Defguard self-enrollment (system VPN) — no in-app VpnService. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Phase 5 fix: WakeWordService captures mic via Picovoice Porcupine.
          Per Play Store policy + Android 14+ runtime check, mic-recording
          services need foregroundServiceType="microphone" and this perm. -->
@@ -51,19 +51,6 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
-        <service
-            android:name=".WireGuardVpnService"
-            android:exported="false"
-            android:permission="android.permission.BIND_VPN_SERVICE"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Papercup mesh tunnel for paired desktop access" />
-            <intent-filter>
-                <action android:name="android.net.VpnService" />
             </intent-filter>
         </service>
     </application>
