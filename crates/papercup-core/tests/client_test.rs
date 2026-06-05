@@ -3,23 +3,25 @@
 // Integration tests for `papercup-core::client::OperatorClient`.
 //
 // These spin up a real localhost HTTP server via wiremock-rs and assert
-// the wire shape produced by each method matches what backend's
-// openapi.yaml says to expect. They catch:
+// the wire shape produced by each method matches what the LIVE server
+// (papercup packages/operator-core lib/endpoint-route/routes/device/*)
+// speaks — fixtures re-audited 2026-06-05 against source
+// (mobile-apps-revival-redesign D-001). They catch:
 //   - bearer auth header presence
-//   - URL path / method correctness
+//   - URL path / method / query-param correctness
 //   - request body camelCase serialisation (PairBody, PushRegisterBody)
-//   - response deserialisation across the new shapes
-//   - 401 → ApiError::Unauthorized, 5xx → ApiError::Server
+//   - response deserialisation across the CURRENT shapes
+//   - BOTH error envelopes: route-stack `{"error":{code,message}}` and
+//     handler-level `{"error":"code"}`
+//   - 401 AND 403 → ApiError::Unauthorized (re-pair), 5xx → Server
 //
-// They do NOT validate the contract against backend (that would need
-// the OpenAPI spec wired in). Wire fixtures here are hand-mirrored from
-// papercup-rust-server/openapi.yaml; if the spec changes, these break
-// loudly and we know to refresh both sides.
+// If the backend contract changes, refresh the fixture AND the source
+// citation, not just whatever makes the test pass.
 
 use papercup_core::client::{ApiError, OperatorClient};
 use papercup_core::types::{PairBody, PushRegisterBody};
 use serde_json::json;
-use wiremock::matchers::{bearer_token, body_json, method, path};
+use wiremock::matchers::{bearer_token, body_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const TOKEN: &str = "test-jwt-token";
@@ -67,16 +69,97 @@ async fn list_harnesses_unauthorized_when_no_token() {
     assert!(matches!(err, ApiError::Unauthorized));
 }
 
+// Route-stack auth failure: nested envelope, 401 (no principal).
 #[tokio::test]
-async fn list_harnesses_maps_401() {
+async fn nested_401_maps_to_unauthorized() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
         .and(path("/api/device/harnesses"))
-        .respond_with(ResponseTemplate::new(401).set_body_json(json!({"error":"bad token"})))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({
+            "error": { "code": "unauthorized", "message": "no principal resolved" }
+        })))
         .mount(&server)
         .await;
     let err = client.list_harnesses().await.unwrap_err();
     assert!(matches!(err, ApiError::Unauthorized));
+}
+
+// Route-stack principal rejection: 403 (kind/trust not in allowlist) is
+// the device-route failure mode for a stale-but-decodable token — it
+// must ALSO mean re-pair, not a generic error (D-001.6).
+#[tokio::test]
+async fn nested_403_maps_to_unauthorized() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/harnesses"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+            "error": { "code": "forbidden", "message": "kind loopback not in allowlist" }
+        })))
+        .mount(&server)
+        .await;
+    let err = client.list_harnesses().await.unwrap_err();
+    assert!(matches!(err, ApiError::Unauthorized));
+}
+
+// Handler-level flat error envelope on a 5xx.
+#[tokio::test]
+async fn flat_500_maps_to_server_with_detail() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/harnesses"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({"error":"db down"})))
+        .mount(&server)
+        .await;
+    match client.list_harnesses().await.unwrap_err() {
+        ApiError::Server { status, detail } => {
+            assert_eq!(status, 500);
+            assert_eq!(detail, "db down");
+        }
+        e => panic!("unexpected: {e:?}"),
+    }
+}
+
+// Route-stack handler_error: nested envelope on a 5xx → detail carries
+// "code: message".
+#[tokio::test]
+async fn nested_500_maps_to_server_with_code_and_message() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/harnesses"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "error": { "code": "handler_error", "message": "boom" }
+        })))
+        .mount(&server)
+        .await;
+    match client.list_harnesses().await.unwrap_err() {
+        ApiError::Server { status, detail } => {
+            assert_eq!(status, 500);
+            assert_eq!(detail, "handler_error: boom");
+        }
+        e => panic!("unexpected: {e:?}"),
+    }
+}
+
+// Handler-level error with a hint sibling (voice-session-init style).
+#[tokio::test]
+async fn flat_error_with_hint_lands_in_detail() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/voice-session-init"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+            "error": "voice_not_enabled",
+            "hint": "Set fullAgentEngine to elevenlabs-conv in /settings/voice."
+        })))
+        .mount(&server)
+        .await;
+    match client.voice_session_init().await.unwrap_err() {
+        ApiError::Server { status, detail } => {
+            assert_eq!(status, 404);
+            assert!(detail.contains("voice_not_enabled"));
+            assert!(detail.contains("fullAgentEngine"));
+        }
+        e => panic!("unexpected: {e:?}"),
+    }
 }
 
 #[tokio::test]
@@ -118,46 +201,23 @@ async fn running_snapshot_decodes_scan_and_harnesses() {
     assert_eq!(harnesses[0].active_roles, vec!["architect"]);
 }
 
+// Current pair contract (routes/device/pair.ts): body is {pairToken}
+// only; response carries defguardEnrollmentUrl — no wgConfig, no mesh
+// fields (Defguard self-enrollment, D-005).
 #[tokio::test]
-async fn list_harnesses_maps_500_with_detail() {
-    let (client, server) = paired_client().await;
-    Mock::given(method("GET"))
-        .and(path("/api/device/harnesses"))
-        .respond_with(ResponseTemplate::new(500).set_body_json(json!({"error":"db down"})))
-        .mount(&server)
-        .await;
-    match client.list_harnesses().await.unwrap_err() {
-        ApiError::Server { status, detail } => {
-            assert_eq!(status, 500);
-            assert_eq!(detail, "db down");
-        }
-        e => panic!("unexpected: {e:?}"),
-    }
-}
-
-#[tokio::test]
-async fn pair_serialises_camel_case_and_returns_outcome() {
+async fn pair_serialises_camel_case_and_returns_defguard_url() {
     let server = MockServer::start().await;
     let client = OperatorClient::new(server.uri(), None);
 
     Mock::given(method("POST"))
         .and(path("/api/device/pair"))
-        .and(body_json(json!({
-            "pairToken": "PT-123",
-            "wireguardPubkey": "PUBKEY"
-        })))
+        .and(body_json(json!({ "pairToken": "PT-123" })))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "deviceToken": "JWT",
             "deviceId": "did-1",
             "desktopHost": "10.0.0.1:3070",
             "workspaceId": "default",
-            "wgConfig": {
-                "peer_public_key": "PEER",
-                "peer_endpoint": "1.2.3.4:51820",
-                "allowed_ips": ["10.10.0.0/16"],
-                "assigned_ip": "10.10.0.5/32",
-                "mtu": 1380
-            }
+            "defguardEnrollmentUrl": "https://mesh.papercuspai.com/enroll"
         })))
         .expect(1)
         .mount(&server)
@@ -166,14 +226,88 @@ async fn pair_serialises_camel_case_and_returns_outcome() {
     let resp = client
         .pair(PairBody {
             pair_token: "PT-123".into(),
-            wireguard_pubkey: Some("PUBKEY".into()),
         })
         .await
         .unwrap();
     assert_eq!(resp.device_token, "JWT");
     assert_eq!(resp.device_id, "did-1");
-    let mesh = resp.wg_config.expect("mesh present");
-    assert_eq!(mesh["assigned_ip"], "10.10.0.5/32");
+    assert_eq!(
+        resp.defguard_enrollment_url.as_deref(),
+        Some("https://mesh.papercuspai.com/enroll")
+    );
+}
+
+// Pair failure: handler-level flat 401 {error:'invalid_or_expired_token'}.
+#[tokio::test]
+async fn pair_invalid_token_maps_to_unauthorized() {
+    let server = MockServer::start().await;
+    let client = OperatorClient::new(server.uri(), None);
+    Mock::given(method("POST"))
+        .and(path("/api/device/pair"))
+        .respond_with(
+            ResponseTemplate::new(401).set_body_json(json!({"error":"invalid_or_expired_token"})),
+        )
+        .mount(&server)
+        .await;
+    let err = client
+        .pair(PairBody {
+            pair_token: "stale".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ApiError::Unauthorized));
+}
+
+// Regression (caught only by the LIVE smoke, 2026-06-05): postgres-js
+// serialises NUMERIC columns as decimal STRINGS, so scan.cost_usd arrives
+// as "0.0000", not 0.0. The decoder must accept string-or-number.
+#[tokio::test]
+async fn running_snapshot_decodes_string_cost_usd() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/running"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "scan": {
+                "id": 498,
+                "started_at": 1_780_227_592_000i64,
+                "request_text": "Background scan",
+                "cost_usd": "0.0123"
+            },
+            "harnesses": []
+        })))
+        .mount(&server)
+        .await;
+    let (scan, harnesses) = client.running_snapshot().await.unwrap();
+    let scan = scan.expect("scan");
+    assert_eq!(scan.id, 498);
+    assert!((scan.cost_usd - 0.0123).abs() < 1e-9, "string cost decoded");
+    assert!(harnesses.is_empty());
+}
+
+// Companion: mission_cost_usd is also NUMERIC → string-or-number.
+#[tokio::test]
+async fn harness_status_decodes_string_mission_cost() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/harnesses/alpha"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "project": { "slug": "alpha", "path": "/p/alpha" },
+            "counts": {},
+            "iteration": 0,
+            "alive": false,
+            "escalated": false,
+            "pendingCheckpoints": 0,
+            "activeCompetitions": 0,
+            "smokeFail": false,
+            "missionCostUsd": "12.3456",
+            "missionInputTokens": 100,
+            "missionOutputTokens": 50,
+            "features": []
+        })))
+        .mount(&server)
+        .await;
+    let s = client.get_harness_status("alpha").await.unwrap();
+    assert!((s.mission_cost_usd - 12.3456).abs() < 1e-9);
 }
 
 #[tokio::test]
@@ -207,13 +341,127 @@ async fn get_harness_status_decodes_status_resp() {
     assert_eq!(s.last_decision.as_deref(), Some("ship it"));
 }
 
+// Current runtime-config contract (routes/device/pair.ts
+// runtimeConfigRoute): voiceWs.port is the WS discovery field.
+#[tokio::test]
+async fn runtime_config_decodes_voice_ws_port() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/runtime-config"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "meshHost": "10.10.0.2:3055",
+            "workspaceId": "default",
+            "deviceKind": "mobile",
+            "voiceWs": { "port": 3068, "path": "/api/device/voice" }
+        })))
+        .mount(&server)
+        .await;
+    let cfg = client.runtime_config().await.unwrap();
+    assert_eq!(cfg.mesh_host, "10.10.0.2:3055");
+    assert_eq!(cfg.voice_ws.port, Some(3068));
+    assert_eq!(cfg.voice_ws.path, "/api/device/voice");
+}
+
+// voiceWs.port is null when the server's WS failed to bind.
+#[tokio::test]
+async fn runtime_config_null_voice_port_decodes_as_none() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/runtime-config"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "meshHost": "localhost:3055",
+            "workspaceId": "default",
+            "deviceKind": "mobile",
+            "voiceWs": { "port": null, "path": "/api/device/voice" }
+        })))
+        .mount(&server)
+        .await;
+    let cfg = client.runtime_config().await.unwrap();
+    assert_eq!(cfg.voice_ws.port, None);
+}
+
+// rest-query: the polling-sync fetch. Asserts the query params land
+// URL-encoded and the {rows, version} envelope decodes.
+#[tokio::test]
+async fn rest_query_sends_name_and_args_and_decodes_rows() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/rest-query"))
+        .and(query_param("name", "harnessStatus.byHarness"))
+        .and(query_param("args", r#"{"harnessSlug":"alpha"}"#))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "rows": [ { "slug": "alpha", "status": "running" } ],
+            "version": "1764920000000"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let resp = client
+        .rest_query("harnessStatus.byHarness", r#"{"harnessSlug":"alpha"}"#)
+        .await
+        .unwrap();
+    assert_eq!(resp.rows[0]["slug"], "alpha");
+    assert_eq!(resp.version, "1764920000000");
+}
+
+// rest-query unknown name → flat 400 {error:"unknown query: X"}.
+#[tokio::test]
+async fn rest_query_unknown_name_surfaces_flat_error() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/rest-query"))
+        .respond_with(
+            ResponseTemplate::new(400).set_body_json(json!({"error":"unknown query: nope"})),
+        )
+        .mount(&server)
+        .await;
+    match client.rest_query("nope", "{}").await.unwrap_err() {
+        ApiError::Server { status, detail } => {
+            assert_eq!(status, 400);
+            assert_eq!(detail, "unknown query: nope");
+        }
+        e => panic!("unexpected: {e:?}"),
+    }
+}
+
+// voice-session-init happy path (routes/device/voice.ts).
+#[tokio::test]
+async fn voice_session_init_decodes_el_bootstrap() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/voice-session-init"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "conversationToken": "EL-TOK",
+            "agentId": "agent-1",
+            "idleTimeoutMin": 2.0,
+            "sessionMaxMin": 30.0,
+            "voiceMode": "ptt",
+            "dynamicVariables": {
+                "device_id": "did-1",
+                "workspace_id": "default",
+                "surface": "ios",
+                "voice_mode": "ptt"
+            }
+        })))
+        .mount(&server)
+        .await;
+    let init = client.voice_session_init().await.unwrap();
+    assert_eq!(init.conversation_token, "EL-TOK");
+    assert_eq!(init.agent_id, "agent-1");
+    assert_eq!(init.voice_mode, "ptt");
+    assert_eq!(init.dynamic_variables["device_id"], "did-1");
+}
+
 #[tokio::test]
 async fn register_push_serialises_body() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
         .and(path("/api/device/push/register"))
         .and(bearer_token(TOKEN))
-        .and(body_json(json!({"platform":"fcm","token":"FCM-TOK"})))
+        .and(body_json(json!({"platform":"apns","token":"APNS-TOK"})))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
         .expect(1)
         .mount(&server)
@@ -221,8 +469,8 @@ async fn register_push_serialises_body() {
 
     client
         .register_push(PushRegisterBody {
-            platform: "fcm".into(),
-            token: "FCM-TOK".into(),
+            platform: "apns".into(),
+            token: "APNS-TOK".into(),
         })
         .await
         .unwrap();
@@ -244,11 +492,13 @@ async fn heartbeat_posts_with_bearer() {
 #[tokio::test]
 async fn list_workspaces_unwraps_envelope() {
     let (client, server) = paired_client().await;
+    // Current shape (routes/device/pair.ts workspacesRoute): id/name/current
+    // only — no last_activity_at.
     Mock::given(method("GET"))
         .and(path("/api/device/workspaces"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "workspaces": [
-                { "id": "default", "name": "Default", "current": true, "last_activity_at": 1_700_000_000 },
+                { "id": "default", "name": "Default", "current": true },
                 { "id": "side", "name": "Side", "current": false }
             ]
         })))
@@ -313,18 +563,24 @@ async fn pause_get_decodes_pause_info() {
     assert_eq!(info.by.as_deref(), Some("did-1"));
 }
 
+// POST/DELETE pause both answer with the new PauseInfo (the server's
+// getPauseInfo()), not {ok,paused}.
 #[tokio::test]
 async fn pause_set_post_then_delete_for_unpause() {
     let (client, server) = paired_client().await;
     Mock::given(method("POST"))
         .and(path("/api/device/operator/pause"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"paused":true})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "paused": true, "at": "2026-06-05T08:00:00Z", "by": "mobile"
+        })))
         .expect(1)
         .mount(&server)
         .await;
     Mock::given(method("DELETE"))
         .and(path("/api/device/operator/pause"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"paused":false})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "paused": false, "at": null, "by": null
+        })))
         .expect(1)
         .mount(&server)
         .await;
@@ -382,72 +638,6 @@ async fn recent_actions_unwraps_entries_envelope() {
 }
 
 #[tokio::test]
-async fn list_operator_cards_unwraps_envelope() {
-    let (client, server) = paired_client().await;
-    Mock::given(method("GET"))
-        .and(path("/api/device/operator/cards"))
-        .and(bearer_token(TOKEN))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "cards": [
-                {
-                    "id": "c1",
-                    "action": "send_directive",
-                    "reason": "why",
-                    "target_harness": "alpha",
-                    "directive_kind": "Directive",
-                    "directive_subject": "Do x",
-                    "directive_body": "body",
-                    "status": "pending"
-                },
-                {
-                    "id": "c2",
-                    "action": "inform",
-                    "status": "shown"
-                }
-            ]
-        })))
-        .mount(&server)
-        .await;
-    let cards = client.list_operator_cards().await.unwrap();
-    assert_eq!(cards.len(), 2);
-    assert_eq!(cards[0].id, "c1");
-    assert_eq!(cards[0].target_harness.as_deref(), Some("alpha"));
-    assert_eq!(cards[1].action, "inform");
-}
-
-#[tokio::test]
-async fn dispatch_operator_card_returns_message() {
-    let (client, server) = paired_client().await;
-    Mock::given(method("POST"))
-        .and(path("/api/device/operator/cards/c1/dispatch"))
-        .and(bearer_token(TOKEN))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "ok": true,
-            "message": "Dispatched to alpha."
-        })))
-        .mount(&server)
-        .await;
-    let message = client.dispatch_operator_card("c1").await.unwrap();
-    assert_eq!(message, "Dispatched to alpha.");
-}
-
-#[tokio::test]
-async fn dismiss_operator_card_returns_message() {
-    let (client, server) = paired_client().await;
-    Mock::given(method("POST"))
-        .and(path("/api/device/operator/cards/c2/dismiss"))
-        .and(bearer_token(TOKEN))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "ok": true,
-            "message": "Dismissed: test."
-        })))
-        .mount(&server)
-        .await;
-    let message = client.dismiss_operator_card("c2").await.unwrap();
-    assert_eq!(message, "Dismissed: test.");
-}
-
-#[tokio::test]
 async fn standing_candidates_unwraps_envelope() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))
@@ -497,7 +687,7 @@ async fn standing_candidate_decide_approve_posts_correct_body() {
             "targetHarness": "alpha",
             "decision": "approve"
         })))
-        .respond_with(ResponseTemplate::new(204))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true})))
         .mount(&server)
         .await;
     client
@@ -507,41 +697,46 @@ async fn standing_candidate_decide_approve_posts_correct_body() {
 }
 
 #[tokio::test]
-async fn standing_candidate_decide_dismiss_posts_correct_body() {
+async fn standing_candidate_decide_surfaces_nested_invalid_input() {
     let (client, server) = paired_client().await;
+    // Route-stack zod rejection: nested invalid_input envelope.
     Mock::given(method("POST"))
         .and(path("/api/device/operator/standing-candidates/decide"))
-        .and(bearer_token(TOKEN))
-        .and(body_json(json!({
-            "capability": "git:push",
-            "targetHarness": "beta",
-            "decision": "dismiss"
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+            "error": { "code": "invalid_input", "message": "decision: Invalid enum value" }
         })))
-        .respond_with(ResponseTemplate::new(200))
-        .mount(&server)
-        .await;
-    client
-        .standing_candidate_decide("git:push", "beta", "dismiss")
-        .await
-        .unwrap();
-}
-
-#[tokio::test]
-async fn standing_candidate_decide_surfaces_server_error() {
-    let (client, server) = paired_client().await;
-    Mock::given(method("POST"))
-        .and(path("/api/device/operator/standing-candidates/decide"))
-        .respond_with(ResponseTemplate::new(500))
         .mount(&server)
         .await;
     let err = client
-        .standing_candidate_decide("shell:run", "alpha", "approve")
+        .standing_candidate_decide("shell:run", "alpha", "maybe")
         .await
         .unwrap_err();
     match err {
-        papercup_core::client::ApiError::Server { status, .. } => assert_eq!(status, 500),
+        ApiError::Server { status, detail } => {
+            assert_eq!(status, 400);
+            assert!(detail.contains("invalid_input"));
+        }
         other => panic!("expected ApiError::Server, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn workspace_switch_posts_camel_case_and_decodes_new_token() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/device/workspace/switch"))
+        .and(bearer_token(TOKEN))
+        .and(body_json(json!({"workspaceId":"side"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "deviceToken": "JWT-2",
+            "workspaceId": "side"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let r = client.workspace_switch("side").await.unwrap();
+    assert_eq!(r.device_token, "JWT-2");
+    assert_eq!(r.workspace_id, "side");
 }
 
 #[tokio::test]

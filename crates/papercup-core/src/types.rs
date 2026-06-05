@@ -6,7 +6,32 @@
 // for others (HarnessLite). Mirror exactly — the UI converts to its
 // own preferred casing.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize an f64 that the server may send as EITHER a JSON number
+/// OR a string. postgres-js returns `NUMERIC`/`money` columns as decimal
+/// STRINGS ("0.0000", "1.2345") to preserve precision, so any cost/usd
+/// field is string-or-number depending on the row. Verified live against
+/// `/api/device/running` (scan.cost_usd = "0.0000") 2026-06-05.
+fn de_f64_flex<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error as _;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum NumOrStr {
+        Num(f64),
+        Str(String),
+    }
+    match NumOrStr::deserialize(deserializer)? {
+        NumOrStr::Num(n) => Ok(n),
+        NumOrStr::Str(s) => s
+            .trim()
+            .parse::<f64>()
+            .map_err(|e| D::Error::custom(format!("cost field {s:?} is not a number: {e}"))),
+    }
+}
 
 // ── /api/device/harnesses ──────────────────────────────────────────────
 
@@ -47,6 +72,7 @@ pub struct HarnessStatusFull {
     pub pending_checkpoints: i64,
     pub active_competitions: i64,
     pub smoke_fail: bool,
+    #[serde(deserialize_with = "de_f64_flex")]
     pub mission_cost_usd: f64,
     pub mission_input_tokens: i64,
     pub mission_output_tokens: i64,
@@ -122,6 +148,8 @@ pub struct RunningScan {
     pub started_at: i64,
     #[serde(default)]
     pub request_text: Option<String>,
+    /// NUMERIC from PG → may arrive as a string ("0.0000"). See de_f64_flex.
+    #[serde(deserialize_with = "de_f64_flex")]
     pub cost_usd: f64,
 }
 
@@ -229,6 +257,10 @@ pub struct DeviceRow {
 }
 
 // ── /api/device/push/register ──────────────────────────────────────────
+//
+// Route is being rebuilt server-side (mobile-apps-revival D-001.2/D-004);
+// body shape kept in sync with the rebuild — confirm against the landed
+// route before shipping push.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushRegisterBody {
@@ -238,44 +270,80 @@ pub struct PushRegisterBody {
 }
 
 // ── /api/device/pair ───────────────────────────────────────────────────
+//
+// Mesh = Defguard self-enrollment (D-005): the server returns an
+// enrollment URL the phone opens; no WireGuard config is exchanged at
+// pair time anymore.
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairBody {
     #[serde(rename = "pairToken")]
     pub pair_token: String,
-    /// Reserved for the Defguard mesh broker; backend currently ignores.
-    #[serde(rename = "wireguardPubkey", skip_serializing_if = "Option::is_none")]
-    pub wireguard_pubkey: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PairResp {
-    #[serde(rename = "deviceToken")]
     pub device_token: String,
-    #[serde(rename = "deviceId")]
     pub device_id: String,
-    #[serde(rename = "desktopHost")]
     pub desktop_host: String,
-    #[serde(rename = "workspaceId")]
     pub workspace_id: String,
-    #[serde(rename = "desktopMeshHost", default)]
-    pub desktop_mesh_host: Option<String>,
-    #[serde(rename = "defguardControlUrl", default)]
-    pub defguard_control_url: Option<String>,
-    #[serde(rename = "defguardEnrollmentUrl", default)]
+    /// Defguard self-enrollment URL — open/hand off at pair time so the
+    /// device can join the mesh. Optional defensively (a server without
+    /// Defguard configured still pairs; LAN/public-tunnel fallbacks work).
+    #[serde(default)]
     pub defguard_enrollment_url: Option<String>,
-    #[serde(rename = "defguardEnrollmentToken", default)]
-    pub defguard_enrollment_token: Option<String>,
-    #[serde(rename = "defguardUsername", default)]
-    pub defguard_username: Option<String>,
-    #[serde(rename = "defguardError", default)]
-    pub defguard_error: Option<String>,
-    /// Mesh wgConfig — opaque shape; phone just relays it to the WG
-    /// service. Backend currently returns null until the broker lands.
-    #[serde(rename = "wgConfig", default)]
-    pub wg_config: Option<serde_json::Value>,
-    #[serde(rename = "wgError", default)]
-    pub wg_error: Option<String>,
+}
+
+// ── /api/device/runtime-config ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeConfig {
+    pub mesh_host: String,
+    pub workspace_id: String,
+    /// Currently always "mobile".
+    pub device_kind: String,
+    pub voice_ws: VoiceWsInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceWsInfo {
+    /// Voice WS port (default :3068 server-side, walks up on conflicts).
+    /// `null` when the server's voice WS failed to bind — surface
+    /// "voice unavailable" instead of dialing a dead port.
+    #[serde(default)]
+    pub port: Option<u16>,
+    /// e.g. "/api/device/voice".
+    pub path: String,
+}
+
+// ── /api/device/voice-session-init ─────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceSessionInit {
+    pub conversation_token: String,
+    pub agent_id: String,
+    pub idle_timeout_min: f64,
+    pub session_max_min: f64,
+    pub voice_mode: String,
+    /// Opaque map forwarded to the ElevenLabs Conv AI SDK verbatim.
+    #[serde(default)]
+    pub dynamic_variables: serde_json::Value,
+}
+
+// ── /api/device/rest-query ─────────────────────────────────────────────
+
+/// `GET /api/device/rest-query?name=&args=` → `{ rows, version }` —
+/// libs/sync's polling-fetcher shape. `rows` stays raw JSON; the cache
+/// layer is name-keyed and UI-agnostic.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RestQueryResp {
+    pub rows: serde_json::Value,
+    /// Server stamps `String(Date.now())` — changes every call, so it is
+    /// NOT a change marker; diff `rows` instead.
+    pub version: String,
 }
 
 // ── standing approvals ─────────────────────────────────────────────────
@@ -297,37 +365,6 @@ pub struct StandingCandidate {
     pub first_shown_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperatorCardsResp {
-    pub cards: Vec<OperatorCard>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperatorCard {
-    pub id: String,
-    pub action: String,
-    #[serde(default)]
-    pub reason: Option<String>,
-    #[serde(default)]
-    pub target_harness: Option<String>,
-    #[serde(default)]
-    pub directive_kind: Option<String>,
-    #[serde(default)]
-    pub directive_subject: Option<String>,
-    #[serde(default)]
-    pub directive_body: Option<String>,
-    pub status: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperatorCardActionResp {
-    pub ok: bool,
-    #[serde(default)]
-    pub message: Option<String>,
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct StandingDecisionBody {
     pub capability: String,
@@ -337,8 +374,50 @@ pub struct StandingDecisionBody {
 }
 
 // ── error envelope (every 4xx/5xx body) ────────────────────────────────
+//
+// The server speaks TWO error shapes:
+//   - route-stack errors (auth / input validation / timeout / handler
+//     crash): `{"error":{"code":"unauthorized","message":"…"}}`
+//   - handler-level errors: `{"error":"workspace_not_found"}`, sometimes
+//     with `hint` / `detail` siblings.
+// `ErrorPayload` decodes either; `detail_string()` flattens for display.
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ErrorPayload {
+    Nested { code: String, message: String },
+    Flat(String),
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ErrorBody {
-    pub error: String,
+    pub error: ErrorPayload,
+    #[serde(default)]
+    pub hint: Option<String>,
+    #[serde(default)]
+    pub detail: Option<String>,
+}
+
+impl ErrorBody {
+    /// One human-readable line: "code: message" or the flat code, with
+    /// any `hint`/`detail` appended.
+    pub fn detail_string(&self) -> String {
+        let mut s = match &self.error {
+            ErrorPayload::Nested { code, message } => {
+                if message.is_empty() {
+                    code.clone()
+                } else {
+                    format!("{code}: {message}")
+                }
+            }
+            ErrorPayload::Flat(code) => code.clone(),
+        };
+        if let Some(h) = &self.hint {
+            s.push_str(&format!(" — {h}"));
+        }
+        if let Some(d) = &self.detail {
+            s.push_str(&format!(" ({d})"));
+        }
+        s
+    }
 }

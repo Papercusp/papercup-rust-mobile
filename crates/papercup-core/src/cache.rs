@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Phase 3 — in-memory query cache with subscriber callback.
+// In-memory query cache with subscriber callback + change-detecting
+// polling.
 //
-// Plan said:
-//   - Cache keyed by query name (e.g. `harnesses.list`, `running.phases`)
-//   - On `invalidate {name}`, refetch + fire subscriber event
-//   - UniFFI callback interface `Subscriber` so Compose / SwiftUI can
-//     subscribe to cache deltas
+// The server's SSE invalidation stream is gone (mobile-apps-revival
+// D-001.1); the replacement transport is polling `GET
+// /api/device/rest-query` (libs/sync's polling-fetcher design — push
+// notifications cover interrupt latency, D-004). The cache owns that
+// loop: `start_polling(interval)` refetches every registered query and
+// notifies subscribers ONLY when the payload actually changed (the
+// rest-query `version` field is a timestamp, useless for diffing — we
+// diff the raw JSON instead). `refresh()` keeps always-notify semantics
+// for explicit pull-to-refresh.
 //
 // Implementation choice: the cache stores raw JSON bytes (already
-// what the wire protocol speaks) so it's UI-agnostic. Each entry
-// has a fetcher closure registered at first observation. Invalidation
-// re-runs the fetcher and notifies all current subscribers for that
-// key.
+// what the wire protocol speaks) so it's UI-agnostic. Refreshes run
+// through the pluggable `Fetcher` (the bindings layer maps query names
+// onto `OperatorClient` calls).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::broadcast;
@@ -67,6 +71,18 @@ struct CacheInner {
     entries: Mutex<HashMap<String, CacheEntry>>,
     fetcher: Arc<dyn Fetcher>,
     tx: broadcast::Sender<CacheUpdate>,
+    /// Names whose most recent poll tick failed — `Failed` is emitted on
+    /// the success→failure transition only, not every tick offline.
+    poll_failed: Mutex<HashSet<String>>,
+    poll_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+impl Drop for CacheInner {
+    fn drop(&mut self) {
+        if let Some(t) = self.poll_task.lock().unwrap().take() {
+            t.abort();
+        }
+    }
 }
 
 impl Cache {
@@ -77,6 +93,8 @@ impl Cache {
                 entries: Mutex::new(HashMap::new()),
                 fetcher,
                 tx,
+                poll_failed: Mutex::new(HashSet::new()),
+                poll_task: Mutex::new(None),
             }),
         }
     }
@@ -116,12 +134,95 @@ impl Cache {
         let _ = self.inner.tx.send(update);
     }
 
-    /// Apply a SyncStream invalidation event — refreshes the named
-    /// query if it's in the cache (otherwise no-op).
+    /// Refresh the named query if it's in the cache (otherwise no-op).
+    /// Kept for host-triggered invalidations (e.g. a push notification
+    /// naming a changed surface).
     pub async fn handle_invalidate(&self, name: &str) {
         let known = self.inner.entries.lock().unwrap().contains_key(name);
         if known {
             self.refresh(name).await;
+        }
+    }
+
+    /// Register a query name without fetching it yet — the polling loop
+    /// (or an explicit `refresh`) picks it up.
+    pub fn register(&self, name: &str) {
+        self.inner
+            .entries
+            .lock()
+            .unwrap()
+            .entry(name.to_string())
+            .or_insert(CacheEntry {
+                name: name.to_string(),
+                value_json: None,
+                generation: 0,
+            });
+    }
+
+    /// Start the polling loop: every `interval`, refetch every registered
+    /// query and notify subscribers ONLY on actual payload change (or on
+    /// the success→failure transition). Replaces the retired SSE
+    /// invalidation stream. Idempotent — restarting replaces the loop.
+    pub fn start_polling(&self, interval: std::time::Duration) {
+        let weak = Arc::downgrade(&self.inner);
+        let task = tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(interval).await;
+                let Some(inner) = weak.upgrade() else { break };
+                let names: Vec<String> = inner.entries.lock().unwrap().keys().cloned().collect();
+                for name in names {
+                    let result = inner.fetcher.fetch(&name).await;
+                    match result {
+                        Ok(json) => {
+                            inner.poll_failed.lock().unwrap().remove(&name);
+                            let update = {
+                                let mut entries = inner.entries.lock().unwrap();
+                                let entry = entries.entry(name.clone()).or_insert(CacheEntry {
+                                    name: name.clone(),
+                                    value_json: None,
+                                    generation: 0,
+                                });
+                                if entry.value_json.as_deref() == Some(json.as_str()) {
+                                    None // unchanged — stay quiet
+                                } else {
+                                    entry.value_json = Some(json.clone());
+                                    entry.generation += 1;
+                                    Some(CacheUpdate::Updated {
+                                        name: name.clone(),
+                                        value_json: json,
+                                        generation: entry.generation,
+                                    })
+                                }
+                            };
+                            if let Some(u) = update {
+                                let _ = inner.tx.send(u);
+                            }
+                        }
+                        Err(e) => {
+                            // Emit Failed once per outage, not per tick.
+                            let first_failure =
+                                inner.poll_failed.lock().unwrap().insert(name.clone());
+                            if first_failure {
+                                let _ = inner.tx.send(CacheUpdate::Failed {
+                                    name: name.clone(),
+                                    error: e,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let mut guard = self.inner.poll_task.lock().unwrap();
+        if let Some(old) = guard.replace(task) {
+            old.abort();
+        }
+    }
+
+    /// Stop the polling loop (no-op when not polling).
+    pub fn stop_polling(&self) {
+        if let Some(t) = self.inner.poll_task.lock().unwrap().take() {
+            t.abort();
         }
     }
 
@@ -173,7 +274,14 @@ mod tests {
     impl Fetcher for StubFetcher {
         async fn fetch(&self, _name: &str) -> Result<String, String> {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            self.responses.lock().unwrap().remove(0)
+            let mut responses = self.responses.lock().unwrap();
+            if responses.len() > 1 {
+                responses.remove(0)
+            } else {
+                // Repeat the final response — polling tests tick an
+                // unpredictable number of times.
+                responses[0].clone()
+            }
         }
     }
 
@@ -228,6 +336,75 @@ mod tests {
         let got = collected.lock().unwrap();
         assert_eq!(got.len(), 1);
         assert!(matches!(&got[0], CacheUpdate::Updated { name, generation: 1, .. } if name == "x"));
+    }
+
+    #[tokio::test]
+    async fn polling_emits_only_on_change() {
+        // Three poll ticks return: same value, same value, new value.
+        // Subscriber must see exactly ONE update for the first value
+        // (via explicit refresh) and one for the change — silent ticks
+        // in between.
+        let f = StubFetcher::new(vec![
+            Ok(r#"{"v":1}"#.into()), // initial refresh → Updated (gen 1)
+            Ok(r#"{"v":1}"#.into()), // poll: unchanged → quiet
+            Ok(r#"{"v":2}"#.into()), // poll: changed → Updated (gen 2)
+                                     // repeats {"v":2} → quiet
+        ]);
+        let cache = Cache::new(f.clone());
+        let collected = Arc::new(Mutex::new(Vec::new()));
+        let _sub = cache.subscribe(Arc::new(CollectSubscriber(collected.clone())));
+        cache.refresh("k").await; // generation 1, Updated
+        cache.start_polling(std::time::Duration::from_millis(20));
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        cache.stop_polling();
+        let got = collected.lock().unwrap().clone();
+        let updates: Vec<_> = got
+            .iter()
+            .filter(|u| matches!(u, CacheUpdate::Updated { .. }))
+            .collect();
+        assert_eq!(updates.len(), 2, "one initial + one change, got {got:?}");
+        assert!(
+            matches!(updates[1], CacheUpdate::Updated { value_json, .. } if value_json == r#"{"v":2}"#)
+        );
+    }
+
+    #[tokio::test]
+    async fn polling_emits_failed_once_per_outage() {
+        let f = StubFetcher::new(vec![
+            Ok(r#"1"#.into()),      // initial refresh
+            Err("net down".into()), // poll: failure → Failed
+            Err("net down".into()), // poll: still down → quiet
+            Ok(r#"1"#.into()),      // poll: recovered, unchanged → quiet
+            Err("net down".into()), // poll: new outage → Failed again (repeats)
+        ]);
+        let cache = Cache::new(f.clone());
+        let collected = Arc::new(Mutex::new(Vec::new()));
+        let _sub = cache.subscribe(Arc::new(CollectSubscriber(collected.clone())));
+        cache.refresh("k").await;
+        cache.start_polling(std::time::Duration::from_millis(20));
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        cache.stop_polling();
+        let got = collected.lock().unwrap().clone();
+        let failures = got
+            .iter()
+            .filter(|u| matches!(u, CacheUpdate::Failed { .. }))
+            .count();
+        assert_eq!(failures, 2, "one Failed per outage, got {got:?}");
+    }
+
+    #[tokio::test]
+    async fn register_makes_name_pollable_without_refresh() {
+        let f = StubFetcher::new(vec![Ok(r#"{"a":1}"#.into())]);
+        let cache = Cache::new(f.clone());
+        cache.register("lazy");
+        assert!(cache.get("lazy").unwrap().value_json.is_none());
+        cache.start_polling(std::time::Duration::from_millis(10));
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        cache.stop_polling();
+        assert_eq!(
+            cache.get("lazy").unwrap().value_json.as_deref(),
+            Some(r#"{"a":1}"#)
+        );
     }
 
     #[tokio::test]

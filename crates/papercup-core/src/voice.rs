@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Voice WebSocket client for `/api/device/voice`.
+// Voice WebSocket client.
 //
-// Wire protocol (mirrors the Tauri-era impl, see legacy/VOICE_FEEDBACK_RESPONSE.md):
+// The voice WS does NOT share the API port: the server binds a separate
+// WebSocketServer on `MOBILE_VOICE_WS_PORT` (default :3068, walking up
+// on conflicts) at path `/api/device/voice`. Discover the live port via
+// `OperatorClient::runtime_config()` (`voice_ws.port` — `None` means the
+// server's WS failed to bind → surface "voice unavailable"), then build
+// the URL with `voice_ws_url(base, port, path)` and hand it to
+// `VoiceClient::connect`.
+//
+// Wire protocol:
 //   Auth   : Sec-WebSocket-Protocol: papercusp.bearer.<jwt>
 //   Phone→Server frames (JSON):
 //     {kind:"hello", wakeWord}                      sent on connect
@@ -15,6 +23,8 @@
 // Phone does STT + TTS locally (Android SpeechRecognizer / TextToSpeech;
 // iOS SFSpeechRecognizer / AVSpeechSynthesizer). The server only routes
 // transcripts to the operator and speak frames back. We never carry PCM.
+// (The richer ElevenLabs conversational flow is separate — see
+// `OperatorClient::voice_session_init`.)
 //
 // Reconnect: exponential backoff 1s → 30s. On close 1008 (auth) the
 // caller is responsible for re-pair + reconnect (out of scope here so
@@ -118,16 +128,18 @@ enum OwnedOutbound {
 }
 
 impl VoiceClient {
-    /// Open the WebSocket. The background task negotiates the handshake,
-    /// pushes frames to / from `next_event` + the `send_*` methods, and
-    /// reconnects on transient errors. `next_event` returns `Closed` once
-    /// per terminal close (e.g. auth-fail) so the platform UI can react.
-    pub fn connect(base_url: &str, device_token: &str, wake_word: Option<&str>) -> Self {
+    /// Open the WebSocket to `ws_url` (build it with `voice_ws_url` from
+    /// the runtime-config's port + path). The background task negotiates
+    /// the handshake, pushes frames to / from `next_event` + the `send_*`
+    /// methods, and reconnects on transient errors. `next_event` returns
+    /// `Closed` once per terminal close (e.g. auth-fail) so the platform
+    /// UI can react.
+    pub fn connect(ws_url: &str, device_token: &str, wake_word: Option<&str>) -> Self {
         let (event_tx, event_rx) = mpsc::channel::<VoiceEvent>(64);
         let (out_tx, mut out_rx) = mpsc::channel::<OwnedOutbound>(64);
         let shutdown = Arc::new(tokio::sync::Notify::new());
 
-        let url = build_ws_url(base_url);
+        let url = ws_url.to_string();
         let token = device_token.to_string();
         let initial_wake = wake_word.map(str::to_string);
         let shutdown_task = shutdown.clone();
@@ -303,16 +315,36 @@ async fn run_session(
     }
 }
 
-fn build_ws_url(base_url: &str) -> String {
+/// Build the voice WS URL from the API base URL plus the
+/// runtime-config-discovered port + path. Swaps the scheme
+/// (http→ws, https→wss), keeps the host, REPLACES any port — the voice
+/// WS listens on its own port (default :3068), not the API port.
+pub fn voice_ws_url(base_url: &str, port: u16, path: &str) -> String {
     let trimmed = base_url.trim_end_matches('/');
-    let scheme_swapped = if let Some(rest) = trimmed.strip_prefix("https://") {
-        format!("wss://{rest}")
-    } else if let Some(rest) = trimmed.strip_prefix("http://") {
-        format!("ws://{rest}")
+    let (scheme, rest) = if let Some(r) = trimmed.strip_prefix("https://") {
+        ("wss", r)
+    } else if let Some(r) = trimmed.strip_prefix("http://") {
+        ("ws", r)
     } else {
-        format!("ws://{trimmed}")
+        ("ws", trimmed)
     };
-    format!("{scheme_swapped}/api/device/voice")
+    // Host only — drop any path suffix, then any existing port.
+    // IPv6 literals keep their brackets: `[::1]:3070` → `[::1]`.
+    let authority = rest.split('/').next().unwrap_or(rest);
+    let host = if authority.starts_with('[') {
+        match authority.find(']') {
+            Some(end) => &authority[..=end],
+            None => authority,
+        }
+    } else {
+        authority.split(':').next().unwrap_or(authority)
+    };
+    let path = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    };
+    format!("{scheme}://{host}:{port}{path}")
 }
 
 #[cfg(test)]
@@ -320,18 +352,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ws_url_https_to_wss() {
+    fn ws_url_https_to_wss_replaces_port() {
         assert_eq!(
-            build_ws_url("https://api.papercuspai.com/"),
-            "wss://api.papercuspai.com/api/device/voice"
+            voice_ws_url("https://api.papercupai.com/", 3068, "/api/device/voice"),
+            "wss://api.papercupai.com:3068/api/device/voice"
         );
     }
 
     #[test]
-    fn ws_url_http_to_ws() {
+    fn ws_url_http_to_ws_replaces_existing_port() {
         assert_eq!(
-            build_ws_url("http://10.0.2.2:3055"),
-            "ws://10.0.2.2:3055/api/device/voice"
+            voice_ws_url("http://10.0.2.2:3070", 3068, "/api/device/voice"),
+            "ws://10.0.2.2:3068/api/device/voice"
+        );
+    }
+
+    #[test]
+    fn ws_url_ipv6_host_keeps_brackets() {
+        assert_eq!(
+            voice_ws_url("http://[::1]:3070", 3071, "/api/device/voice"),
+            "ws://[::1]:3071/api/device/voice"
+        );
+    }
+
+    #[test]
+    fn ws_url_pathless_scheme_defaults_ws() {
+        assert_eq!(
+            voice_ws_url("10.0.2.2:3070", 3068, "api/device/voice"),
+            "ws://10.0.2.2:3068/api/device/voice"
         );
     }
 

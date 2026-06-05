@@ -9,14 +9,12 @@ namespace papercup {
     [Throws=PairError]
     QrPayload parse_qr_payload(string text);
 
-    /// Generate a fresh X25519 keypair, base64-encoded for WireGuard.
-    /// The phone retains `private_key_b64` (Keystore/Keychain) and
-    /// submits `public_key_b64` to the desktop during pair.
-    WgKeyPair generate_wg_keypair();
-
-    /// Render a wg-quick INI from the device's stored private key plus
-    /// the broker-assigned mesh config.
-    string mesh_to_wg_quick(string private_key_b64, MeshConfig config);
+    /// Build the voice WS URL from the API base URL plus the
+    /// runtime-config-discovered port + path (the voice WS listens on
+    /// its own port — default :3068 — NOT the API port). Call
+    /// OperatorClient.runtime_config() first; when its voice_ws_port is
+    /// null the voice WS is down — show "voice unavailable".
+    string voice_ws_url(string base_url, u16 port, string path);
 
     /// Phase 4 — parse a voice WS Speak frame for an inline directive.
     /// Recognised prefixes: [NAVIGATE: <slug>], [PAUSE], [RESUME],
@@ -33,10 +31,12 @@ interface Intent {
     Speak(string text);
 };
 
-/// Phase 3 — in-memory query cache backed by SyncStream invalidations.
-/// The host instantiates one Cache per paired session, registers a
-/// CacheSubscriber to receive deltas, and pumps SyncStream events
-/// into `handle_invalidate` so the cache refetches the named query.
+/// In-memory query cache with change-detecting polling. The SSE
+/// invalidation stream is retired (mobile-apps-revival D-001.1): the
+/// host instantiates one Cache per paired session, registers the query
+/// names its UI watches, subscribes a CacheSubscriber, and calls
+/// start_polling — updates fire only when a payload actually changes
+/// (push notifications cover interrupt latency, D-004).
 [Enum]
 interface CacheUpdate {
     /// Refresh succeeded; value_json is the new payload, generation
@@ -52,18 +52,27 @@ callback interface CacheSubscriber {
 
 interface SyncCache {
     /// Build a cache scoped to the given OperatorClient. The cache
-    /// uses the client to refetch on invalidate. Caller wires
-    /// register_query at startup for each query name the UI watches.
+    /// uses the client to refetch. Caller wires register_query at
+    /// startup for each query name the UI watches.
     constructor(OperatorClient client);
 
-    /// Tell the cache about a query name. Subsequent
-    /// `handle_invalidate(name)` calls will refresh it.
+    /// Tell the cache about a query name; triggers a first fetch and
+    /// enrolls the name in the polling loop.
     void register_query(string name);
 
-    /// Apply a SyncStream invalidation event. No-op for unregistered
-    /// names. Triggers a refetch if the name is known.
+    /// Force-refresh a registered name now (e.g. a push notification
+    /// named a changed surface, or pull-to-refresh). No-op for
+    /// unregistered names.
     [Async]
     void handle_invalidate(string name);
+
+    /// Start polling every registered query at the given interval
+    /// (clamped to >= 500ms). Subscribers are notified only on actual
+    /// payload change. Idempotent; restart replaces the loop.
+    void start_polling(u64 interval_ms);
+
+    /// Stop the polling loop (e.g. when the app backgrounds).
+    void stop_polling();
 
     /// Subscribe to all cache deltas. Subscribers persist until the
     /// SyncCache is dropped or the host explicitly drops it.
@@ -92,11 +101,6 @@ interface PairError {
 };
 
 [Error]
-enum SyncError {
-    "Closed",
-};
-
-[Error]
 enum VoiceError {
     "Connect",
     "Closed",
@@ -118,10 +122,13 @@ interface VoiceEvent {
 };
 
 interface VoiceClient {
-    /// Open a WebSocket to `<base_url>/api/mobile/voice` with bearer
-    /// subprotocol auth + auto-reconnect with exp backoff. Phone does
-    /// STT + TTS locally; this client only carries protocol frames.
-    constructor(string base_url, string device_token, string? wake_word);
+    /// Open the voice WebSocket with bearer subprotocol auth +
+    /// auto-reconnect with exp backoff. `ws_url` is the FULL WS URL —
+    /// build it with voice_ws_url() from runtime_config()'s port + path
+    /// (the WS listens on its own port, default :3068, NOT the API
+    /// port). Phone does STT + TTS locally; this client only carries
+    /// protocol frames.
+    constructor(string ws_url, string device_token, string? wake_word);
 
     [Throws=VoiceError, Async]
     VoiceEvent next_event();
@@ -148,7 +155,7 @@ dictionary Harness {
     string? status;
 };
 
-/// Per `/api/mobile/harnesses/:slug` (Stage 2.6 backend). camelCase
+/// Per `/api/device/harnesses/:slug` (Stage 2.6 backend). camelCase
 /// fields preserved on the wire; UDL convention is snake — translation
 /// happens in core::types.
 dictionary HarnessStatus {
@@ -181,29 +188,34 @@ dictionary PairOutcome {
     string device_id;
     string workspace_id;
     string desktop_host;
-    /// Phase 6c: server-suggested mesh URL
-    /// (e.g. `http://10.10.0.2:3070`) the OperatorClient should
-    /// prefer once the WireGuard tunnel is up. Falls back to
-    /// `desktop_host` on transport errors. None when the broker
-    /// hasn't issued mesh credentials.
-    string? desktop_mesh_url;
-    /// Defguard mesh config returned by the broker, when configured.
-    /// Phase 6a: surfaced for display + persistence; Phase 6b will use
-    /// it to bring up the actual WireGuard tunnel.
-    MeshConfig? mesh;
+    /// Defguard self-enrollment URL (D-005) — open/hand off at pair
+    /// time so the device joins the mesh. Null when the server has no
+    /// Defguard configured (LAN/public-tunnel reachability still works).
+    string? defguard_enrollment_url;
 };
 
-dictionary MeshConfig {
-    string peer_public_key;
-    string peer_endpoint;
-    sequence<string> allowed_ips;
-    string assigned_ip;
-    u32 mtu;
+/// `GET /api/device/runtime-config` — post-pair device config. The
+/// voice WS port is the load-bearing field: null means the server's
+/// voice WS failed to bind → show "voice unavailable" instead of
+/// dialing a dead port.
+dictionary RuntimeConfig {
+    string mesh_host;
+    string workspace_id;
+    string device_kind;
+    u16? voice_ws_port;
+    string voice_ws_path;
 };
 
-dictionary WgKeyPair {
-    string private_key_b64;
-    string public_key_b64;
+/// `GET /api/device/voice-session-init` — ElevenLabs Conv AI session
+/// bootstrap (the conversational voice flow). dynamic_variables_json is
+/// forwarded to the EL SDK verbatim.
+dictionary VoiceSessionInit {
+    string conversation_token;
+    string agent_id;
+    double idle_timeout_min;
+    double session_max_min;
+    string voice_mode;
+    string dynamic_variables_json;
 };
 
 dictionary PauseInfo {
@@ -294,38 +306,6 @@ dictionary StandingCandidate {
     string? first_shown_at;
 };
 
-dictionary OperatorCard {
-    string id;
-    string action;
-    string? reason;
-    string? target_harness;
-    string? directive_kind;
-    string? directive_subject;
-    string? directive_body;
-    string status;
-};
-
-dictionary SyncEvent {
-    string id;
-    string name;
-    /// Raw JSON for `args` (or the literal string `"null"`).
-    string args_json;
-};
-
-/// Long-running SSE subscription to `/api/mobile/sync/sse`. Reconnects
-/// internally; call `close()` when the host UI tears down.
-interface SyncStream {
-    /// Open the stream. The connection is established asynchronously
-    /// in a background task; `next_event()` will yield the first event
-    /// once the SSE handshake completes.
-    constructor(string base_url, string device_token);
-
-    [Throws=SyncError, Async]
-    SyncEvent next_event();
-
-    void disconnect();
-};
-
 interface OperatorClient {
     constructor(string base_url, string? device_token);
 
@@ -347,16 +327,16 @@ interface OperatorClient {
     [Throws=ApiError, Async]
     HarnessStatus get_harness_status(string slug);
 
-    /// `POST /api/mobile/push/register`. `platform` is "fcm" (Android)
+    /// `POST /api/device/push/register`. `platform` is "fcm" (Android)
     /// or "apns" (iOS).
     [Throws=ApiError, Async]
     void register_push(string platform, string token);
 
-    /// `POST /api/mobile/heartbeat` — bumps server-side last_seen.
+    /// `POST /api/device/heartbeat` — bumps server-side last_seen.
     [Throws=ApiError, Async]
     void heartbeat();
 
-    /// `GET /api/mobile/operator/pause` — current global pause state.
+    /// `GET /api/device/operator/pause` — current global pause state.
     [Throws=ApiError, Async]
     PauseInfo pause_get();
 
@@ -378,68 +358,72 @@ interface OperatorClient {
     [Throws=ApiError, Async]
     VoiceLease? voice_lease_get();
 
-    /// `GET /api/mobile/running` — currently-running phases per harness.
+    /// `GET /api/device/running` — currently-running phases per harness.
     [Throws=ApiError, Async]
     sequence<Running> list_running();
 
-    /// `GET /api/mobile/running` — full running snapshot including
+    /// `GET /api/device/running` — full running snapshot including
     /// the current operator scan summary when one is active.
     [Throws=ApiError, Async]
     RunningSnapshot running_snapshot();
 
-    /// `GET /api/mobile/notifications/recent`.
+    /// `GET /api/device/notifications/recent`.
     [Throws=ApiError, Async]
     sequence<Toast> recent_notifications();
 
-    /// `GET /api/mobile/actions/recent`.
+    /// `GET /api/device/actions/recent`.
     [Throws=ApiError, Async]
     sequence<AuditEntry> recent_actions();
 
-    /// `GET /api/mobile/workspaces`.
+    /// `GET /api/device/workspaces`.
     [Throws=ApiError, Async]
     sequence<Workspace> list_workspaces();
 
-    /// `POST /api/mobile/workspace/switch` — issues a new deviceToken
+    /// `POST /api/device/workspace/switch` — issues a new deviceToken
     /// scoped to the target workspace.
     [Throws=ApiError, Async]
     WorkspaceSwitchResult workspace_switch(string workspace_id);
 
-    /// `GET /api/mobile/desktop/devices`.
+    /// `GET /api/device/devices`.
     [Throws=ApiError, Async]
     sequence<Device> list_desktop_devices();
 
-    /// `DELETE /api/mobile/desktop/devices/{id}`.
+    /// `DELETE /api/device/devices/{id}`.
     [Throws=ApiError, Async]
     void revoke_device(string device_id);
 
-    /// `GET /api/mobile/operator/cards`.
+    /// `GET /api/device/runtime-config` — post-pair device config
+    /// (voice WS port/path discovery).
     [Throws=ApiError, Async]
-    sequence<OperatorCard> list_operator_cards();
+    RuntimeConfig runtime_config();
 
-    /// `POST /api/mobile/operator/cards/{id}/dispatch`.
+    /// `GET /api/device/voice-session-init` — mint an ElevenLabs Conv
+    /// AI session token. Cooldown/concurrency rejections raise
+    /// ApiError.Server with the server's hint in detail.
     [Throws=ApiError, Async]
-    string dispatch_operator_card(string card_id);
+    VoiceSessionInit voice_session_init();
 
-    /// `POST /api/mobile/operator/cards/{id}/dismiss`.
+    /// `GET /api/device/rest-query?name=&args=` — one-shot polling
+    /// fetch; returns the rows payload as a JSON string. Prefer
+    /// SyncCache + start_polling for UI surfaces.
     [Throws=ApiError, Async]
-    string dismiss_operator_card(string card_id);
+    string rest_query(string name, string args_json);
 
-    /// `GET /api/mobile/operator/standing-candidates`.
+    /// `GET /api/device/operator/standing-candidates`.
     [Throws=ApiError, Async]
     sequence<StandingCandidate> standing_candidates();
 
-    /// `POST /api/mobile/operator/standing-candidates/decide`.
+    /// `POST /api/device/operator/standing-candidates/decide`.
     /// `approve = true` → "approve", false → "dismiss".
     [Throws=ApiError, Async]
     void standing_candidate_decide(string capability, string target_harness, boolean approve);
 
-    /// `POST /api/mobile/pair` — exchanges a one-time pair token for a
+    /// `POST /api/device/pair` — exchanges a one-time pair token for a
     /// long-lived device JWT. The client's `device_token` is ignored
-    /// for this call. `wireguard_pubkey_b64` is optional but should be
-    /// supplied by Phase 6+ clients so the broker can register the
-    /// device's public key.
+    /// for this call. The outcome's defguard_enrollment_url is the
+    /// Defguard self-enrollment hand-off (no WG config at pair time).
     [Throws=PairError, Async]
-    PairOutcome pair(string pair_token, string? wireguard_pubkey_b64);
+    PairOutcome pair(string pair_token);
 };
 
 /// Phase 8 — biometric gating.

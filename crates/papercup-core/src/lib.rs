@@ -14,10 +14,14 @@
 //   * progenitor adds ~30s to clean cold builds + a code-gen step
 //     that's awkward for cross-compile (cargo-ndk + xcframework both
 //     re-run it per ABI).
-//   * The hand-mirrored types are covered by 21 wiremock tests in
-//     crates/papercup-core/tests/client_test.rs that exercise every
-//     endpoint's body shape. If a backend change breaks the wire
-//     contract, that suite fails before any user sees it.
+//   * The hand-mirrored types are covered by the wiremock suite in
+//     crates/papercup-core/tests/client_test.rs (31 tests as of
+//     2026-06-05) that exercises every endpoint's body shape AND both
+//     server error envelopes. If a backend change breaks the wire
+//     contract, that suite fails before any user sees it — but only if
+//     the fixtures track the LIVE routes; refresh them from
+//     packages/operator-core/lib/endpoint-route/routes/device/* when
+//     the server moves.
 //   * Each new endpoint costs ~10 lines (one struct, one method) +
 //     one wiremock test. That's cheaper than maintaining a
 //     progenitor-overrides file for the camelCase quirks in the
@@ -27,13 +31,17 @@
 // the cheapest contract enforcement (e.g. backend ships >50
 // endpoints, or generated client features like retry policies become
 // shared with the desktop), revisit.
+//
+// 2026-06-05 (mobile-apps-revival-redesign D-001): re-audited against
+// the live server. `sync` (SSE) and `mesh` (WireGuard-at-pair) modules
+// removed — sync is now polling via `client::rest_query` + the cache's
+// `start_polling`, and mesh is Defguard self-enrollment (the pair
+// response's `defguard_enrollment_url`).
 
 pub mod biometric;
 pub mod cache;
 pub mod client;
 pub mod intent;
-pub mod mesh;
-pub mod sync;
 pub mod types;
 pub mod voice;
 

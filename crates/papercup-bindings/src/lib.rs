@@ -8,21 +8,17 @@
 #![allow(clippy::empty_line_after_doc_comments)]
 
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
-use papercup_core::mesh::{
-    generate_wg_keypair as core_keygen, to_wg_quick as core_wgq, MeshSpec, WgKeyPair as CoreKp,
-};
-use papercup_core::sync::{SyncError as CoreSyncError, SyncStream as CoreSync};
 use papercup_core::types::{
-    AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull,
-    OperatorCard as CoreOperatorCard, PairBody, PauseInfo as CorePauseInfo, PushRegisterBody,
-    RunningHarnessPhase as CoreRunning, RunningScan as CoreRunningScan,
+    AuditRow as CoreAudit, DeviceRow as CoreDevice, HarnessLite, HarnessStatusFull, PairBody,
+    PauseInfo as CorePauseInfo, PushRegisterBody, RunningHarnessPhase as CoreRunning,
+    RunningScan as CoreRunningScan, RuntimeConfig as CoreRuntimeConfig,
     StandingCandidate as CoreStandingCandidate, ToastRow as CoreToast,
-    VoiceLeaseShape as CoreVoiceLease, WorkspaceItem as CoreWorkspace,
-    WorkspaceSwitchResp as CoreWorkspaceSwitch,
+    VoiceLeaseShape as CoreVoiceLease, VoiceSessionInit as CoreVoiceSessionInit,
+    WorkspaceItem as CoreWorkspace, WorkspaceSwitchResp as CoreWorkspaceSwitch,
 };
 use papercup_core::voice::{
-    VoiceClient as CoreVoice, VoiceError as CoreVoiceError, VoiceEvent as CoreVoiceEvent,
-    VoiceStatus as CoreVoiceStatus,
+    voice_ws_url as core_voice_ws_url, VoiceClient as CoreVoice, VoiceError as CoreVoiceError,
+    VoiceEvent as CoreVoiceEvent, VoiceStatus as CoreVoiceStatus,
 };
 
 uniffi::include_scaffolding!("papercup");
@@ -33,23 +29,11 @@ fn version() -> String {
     papercup_core::version()
 }
 
-fn generate_wg_keypair() -> WgKeyPair {
-    let kp: CoreKp = core_keygen();
-    WgKeyPair {
-        private_key_b64: kp.private_key_b64,
-        public_key_b64: kp.public_key_b64,
-    }
-}
-
-fn mesh_to_wg_quick(private_key_b64: String, config: MeshConfig) -> String {
-    let spec = MeshSpec {
-        peer_public_key_b64: config.peer_public_key,
-        peer_endpoint: config.peer_endpoint,
-        allowed_ips: config.allowed_ips,
-        assigned_ip: config.assigned_ip,
-        mtu: config.mtu,
-    };
-    core_wgq(&private_key_b64, &spec)
+/// Build the voice WS URL from the API base URL + the
+/// runtime-config-discovered port/path. The voice WS listens on its own
+/// port (default :3068), NOT the API port.
+fn voice_ws_url(base_url: String, port: u16, path: String) -> String {
+    core_voice_ws_url(&base_url, port, &path)
 }
 
 fn parse_qr_payload(text: String) -> Result<QrPayload, PairError> {
@@ -192,8 +176,10 @@ impl SyncCache {
     pub fn register_query(&self, name: String) {
         let mut reg = self.registered.lock().unwrap();
         if reg.insert(name.clone()) {
-            // Kick off a first fetch so the cache has a value when UI
-            // first observes it.
+            // Make the name visible to the polling loop immediately,
+            // then kick off a first fetch so the cache has a value when
+            // the UI first observes it.
+            self.inner.register(&name);
             let inner = self.inner.clone();
             let n = name.clone();
             rt().spawn(async move {
@@ -208,6 +194,20 @@ impl SyncCache {
         if known {
             self.inner.refresh(&name).await;
         }
+    }
+
+    /// Start the rest-query polling loop (the SSE stream's replacement —
+    /// mobile-apps-revival D-001.1). Subscribers are notified only when a
+    /// payload actually changes. Idempotent; restart replaces the loop.
+    pub fn start_polling(&self, interval_ms: u64) {
+        let _g = rt().enter();
+        self.inner
+            .start_polling(std::time::Duration::from_millis(interval_ms.max(500)));
+    }
+
+    /// Stop the polling loop (e.g. when the app backgrounds).
+    pub fn stop_polling(&self) {
+        self.inner.stop_polling();
     }
 
     pub fn subscribe(&self, subscriber: Box<dyn CacheSubscriber>) {
@@ -383,21 +383,59 @@ pub struct PairOutcome {
     pub device_id: String,
     pub workspace_id: String,
     pub desktop_host: String,
-    pub desktop_mesh_url: Option<String>,
-    pub mesh: Option<MeshConfig>,
+    /// Defguard self-enrollment URL (D-005) — open/hand off at pair time
+    /// so the device joins the mesh. None when the server has no Defguard
+    /// configured (LAN/public-tunnel reachability still works).
+    pub defguard_enrollment_url: Option<String>,
 }
 
-pub struct MeshConfig {
-    pub peer_public_key: String,
-    pub peer_endpoint: String,
-    pub allowed_ips: Vec<String>,
-    pub assigned_ip: String,
-    pub mtu: u32,
+/// `GET /api/device/runtime-config` — post-pair device config. The voice
+/// WS port is the load-bearing field: the WS does NOT share the API port.
+/// `voice_ws_port == None` → the server's voice WS failed to bind →
+/// show "voice unavailable" instead of dialing a dead port.
+pub struct RuntimeConfig {
+    pub mesh_host: String,
+    pub workspace_id: String,
+    pub device_kind: String,
+    pub voice_ws_port: Option<u16>,
+    pub voice_ws_path: String,
 }
 
-pub struct WgKeyPair {
-    pub private_key_b64: String,
-    pub public_key_b64: String,
+impl From<CoreRuntimeConfig> for RuntimeConfig {
+    fn from(c: CoreRuntimeConfig) -> Self {
+        Self {
+            mesh_host: c.mesh_host,
+            workspace_id: c.workspace_id,
+            device_kind: c.device_kind,
+            voice_ws_port: c.voice_ws.port,
+            voice_ws_path: c.voice_ws.path,
+        }
+    }
+}
+
+/// `GET /api/device/voice-session-init` — ElevenLabs Conv AI session
+/// bootstrap (the conversational voice flow). `dynamic_variables_json`
+/// is forwarded to the EL SDK verbatim.
+pub struct VoiceSessionInit {
+    pub conversation_token: String,
+    pub agent_id: String,
+    pub idle_timeout_min: f64,
+    pub session_max_min: f64,
+    pub voice_mode: String,
+    pub dynamic_variables_json: String,
+}
+
+impl From<CoreVoiceSessionInit> for VoiceSessionInit {
+    fn from(v: CoreVoiceSessionInit) -> Self {
+        Self {
+            conversation_token: v.conversation_token,
+            agent_id: v.agent_id,
+            idle_timeout_min: v.idle_timeout_min,
+            session_max_min: v.session_max_min,
+            voice_mode: v.voice_mode,
+            dynamic_variables_json: v.dynamic_variables.to_string(),
+        }
+    }
 }
 
 pub struct Toast {
@@ -607,100 +645,6 @@ impl From<CoreStandingCandidate> for StandingCandidate {
     }
 }
 
-pub struct OperatorCard {
-    pub id: String,
-    pub action: String,
-    pub reason: Option<String>,
-    pub target_harness: Option<String>,
-    pub directive_kind: Option<String>,
-    pub directive_subject: Option<String>,
-    pub directive_body: Option<String>,
-    pub status: String,
-}
-
-impl From<CoreOperatorCard> for OperatorCard {
-    fn from(card: CoreOperatorCard) -> Self {
-        Self {
-            id: card.id,
-            action: card.action,
-            reason: card.reason,
-            target_harness: card.target_harness,
-            directive_kind: card.directive_kind,
-            directive_subject: card.directive_subject,
-            directive_body: card.directive_body,
-            status: card.status,
-        }
-    }
-}
-
-fn parse_mesh(value: &serde_json::Value) -> Option<MeshConfig> {
-    #[derive(serde::Deserialize)]
-    struct Raw {
-        peer_public_key: String,
-        peer_endpoint: String,
-        allowed_ips: Vec<String>,
-        assigned_ip: String,
-        mtu: u32,
-    }
-    serde_json::from_value::<Raw>(value.clone())
-        .ok()
-        .map(|r| MeshConfig {
-            peer_public_key: r.peer_public_key,
-            peer_endpoint: r.peer_endpoint,
-            allowed_ips: r.allowed_ips,
-            assigned_ip: r.assigned_ip,
-            mtu: r.mtu,
-        })
-}
-
-pub struct SyncEvent {
-    pub id: String,
-    pub name: String,
-    pub args_json: String,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum SyncError {
-    #[error("stream closed")]
-    Closed,
-}
-
-impl From<CoreSyncError> for SyncError {
-    fn from(e: CoreSyncError) -> Self {
-        match e {
-            CoreSyncError::Closed => SyncError::Closed,
-        }
-    }
-}
-
-pub struct SyncStream {
-    inner: CoreSync,
-}
-
-impl SyncStream {
-    pub fn new(base_url: String, device_token: String) -> Self {
-        // Constructing the core stream spawns a tokio task; ensure our
-        // shared runtime is current so the spawn lands on it.
-        let _g = rt().enter();
-        Self {
-            inner: CoreSync::connect(&base_url, &device_token),
-        }
-    }
-
-    pub async fn next_event(&self) -> Result<SyncEvent, SyncError> {
-        let ev = self.inner.next_event().await?;
-        Ok(SyncEvent {
-            id: ev.id,
-            name: ev.name,
-            args_json: ev.args_json,
-        })
-    }
-
-    pub fn disconnect(&self) {
-        self.inner.close();
-    }
-}
-
 // ── voice ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, thiserror::Error)]
@@ -779,10 +723,12 @@ pub struct VoiceClient {
 }
 
 impl VoiceClient {
-    pub fn new(base_url: String, device_token: String, wake_word: Option<String>) -> Self {
+    /// `ws_url` is the FULL voice WS URL — build it with `voice_ws_url`
+    /// from the runtime-config's discovered port + path.
+    pub fn new(ws_url: String, device_token: String, wake_word: Option<String>) -> Self {
         let _g = rt().enter();
         Self {
-            inner: CoreVoice::connect(&base_url, &device_token, wake_word.as_deref()),
+            inner: CoreVoice::connect(&ws_url, &device_token, wake_word.as_deref()),
         }
     }
 
@@ -1168,35 +1114,44 @@ impl OperatorClient {
         }
     }
 
-    pub async fn list_operator_cards(&self) -> Result<Vec<OperatorCard>, ApiError> {
+    /// Post-pair runtime config — gives the host the voice WS port/path.
+    pub async fn runtime_config(&self) -> Result<RuntimeConfig, ApiError> {
         let core = self.inner.clone();
         let result = rt()
-            .spawn(async move { core.list_operator_cards().await })
+            .spawn(async move { core.runtime_config().await })
             .await
             .map_err(|_| ApiError::Network {
                 detail: "tokio join".into(),
             })??;
-        Ok(result.into_iter().map(OperatorCard::from).collect())
+        Ok(result.into())
     }
 
-    pub async fn dispatch_operator_card(&self, card_id: String) -> Result<String, ApiError> {
+    /// ElevenLabs Conv AI session bootstrap (the conversational voice
+    /// flow). Cooldown/concurrency rejections surface as ApiError::Server
+    /// with the server's hint in `detail`.
+    pub async fn voice_session_init(&self) -> Result<VoiceSessionInit, ApiError> {
         let core = self.inner.clone();
-        rt().spawn(async move { core.dispatch_operator_card(&card_id).await })
+        let result = rt()
+            .spawn(async move { core.voice_session_init().await })
             .await
             .map_err(|_| ApiError::Network {
                 detail: "tokio join".into(),
-            })?
-            .map_err(Into::into)
+            })??;
+        Ok(result.into())
     }
 
-    pub async fn dismiss_operator_card(&self, card_id: String) -> Result<String, ApiError> {
+    /// Raw polling fetch: `GET /api/device/rest-query?name=&args=` →
+    /// the `rows` payload as a JSON string. Prefer SyncCache+polling for
+    /// UI surfaces; this is the escape hatch for one-shot queries.
+    pub async fn rest_query(&self, name: String, args_json: String) -> Result<String, ApiError> {
         let core = self.inner.clone();
-        rt().spawn(async move { core.dismiss_operator_card(&card_id).await })
+        let result = rt()
+            .spawn(async move { core.rest_query(&name, &args_json).await })
             .await
             .map_err(|_| ApiError::Network {
                 detail: "tokio join".into(),
-            })?
-            .map_err(Into::into)
+            })??;
+        Ok(result.rows.to_string())
     }
 
     pub async fn standing_candidates(&self) -> Result<Vec<StandingCandidate>, ApiError> {
@@ -1229,45 +1184,23 @@ impl OperatorClient {
         Ok(())
     }
 
-    pub async fn pair(
-        &self,
-        pair_token: String,
-        wireguard_pubkey_b64: Option<String>,
-    ) -> Result<PairOutcome, PairError> {
+    /// Exchange a one-time pair token for a device JWT. The response's
+    /// `defguard_enrollment_url` is the Defguard self-enrollment hand-off
+    /// (D-005) — no WireGuard config is exchanged at pair time anymore.
+    pub async fn pair(&self, pair_token: String) -> Result<PairOutcome, PairError> {
         let core = self.inner.clone();
         let resp = rt()
-            .spawn(async move {
-                core.pair(PairBody {
-                    pair_token,
-                    wireguard_pubkey: wireguard_pubkey_b64,
-                })
-                .await
-            })
+            .spawn(async move { core.pair(PairBody { pair_token }).await })
             .await
             .map_err(|_| PairError::Network {
                 detail: "tokio join".into(),
             })??;
-        let mesh = resp.wg_config.as_ref().and_then(parse_mesh);
-        // Surface the broker-issued mesh URL so the host can hand it
-        // to OperatorClient::new_with_fallback.
-        let desktop_mesh_url = resp
-            .desktop_mesh_host
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|h| {
-                if h.contains("://") {
-                    h.clone()
-                } else {
-                    format!("http://{h}")
-                }
-            });
         Ok(PairOutcome {
             device_token: resp.device_token,
             device_id: resp.device_id,
             workspace_id: resp.workspace_id,
             desktop_host: resp.desktop_host,
-            desktop_mesh_url,
-            mesh,
+            defguard_enrollment_url: resp.defguard_enrollment_url,
         })
     }
 }

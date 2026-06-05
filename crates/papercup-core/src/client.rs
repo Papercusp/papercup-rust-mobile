@@ -1,22 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// HTTP client for the Papercup operator. Mirrors the existing TS app's
-// `apiFetch` shape but from Rust.
+// HTTP client for the Papercusp operator's `/api/device/*` surface.
 //
-// Phase 1 surface:
-//   - `OperatorClient::new(base_url, device_token)`
-//   - `OperatorClient::list_harnesses()` → `Vec<HarnessLite>`
-//   - `OperatorClient::pair(qr_payload)` → `PairResp` (no token needed)
-//
-// Later phases extend with: SSE sync stream (Phase 3), voice WS (Phase 4),
-// mesh-aware base URL fallback (Phase 6).
+// Contract notes (re-audited against the live server, 2026-06-05 —
+// mobile-apps-revival-redesign D-001):
+//   - Errors arrive in TWO envelopes: route-stack errors are nested
+//     `{"error":{code,message}}`; handler errors are flat
+//     `{"error":"code", hint?, detail?}`. `ErrorBody` decodes both.
+//   - 401 (no/bad token) AND 403 (principal resolved but rejected) both
+//     mean "this device token is no good here" → `ApiError::Unauthorized`
+//     → the UI re-pairs.
+//   - Pairing returns `defguardEnrollmentUrl` (Defguard self-enrollment);
+//     no WireGuard config is exchanged at pair time.
+//   - Sync is polled via `GET /api/device/rest-query` (`rest_query`);
+//     the old `/sync/sse` stream is gone.
+//   - The voice WS lives on its own port, discovered via
+//     `GET /api/device/runtime-config` (`runtime_config`).
+
+use serde::de::DeserializeOwned;
 
 use crate::types::{
     AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull,
-    ListResp, OperatorCard, OperatorCardActionResp, OperatorCardsResp, PairBody, PairResp,
-    PauseInfo, PushRegisterBody, RunningHarnessPhase, RunningResp, RunningScan, StandingCandidate,
-    StandingCandidatesResp, StandingDecisionBody, ToastRow, ToastsResp, VoiceLeaseRead,
-    VoiceLeaseShape, WorkspaceItem, WorkspaceSwitchBody, WorkspaceSwitchResp, WorkspacesResp,
+    ListResp, PairBody, PairResp, PauseInfo, PushRegisterBody, RestQueryResp, RunningHarnessPhase,
+    RunningResp, RunningScan, RuntimeConfig, StandingCandidate, StandingCandidatesResp,
+    StandingDecisionBody, ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, VoiceSessionInit,
+    WorkspaceItem, WorkspaceSwitchBody, WorkspaceSwitchResp, WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -35,6 +43,30 @@ impl From<reqwest::Error> for ApiError {
     fn from(e: reqwest::Error) -> Self {
         ApiError::Network(e.to_string())
     }
+}
+
+/// Map a non-success response to an `ApiError`. 401 and 403 both mean
+/// the device principal was rejected → `Unauthorized` (re-pair). Other
+/// statuses surface as `Server` with the decoded error envelope.
+async fn into_api_error(resp: reqwest::Response) -> ApiError {
+    let status = resp.status();
+    if status.as_u16() == 401 || status.as_u16() == 403 {
+        return ApiError::Unauthorized;
+    }
+    let detail = match resp.json::<ErrorBody>().await {
+        Ok(body) => body.detail_string(),
+        Err(_) => status.canonical_reason().unwrap_or("").to_string(),
+    };
+    ApiError::Server {
+        status: status.as_u16(),
+        detail,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum BodyKind {
+    None,
+    Json,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +99,7 @@ impl OperatorClient {
     /// `new_with_fallback(mesh, public, token)` — preferred mesh URL
     /// (e.g. `http://10.10.0.2:3070`) with automatic switch to the
     /// public URL (e.g. `https://api.papercupai.com`) on connect
-    /// failure. Phase 6 designed deliverable.
+    /// failure.
     pub fn new_with_fallback(
         primary: impl Into<String>,
         fallback: impl Into<String>,
@@ -83,7 +115,7 @@ impl OperatorClient {
     }
 
     /// Swap the active base URL. Public so the host can flip when mesh
-    /// status changes (e.g. after `MeshState::Up`).
+    /// status changes.
     pub fn set_base_url(&self, url: impl Into<String>) {
         let mut w = self.base_url.write().unwrap();
         *w = url.into().trim_end_matches('/').to_string();
@@ -118,52 +150,84 @@ impl OperatorClient {
         }
     }
 
-    /// `GET /api/device/harnesses` — returns the user's harnesses.
-    /// Requires a paired device token.
-    pub async fn list_harnesses(&self) -> Result<Vec<HarnessLite>, ApiError> {
-        self.bearer_get_json::<ListResp>("/api/device/harnesses")
-            .await
-            .map(|r| r.harnesses)
-    }
-
-    /// `GET /api/device/harnesses/{slug}` — returns the per-harness
-    /// status. Today this is thin (slug/status/iteration/last_active_ts);
-    /// backend has the rich `StatusResp` shape on the desktop endpoint
-    /// and will fold it into this route in a later stage.
-    pub async fn get_harness_status(&self, slug: &str) -> Result<HarnessStatusFull, ApiError> {
-        let url = format!("{}/api/device/harnesses/{}", self.base_url(), slug);
-        let mut req = self.http.get(&url);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
+    /// Single request pipeline for every bearer-authed endpoint:
+    /// fallback retry on transport failure, 401/403 → Unauthorized,
+    /// error-envelope decode (both shapes) on other failures.
+    async fn request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<reqwest::Response, ApiError> {
+        let token = match &self.device_token {
+            Some(tok) => tok.clone(),
             None => return Err(ApiError::Unauthorized),
         };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            let detail = resp
-                .json::<ErrorBody>()
-                .await
-                .map(|e| e.error)
-                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail,
-            });
-        }
-        resp.json::<HarnessStatusFull>()
+        let body_kind = if body.is_some() {
+            BodyKind::Json
+        } else {
+            BodyKind::None
+        };
+        self.with_fallback(move |base| {
+            let url = format!("{base}{path}");
+            let method = method.clone();
+            let token = token.clone();
+            let body = body.clone();
+            async move {
+                let mut req = self.http.request(method, &url).bearer_auth(&token);
+                if let (BodyKind::Json, Some(b)) = (body_kind, body) {
+                    req = req.json(&b);
+                }
+                let resp = req.send().await?;
+                if !resp.status().is_success() {
+                    return Err(into_api_error(resp).await);
+                }
+                Ok(resp)
+            }
+        })
+        .await
+    }
+
+    async fn request_json<T: DeserializeOwned>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<T, ApiError> {
+        let resp = self.request(method, path, body).await?;
+        resp.json::<T>()
             .await
             .map_err(|e| ApiError::Decode(e.to_string()))
     }
 
+    async fn request_empty(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<(), ApiError> {
+        self.request(method, path, body).await.map(|_| ())
+    }
+
+    /// `GET /api/device/harnesses` — returns the user's harnesses.
+    pub async fn list_harnesses(&self) -> Result<Vec<HarnessLite>, ApiError> {
+        self.request_json::<ListResp>(reqwest::Method::GET, "/api/device/harnesses", None)
+            .await
+            .map(|r| r.harnesses)
+    }
+
+    /// `GET /api/device/harnesses/{slug}` — per-harness status (desktop
+    /// StatusResp shape).
+    pub async fn get_harness_status(&self, slug: &str) -> Result<HarnessStatusFull, ApiError> {
+        let path = format!("/api/device/harnesses/{slug}");
+        self.request_json::<HarnessStatusFull>(reqwest::Method::GET, &path, None)
+            .await
+    }
+
     /// `GET /api/device/running` — per-phase status of every active
-    /// harness (passed/todo/blocked counts + active_roles). Tauri-parity
-    /// "Currently running" view.
+    /// harness (passed/todo/blocked counts + active_roles).
     pub async fn list_running(&self) -> Result<Vec<RunningHarnessPhase>, ApiError> {
-        let url = format!("{}/api/device/running", self.base_url());
-        self.bearer_get_json::<RunningResp>(&url)
+        self.request_json::<RunningResp>(reqwest::Method::GET, "/api/device/running", None)
             .await
             .map(|r| r.harnesses)
     }
@@ -173,466 +237,231 @@ impl OperatorClient {
     pub async fn running_snapshot(
         &self,
     ) -> Result<(Option<RunningScan>, Vec<RunningHarnessPhase>), ApiError> {
-        let url = format!("{}/api/device/running", self.base_url());
-        self.bearer_get_json::<RunningResp>(&url)
+        self.request_json::<RunningResp>(reqwest::Method::GET, "/api/device/running", None)
             .await
             .map(|r| (r.scan, r.harnesses))
+    }
+
+    /// `GET /api/device/runtime-config` — post-pair device config: mesh
+    /// host + the voice WS port/path (the WS lives on its own port, NOT
+    /// the API port; `voice_ws.port == None` means voice is unavailable).
+    pub async fn runtime_config(&self) -> Result<RuntimeConfig, ApiError> {
+        self.request_json::<RuntimeConfig>(reqwest::Method::GET, "/api/device/runtime-config", None)
+            .await
+    }
+
+    /// `GET /api/device/rest-query?name=&args=` — the polling sync
+    /// fetcher. Returns the raw `rows` JSON (the cache layer stays
+    /// name-keyed + UI-agnostic). Known names today: `toastLog.recent`,
+    /// `auditLog.recent`, `operatorScans.running`, `harnessStatus.list`,
+    /// `harnessStatus.byHarness`, `standingCandidates.list`.
+    pub async fn rest_query(&self, name: &str, args_json: &str) -> Result<RestQueryResp, ApiError> {
+        let path = format!(
+            "/api/device/rest-query?name={}&args={}",
+            urlencode(name),
+            urlencode(args_json),
+        );
+        self.request_json::<RestQueryResp>(reqwest::Method::GET, &path, None)
+            .await
+    }
+
+    /// `GET /api/device/voice-session-init` — mints an ElevenLabs Conv AI
+    /// session token (the EL conversational voice flow). Server-side
+    /// cooldown (8s) and EL concurrency limits surface as
+    /// `ApiError::Server` with the hint text in `detail`.
+    pub async fn voice_session_init(&self) -> Result<VoiceSessionInit, ApiError> {
+        self.request_json::<VoiceSessionInit>(
+            reqwest::Method::GET,
+            "/api/device/voice-session-init",
+            None,
+        )
+        .await
     }
 
     /// `GET /api/device/voice-lease` — current lease holder (or `None`
     /// if no one is listening).
     pub async fn voice_lease_get(&self) -> Result<Option<VoiceLeaseShape>, ApiError> {
-        let url = format!("{}/api/device/voice-lease", self.base_url());
-        self.bearer_get_json::<VoiceLeaseRead>(&url)
+        self.request_json::<VoiceLeaseRead>(reqwest::Method::GET, "/api/device/voice-lease", None)
             .await
             .map(|r| r.lease)
     }
 
     /// `POST /api/device/voice-lease/claim` — phone always pre-empts.
-    /// 12-second TTL server-side; refresh via `voice_lease_heartbeat`.
     pub async fn voice_lease_claim(&self) -> Result<(), ApiError> {
-        self.bearer_post_empty("/api/device/voice-lease/claim")
+        self.request_empty(reqwest::Method::POST, "/api/device/voice-lease/claim", None)
             .await
     }
 
-    /// `POST /api/device/voice-lease/heartbeat` — refresh-if-mine; the
-    /// server returns 409 if another owner holds the lease (the phone
-    /// then surfaces "you've been preempted" and stops listening).
+    /// `POST /api/device/voice-lease/heartbeat` — refresh-if-mine.
     pub async fn voice_lease_heartbeat(&self) -> Result<(), ApiError> {
-        self.bearer_post_empty("/api/device/voice-lease/heartbeat")
-            .await
+        self.request_empty(
+            reqwest::Method::POST,
+            "/api/device/voice-lease/heartbeat",
+            None,
+        )
+        .await
     }
 
     /// `DELETE /api/device/voice-lease` — release-if-mine; idempotent.
     pub async fn voice_lease_release(&self) -> Result<(), ApiError> {
-        let url = format!("{}/api/device/voice-lease", self.base_url());
-        self.bearer_delete_empty(&url).await
-    }
-
-    /// Helper for POST endpoints that take no body and return only `{ok:true}`.
-    async fn bearer_post_empty(&self, path: &str) -> Result<(), ApiError> {
-        let url = format!("{}{}", self.base_url(), path);
-        let mut req = self.http.post(&url);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail: status.canonical_reason().unwrap_or("").to_string(),
-            });
-        }
-        Ok(())
-    }
-
-    async fn bearer_delete_empty(&self, url: &str) -> Result<(), ApiError> {
-        let mut req = self.http.delete(url);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail: status.canonical_reason().unwrap_or("").to_string(),
-            });
-        }
-        Ok(())
-    }
-
-    /// `POST /api/device/heartbeat` — bumps `last_seen` server-side so
-    /// the desktop's "is the phone connected" badge stays fresh. Cheap;
-    /// safe to call every minute while foregrounded.
-    pub async fn heartbeat(&self) -> Result<(), ApiError> {
-        let url = format!("{}/api/device/heartbeat", self.base_url());
-        let mut req = self.http.post(&url);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail: status.canonical_reason().unwrap_or("").to_string(),
-            });
-        }
-        Ok(())
-    }
-
-    /// `GET /api/device/notifications/recent` — most recent toast_log
-    /// entries scoped to the device's workspace. Limit defaults to 50.
-    pub async fn recent_notifications(&self) -> Result<Vec<ToastRow>, ApiError> {
-        let url = format!("{}/api/device/notifications/recent", self.base_url());
-        self.bearer_get_json::<ToastsResp>(&url)
+        self.request_empty(reqwest::Method::DELETE, "/api/device/voice-lease", None)
             .await
-            .map(|r| r.toasts)
     }
 
-    /// `GET /api/device/actions/recent` — most recent audit_log entries
-    /// scoped to the device's workspace.
+    /// `POST /api/device/heartbeat` — bumps `last_seen` server-side.
+    pub async fn heartbeat(&self) -> Result<(), ApiError> {
+        self.request_empty(reqwest::Method::POST, "/api/device/heartbeat", None)
+            .await
+    }
+
+    /// `GET /api/device/notifications/recent` — recent toast_log entries.
+    pub async fn recent_notifications(&self) -> Result<Vec<ToastRow>, ApiError> {
+        self.request_json::<ToastsResp>(
+            reqwest::Method::GET,
+            "/api/device/notifications/recent",
+            None,
+        )
+        .await
+        .map(|r| r.toasts)
+    }
+
+    /// `GET /api/device/actions/recent` — recent audit_log entries.
     pub async fn recent_actions(&self) -> Result<Vec<AuditRow>, ApiError> {
-        let url = format!("{}/api/device/actions/recent", self.base_url());
-        self.bearer_get_json::<AuditResp>(&url)
+        self.request_json::<AuditResp>(reqwest::Method::GET, "/api/device/actions/recent", None)
             .await
             .map(|r| r.entries)
     }
 
     /// `GET /api/device/operator/pause` — current global pause state.
     pub async fn pause_get(&self) -> Result<PauseInfo, ApiError> {
-        let url = format!("{}/api/device/operator/pause", self.base_url());
-        self.bearer_get_json::<PauseInfo>(&url).await
+        self.request_json::<PauseInfo>(reqwest::Method::GET, "/api/device/operator/pause", None)
+            .await
     }
 
-    /// `POST` (set) or `DELETE` (clear) the global pause flag. Returns
-    /// the new state. The server fires a `sync_invalidate` for
-    /// `operatorPauseFlag` so peer clients converge instantly.
+    /// `POST` (set) or `DELETE` (clear) the global pause flag. The server
+    /// responds with the new `PauseInfo`; returns its `paused`.
     pub async fn pause_set(&self, paused: bool) -> Result<bool, ApiError> {
-        let url = format!("{}/api/device/operator/pause", self.base_url());
-        let mut req = if paused {
-            self.http.post(&url)
+        let method = if paused {
+            reqwest::Method::POST
         } else {
-            self.http.delete(&url)
+            reqwest::Method::DELETE
         };
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail: status.canonical_reason().unwrap_or("").to_string(),
-            });
-        }
-        #[derive(serde::Deserialize)]
-        struct R {
-            paused: bool,
-        }
-        resp.json::<R>()
+        self.request_json::<PauseInfo>(method, "/api/device/operator/pause", None)
             .await
             .map(|r| r.paused)
-            .map_err(|e| ApiError::Decode(e.to_string()))
     }
 
     /// `POST /api/device/workspace/switch` — re-issues a deviceToken
-    /// scoped to the new workspace. The phone must persist the new
-    /// token in place of the old one immediately.
+    /// scoped to the new workspace. Persist the new token immediately.
     pub async fn workspace_switch(
         &self,
         workspace_id: &str,
     ) -> Result<WorkspaceSwitchResp, ApiError> {
-        let url = format!("{}/api/device/workspace/switch", self.base_url());
-        let mut req = self.http.post(&url).json(&WorkspaceSwitchBody {
+        let body = serde_json::to_value(WorkspaceSwitchBody {
             workspace_id: workspace_id.to_string(),
-        });
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            let detail = resp
-                .json::<ErrorBody>()
-                .await
-                .map(|e| e.error)
-                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail,
-            });
-        }
-        resp.json::<WorkspaceSwitchResp>()
-            .await
-            .map_err(|e| ApiError::Decode(e.to_string()))
+        })
+        .expect("WorkspaceSwitchBody serialises");
+        self.request_json::<WorkspaceSwitchResp>(
+            reqwest::Method::POST,
+            "/api/device/workspace/switch",
+            Some(body),
+        )
+        .await
     }
 
-    /// `GET /api/device/workspaces` — list of workspaces the device can
-    /// see, with the currently-selected one flagged.
+    /// `GET /api/device/workspaces` — workspaces the device can see.
     pub async fn list_workspaces(&self) -> Result<Vec<WorkspaceItem>, ApiError> {
-        let url = format!("{}/api/device/workspaces", self.base_url());
-        self.bearer_get_json::<WorkspacesResp>(&url)
+        self.request_json::<WorkspacesResp>(reqwest::Method::GET, "/api/device/workspaces", None)
             .await
             .map(|r| r.workspaces)
     }
 
-    /// `GET /api/device/devices` — every paired device, including
-    /// this one (matched by device_id).
+    /// `GET /api/device/devices` — every paired device, including this one.
     pub async fn list_desktop_devices(&self) -> Result<Vec<DeviceRow>, ApiError> {
-        let url = format!("{}/api/device/devices", self.base_url());
-        self.bearer_get_json::<DesktopDevicesResp>(&url)
+        self.request_json::<DesktopDevicesResp>(reqwest::Method::GET, "/api/device/devices", None)
             .await
             .map(|r| r.devices)
     }
 
-    /// `GET /api/device/operator/cards`
-    pub async fn list_operator_cards(&self) -> Result<Vec<OperatorCard>, ApiError> {
-        let url = format!("{}/api/device/operator/cards", self.base_url());
-        self.bearer_get_json::<OperatorCardsResp>(&url)
-            .await
-            .map(|r| r.cards)
-    }
-
-    /// `POST /api/device/operator/cards/{id}/dispatch`
-    pub async fn dispatch_operator_card(&self, card_id: &str) -> Result<String, ApiError> {
-        let url = format!(
-            "{}/api/device/operator/cards/{card_id}/dispatch",
-            self.base_url()
-        );
-        let mut req = self.http.post(&url);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            let detail = resp
-                .json::<ErrorBody>()
-                .await
-                .map(|e| e.error)
-                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail,
-            });
-        }
-        let body = resp
-            .json::<OperatorCardActionResp>()
-            .await
-            .map_err(|e| ApiError::Decode(e.to_string()))?;
-        body.message
-            .ok_or_else(|| ApiError::Decode("missing message".into()))
-    }
-
-    /// `POST /api/device/operator/cards/{id}/dismiss`
-    pub async fn dismiss_operator_card(&self, card_id: &str) -> Result<String, ApiError> {
-        let url = format!(
-            "{}/api/device/operator/cards/{card_id}/dismiss",
-            self.base_url()
-        );
-        let mut req = self.http.post(&url);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            let detail = resp
-                .json::<ErrorBody>()
-                .await
-                .map(|e| e.error)
-                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail,
-            });
-        }
-        let body = resp
-            .json::<OperatorCardActionResp>()
-            .await
-            .map_err(|e| ApiError::Decode(e.to_string()))?;
-        body.message
-            .ok_or_else(|| ApiError::Decode("missing message".into()))
-    }
-
-    /// `GET /api/device/operator/standing-candidates`
+    /// `GET /api/device/operator/standing-candidates`.
     pub async fn standing_candidates(&self) -> Result<Vec<StandingCandidate>, ApiError> {
-        let url = format!(
-            "{}/api/device/operator/standing-candidates",
-            self.base_url()
-        );
-        self.bearer_get_json::<StandingCandidatesResp>(&url)
-            .await
-            .map(|r| r.candidates)
+        self.request_json::<StandingCandidatesResp>(
+            reqwest::Method::GET,
+            "/api/device/operator/standing-candidates",
+            None,
+        )
+        .await
+        .map(|r| r.candidates)
     }
 
-    /// `POST /api/device/operator/standing-candidates/decide`
+    /// `POST /api/device/operator/standing-candidates/decide`.
     pub async fn standing_candidate_decide(
         &self,
         capability: &str,
         target_harness: &str,
         decision: &str,
     ) -> Result<(), ApiError> {
-        let url = format!(
-            "{}/api/device/operator/standing-candidates/decide",
-            self.base_url()
-        );
-        let mut req = self.http.post(&url).json(&StandingDecisionBody {
+        let body = serde_json::to_value(StandingDecisionBody {
             capability: capability.to_string(),
             target_harness: target_harness.to_string(),
             decision: decision.to_string(),
-        });
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail: status.canonical_reason().unwrap_or("").to_string(),
-            });
-        }
-        Ok(())
+        })
+        .expect("StandingDecisionBody serialises");
+        self.request_empty(
+            reqwest::Method::POST,
+            "/api/device/operator/standing-candidates/decide",
+            Some(body),
+        )
+        .await
     }
 
     /// `DELETE /api/device/devices/{id}` — unpair the given device.
-    /// Server also invokes Defguard revoke_user.
     pub async fn revoke_device(&self, device_id: &str) -> Result<(), ApiError> {
-        let url = format!("{}/api/device/devices/{}", self.base_url(), device_id);
-        let mut req = self.http.delete(&url);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail: status.canonical_reason().unwrap_or("").to_string(),
-            });
-        }
-        Ok(())
+        let path = format!("/api/device/devices/{device_id}");
+        self.request_empty(reqwest::Method::DELETE, &path, None)
+            .await
     }
 
-    /// Bearer-auth GET → JSON. Helper for the read-only mobile endpoints.
-    async fn bearer_get_json<T: serde::de::DeserializeOwned>(
-        &self,
-        path_or_url: &str,
-    ) -> Result<T, ApiError> {
-        // Accept either a full URL (legacy callers that build their
-        // own from self.base_url()) or a leading-slash path. Path form
-        // gets the mesh→public fallback retry; full-URL form doesn't.
-        let is_path = path_or_url.starts_with('/');
-        let do_request = |base: String| async move {
-            let url = if is_path {
-                format!("{}{}", base, path_or_url)
-            } else {
-                path_or_url.to_string()
-            };
-            let mut req = self.http.get(&url);
-            req = match &self.device_token {
-                Some(tok) => req.bearer_auth(tok),
-                None => return Err(ApiError::Unauthorized),
-            };
-            let resp = req.send().await?;
-            let status = resp.status();
-            if status.as_u16() == 401 {
-                return Err(ApiError::Unauthorized);
-            }
-            if !status.is_success() {
-                let detail = resp
-                    .json::<ErrorBody>()
-                    .await
-                    .map(|e| e.error)
-                    .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-                return Err(ApiError::Server {
-                    status: status.as_u16(),
-                    detail,
-                });
-            }
-            resp.json::<T>()
-                .await
-                .map_err(|e| ApiError::Decode(e.to_string()))
-        };
-        if is_path {
-            self.with_fallback(do_request).await
-        } else {
-            do_request(String::new()).await
-        }
-    }
-
-    /// `POST /api/device/push/register` — registers an FCM/APNS token
-    /// with the backend so the desktop can deliver push notifications.
-    /// Idempotent (server upserts).
+    /// `POST /api/device/push/register` — registers an FCM/APNS token.
+    /// NOTE: the route is being rebuilt server-side (revival D-004);
+    /// shape pinned to the rebuild's contract.
     pub async fn register_push(&self, body: PushRegisterBody) -> Result<(), ApiError> {
-        let url = format!("{}/api/device/push/register", self.base_url());
-        let mut req = self.http.post(&url).json(&body);
-        req = match &self.device_token {
-            Some(tok) => req.bearer_auth(tok),
-            None => return Err(ApiError::Unauthorized),
-        };
-        let resp = req.send().await?;
-        let status = resp.status();
-        if status.as_u16() == 401 {
-            return Err(ApiError::Unauthorized);
-        }
-        if !status.is_success() {
-            let detail = resp
-                .json::<ErrorBody>()
-                .await
-                .map(|e| e.error)
-                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail,
-            });
-        }
-        Ok(())
+        let body = serde_json::to_value(body).expect("PushRegisterBody serialises");
+        self.request_empty(
+            reqwest::Method::POST,
+            "/api/device/push/register",
+            Some(body),
+        )
+        .await
     }
 
     /// `POST /api/device/pair` — exchanges a one-time pair token (from
     /// the desktop's QR code) for a long-lived device JWT. No bearer
-    /// auth required for this call.
+    /// auth. The response's `defguard_enrollment_url` is the Defguard
+    /// self-enrollment hand-off (D-005); no WG config at pair time.
     pub async fn pair(&self, body: PairBody) -> Result<PairResp, ApiError> {
         let url = format!("{}/api/device/pair", self.base_url());
         let resp = self.http.post(&url).json(&body).send().await?;
-        let status = resp.status();
-        if !status.is_success() {
-            let detail = resp
-                .json::<ErrorBody>()
-                .await
-                .map(|e| e.error)
-                .unwrap_or_else(|_| status.canonical_reason().unwrap_or("").to_string());
-            if status == reqwest::StatusCode::UNAUTHORIZED {
-                return Err(ApiError::Unauthorized);
-            }
-            return Err(ApiError::Server {
-                status: status.as_u16(),
-                detail,
-            });
+        if !resp.status().is_success() {
+            return Err(into_api_error(resp).await);
         }
         resp.json::<PairResp>()
             .await
             .map_err(|e| ApiError::Decode(e.to_string()))
     }
+}
+
+/// Minimal query-value escape (RFC 3986 unreserved set passes through).
+/// `rest_query` args are JSON, which needs this for `{`, `}`, `"` etc.
+pub(crate) fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
 }
