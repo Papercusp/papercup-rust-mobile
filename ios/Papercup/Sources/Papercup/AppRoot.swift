@@ -2,8 +2,9 @@
 import SwiftUI
 import os.log
 
-/// Mirrors Android's PairedShell — Tauri-style tab nav (Operator /
-/// Harness / Running / Inbox / Settings) plus pushed routes.
+/// Mirrors Android's PairedShell — the Inbox-first 5-tab nav
+/// (Inbox / Operator / Plans / Brew / Settings, mobile-apps-revival
+/// D-003) plus pushed routes and a header Pot (workspace) switcher.
 struct AppRoot: View {
     @State private var creds: DeviceCredentials? = CredentialStore.load()
     @State private var liveTick: Int = 0
@@ -12,8 +13,11 @@ struct AppRoot: View {
     @State private var pushedRunLogSlug: String? = nil
     @EnvironmentObject private var deepLink: DeepLinkRouter
 
-    enum Tab: Hashable { case operatorTab, harnesses, running, activity, settings }
-    @State private var tab: Tab = .operatorTab
+    /// Inbox-first 5-tab IA. `brew` absorbs the old harnesses + running
+    /// tabs (the live fleet); `inbox` is the actionable attention feed;
+    /// `plans` is the PG-canonical plans browser.
+    enum Tab: Hashable { case inbox, operatorTab, plans, brew, settings }
+    @State private var tab: Tab = .inbox
 
     var body: some View {
         Group {
@@ -40,7 +44,7 @@ struct AppRoot: View {
                 PairView { fresh in
                     CredentialStore.save(fresh)
                     creds = fresh
-                    tab = .operatorTab
+                    tab = .inbox
                 }
                 .onChange(of: deepLink.pendingPair) { _, new in
                     if let p = new { Task { await autoPair(p) } }
@@ -75,7 +79,7 @@ struct AppRoot: View {
             )
             CredentialStore.save(fresh)
             creds = fresh
-            tab = .operatorTab
+            tab = .inbox
         } catch {
             os_log(.info, log: log, "FAILED %{public}@", String(describing: error))
         }
@@ -99,6 +103,11 @@ private struct PairedShell: View {
     @StateObject private var badgeHost: ShellBadgeHost
     private let wakeWord: WakeWordEngine
     @Environment(\.scenePhase) private var pairedScenePhase
+
+    // Header Pot (workspace) switcher state. Same slug+scope model as
+    // desktop/PUI (D-003): the phone's "Pot" is the active workspace.
+    @State private var showPotSwitcher = false
+    @State private var workspaces: [Workspace]? = nil
 
     init(current: DeviceCredentials,
          tab: Binding<AppRoot.Tab>,
@@ -137,11 +146,11 @@ private struct PairedShell: View {
         let onOpenPushRoute: (PushTapTestRoute) -> Void = { route in
             switch route {
             case .harnessDetail(let slug):
-                tab = .harnesses
+                tab = .brew
                 pushedRunLogSlug = nil
                 pushedDetailSlug = slug
             case .runLog(let slug):
-                tab = .running
+                tab = .brew
                 pushedDetailSlug = nil
                 pushedRunLogSlug = slug
             case .operatorTab:
@@ -151,12 +160,16 @@ private struct PairedShell: View {
             case .inbox:
                 pushedDetailSlug = nil
                 pushedRunLogSlug = nil
-                tab = .activity
+                tab = .inbox
             }
         }
 
 
         VStack(spacing: 0) {
+            PotSwitcherHeader(
+                title: currentPotName,
+                onTap: { showPotSwitcher = true }
+            )
             PausedBanner(creds: current)
             if monitor.state.status == .offline {
                 OfflineBanner(state: monitor.state)
@@ -165,6 +178,16 @@ private struct PairedShell: View {
             ZStack {
                 Group {
                     switch tab {
+                    case .inbox:
+                        // Interim Inbox: the recent notifications + audit
+                        // activity feed. The unified actionable attention
+                        // feed (approvals/blocked/questions/completions)
+                        // lands with the device/attention route (D-002).
+                        ActivityView(
+                            creds: current,
+                            invalidationTick: liveTick,
+                            onSelectHarness: onSelectHarness
+                        )
                     case .operatorTab:
                         OperatorView(
                             creds: current,
@@ -172,23 +195,16 @@ private struct PairedShell: View {
                             onSelectHarness: onSelectHarness,
                             voice: voice
                         )
-                    case .harnesses:
-                        HarnessListView(
+                    case .plans:
+                        PlansView(
+                            creds: current,
+                            invalidationTick: liveTick
+                        )
+                    case .brew:
+                        BrewView(
                             creds: current,
                             liveTick: liveTick,
                             lastInvalidate: lastInvalidate,
-                            onSelect: onSelectHarness
-                        )
-                    case .running:
-                        RunningView(
-                            creds: current,
-                            invalidationTick: liveTick,
-                            onSelectHarness: onSelectHarness
-                        )
-                    case .activity:
-                        ActivityView(
-                            creds: current,
-                            invalidationTick: liveTick,
                             onSelectHarness: onSelectHarness
                         )
                     case .settings:
@@ -270,12 +286,15 @@ private struct PairedShell: View {
             guard let intent = new else { return }
             switch intent {
             case .navigateHarness(let slug):
+                tab = .brew
                 pushedDetailSlug = slug
             case .navigateTab(let target):
+                // VoiceManager.Tab predates the 5-tab IA: its `harnesses`
+                // maps to Brew (the live fleet) and `activity` to Inbox.
                 tab = switch target {
                     case .operatorTab: .operatorTab
-                    case .harnesses: .harnesses
-                    case .activity: .activity
+                    case .harnesses: .brew
+                    case .activity: .inbox
                     case .settings: .settings
                 }
             case .navigateVoiceSettings, .navigateStandingApprovals:
@@ -322,6 +341,46 @@ private struct PairedShell: View {
             default: voice.stop()
             }
         }
+        .task(id: current.deviceToken) {
+            // Load the workspace roster so the header can show the Pot's
+            // name (creds only carry the id) and the switcher opens warm.
+            workspaces = try? await current.client().listWorkspaces()
+        }
+        .sheet(isPresented: $showPotSwitcher) {
+            NavigationStack {
+                WorkspaceSelectorView(
+                    creds: current,
+                    initialWorkspaces: workspaces,
+                    onSwitchWorkspace: { w in
+                        try await switchPot(w)
+                        showPotSwitcher = false
+                    }
+                )
+                .navigationTitle("Switch Pot")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { showPotSwitcher = false }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Display name for the active Pot (workspace). Falls back to the id
+    /// until the roster loads.
+    private var currentPotName: String {
+        workspaces?.first { $0.id == current.workspaceId }?.name ?? current.workspaceId
+    }
+
+    /// Re-issue the device token scoped to the selected Pot and persist.
+    /// Mirrors SettingsView.switchWorkspace so the header + Settings agree.
+    private func switchPot(_ w: Workspace) async throws {
+        let res = try await current.client().workspaceSwitch(workspaceId: w.id)
+        var fresh = current
+        fresh.deviceToken = res.deviceToken
+        fresh.workspaceId = res.workspaceId
+        onWorkspaceSwitched(fresh)
     }
 
     private func openToast(_ toast: Toast) {
@@ -330,13 +389,13 @@ private struct PairedShell: View {
         pushedRunLogSlug = nil
 
         if let slug = toast.harnessSlug, !slug.isEmpty {
-            tab = .harnesses
+            tab = .brew
             pushedDetailSlug = slug
             return
         }
 
         guard let rawHref = toast.actionHref, !rawHref.isEmpty else {
-            tab = .activity
+            tab = .inbox
             return
         }
 
@@ -349,22 +408,24 @@ private struct PairedShell: View {
         switch path {
         case "", "operator":
             tab = .operatorTab
-        case "harness":
-            tab = .harnesses
+        case "harness", "running", "brew":
+            tab = .brew
         case let value where value.hasPrefix("harness/"):
-            tab = .harnesses
+            tab = .brew
             pushedDetailSlug = String(value.dropFirst("harness/".count))
-        case "running", "log":
-            tab = .running
+        case "log":
+            tab = .brew
         case let value where value.hasPrefix("log/"):
-            tab = .running
+            tab = .brew
             pushedRunLogSlug = String(value.dropFirst("log/".count))
-        case "notifications", "notifications/history", "actions":
-            tab = .activity
+        case "plans":
+            tab = .plans
+        case "notifications", "notifications/history", "actions", "inbox":
+            tab = .inbox
         case let value where value.hasPrefix("settings"):
             tab = .settings
         default:
-            tab = .activity
+            tab = .inbox
         }
     }
 
@@ -730,10 +791,10 @@ private struct MobileBottomNav: View {
 
     private var items: [(tab: AppRoot.Tab, icon: String, label: String, badge: BadgeKind?)] {
         [
+            (.inbox, "◆", NSLocalizedString("tab.inbox", comment: ""), .recentAlerts),
             (.operatorTab, "●", NSLocalizedString("tab.operator", comment: ""), .pendingApprovals),
-            (.harnesses, "⌘", NSLocalizedString("tab.harnesses", comment: ""), nil),
-            (.running, "▶", NSLocalizedString("tab.running", comment: ""), nil),
-            (.activity, "◆", NSLocalizedString("tab.activity", comment: ""), .recentAlerts),
+            (.plans, "❒", NSLocalizedString("tab.plans", comment: ""), nil),
+            (.brew, "▦", NSLocalizedString("tab.brew", comment: ""), nil),
             (.settings, "⚙", NSLocalizedString("tab.settings", comment: ""), nil),
         ]
     }
@@ -823,6 +884,47 @@ private struct NavBadge: View {
                 .padding(.horizontal, count > 9 ? 2 : 0)
                 .background(tone == .attention ? PapercupTheme.error : PapercupTheme.accent, in: Capsule())
         }
+    }
+}
+
+/// Header Pot (workspace) switcher — the phone's equivalent of the
+/// desktop/PUI header Pot selector (D-003). Shows the active Pot and
+/// opens the workspace switcher sheet on tap.
+private struct PotSwitcherHeader: View {
+    let title: String
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                Text("◑")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(PapercupTheme.accentStrong)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(PapercupTheme.text)
+                    .lineLimit(1)
+                Text("▾")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(PapercupTheme.textMuted)
+                Spacer(minLength: 0)
+                Text("POT")
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(1.0)
+                    .foregroundStyle(PapercupTheme.accentStrong.opacity(0.62))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity)
+            .background(PapercupTheme.inkRaised.opacity(0.96))
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(PapercupTheme.accentStrong.opacity(0.14))
+                    .frame(height: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Current Pot: \(title). Tap to switch."))
     }
 }
 

@@ -11,11 +11,15 @@
 
 "app.name" = "Papercup";
 
+"tab.inbox" = "Inbox";
 "tab.operator" = "Operator";
-"tab.harnesses" = "Harness";
-"tab.running" = "Running";
-"tab.activity" = "Inbox";
+"tab.plans" = "Plans";
+"tab.brew" = "Brew";
 "tab.settings" = "Settings";
+/* legacy keys kept so older string lookups don't return raw keys */
+"tab.harnesses" = "Brew";
+"tab.running" = "Brew";
+"tab.activity" = "Inbox";
 
 "settings.standingApprovals" = "Standing approvals";
 "settings.voice" = "Voice";
