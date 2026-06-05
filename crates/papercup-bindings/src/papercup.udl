@@ -482,6 +482,18 @@ interface OperatorClient {
     [Throws=ApiError, Async]
     string rest_query(string name, string args_json);
 
+    /// `GET /api/device/operator/conversation?limit=` — the shared
+    /// operator chat thread + recent turns (D-002).
+    [Throws=ApiError, Async]
+    ConversationRead operator_conversation(u32 limit);
+
+    /// `POST /api/device/operator/converse` — send a typed message and
+    /// await the operator's full turn (drains the SSE; can take tens of
+    /// seconds). Re-call operator_conversation() afterwards to render
+    /// the persisted turns.
+    [Throws=ApiError, Async]
+    void operator_converse(string text);
+
     /// `GET /api/device/attention` — the Inbox attention feed (D-002):
     /// canonical attention groups + the work_items-native actionable layer.
     [Throws=ApiError, Async]

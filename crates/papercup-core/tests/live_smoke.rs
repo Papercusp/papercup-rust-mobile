@@ -145,6 +145,45 @@ async fn live_p0_contract_smoke() {
         .expect("register_push");
     println!("push registered (apns)");
 
+    // 4c. Operator conversation (chat) — read the shared thread. The SEND
+    // (operator_converse) posts a REAL turn to the owner's conversation and
+    // burns a brain call, so it only runs when explicitly opted in via
+    // PAPERCUP_LIVE_CONVERSE=1.
+    let conv = client
+        .operator_conversation(5)
+        .await
+        .expect("operator_conversation");
+    println!(
+        "conversation: {} turns={} hasMore={}",
+        conv.conversation.id,
+        conv.turns.len(),
+        conv.has_more_earlier
+    );
+    if std::env::var("PAPERCUP_LIVE_CONVERSE").as_deref() == Ok("1") {
+        let before = conv.turns.last().map(|t| t.seq).unwrap_or(0);
+        client
+            .operator_converse(
+                "Live contract smoke from the iOS mobile client — reply with one short sentence.",
+            )
+            .await
+            .expect("operator_converse");
+        let after = client
+            .operator_conversation(5)
+            .await
+            .expect("re-read conversation");
+        let new_last = after.turns.last().map(|t| t.seq).unwrap_or(0);
+        assert!(
+            new_last > before,
+            "converse should append turns (seq {before} -> {new_last})"
+        );
+        println!(
+            "converse OK: seq {} -> {} (last role={})",
+            before,
+            new_last,
+            after.turns.last().map(|t| t.role.as_str()).unwrap_or("?")
+        );
+    }
+
     // 5. voice-session-init — any outcome is fine as long as it's the
     // documented contract: a session OR a flat-envelope config error.
     match client.voice_session_init().await {
