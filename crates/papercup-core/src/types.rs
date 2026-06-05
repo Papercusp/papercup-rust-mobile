@@ -466,6 +466,66 @@ pub struct PlanItemStatusBody {
     pub harness: Option<String>,
 }
 
+// ── /api/device/operator/conversation (Operator chat) ──────────────────
+//
+// D-002. The phone's Operator tab is a real chat thread on the SAME
+// workspace-scoped operator conversation the desktop + TUI use. Reads
+// load history; sending (POST /converse) is SSE — the client drains it to
+// completion (the server persists both the user + assistant turns), then
+// re-reads the conversation, so no delta-stream parsing is needed.
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationRead {
+    pub conversation: ConversationRow,
+    #[serde(default)]
+    pub turns: Vec<OperatorTurn>,
+    #[serde(default)]
+    pub has_more_earlier: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationRow {
+    pub id: String,
+    pub workspace_id: String,
+    #[serde(default)]
+    pub harness_slug: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    pub status: String,
+    pub started_at: i64,
+    #[serde(default)]
+    pub ended_at: Option<i64>,
+    #[serde(default)]
+    pub has_audio: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperatorTurn {
+    pub id: String,
+    pub conversation_id: String,
+    pub seq: i64,
+    /// "user" | "assistant" | "system".
+    pub role: String,
+    pub text: String,
+    /// "text_typed" | "voice_stt" | "voice_tts" | "system".
+    pub source: String,
+    pub created_at: i64,
+    /// Tool-call entries (chat:ask_choice cards, etc.) — kept raw; the UI
+    /// renders what it understands.
+    #[serde(default)]
+    pub tools: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ConverseBody {
+    pub text: String,
+    pub modality: String,
+    pub trigger: String,
+}
+
 // ── standing approvals ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

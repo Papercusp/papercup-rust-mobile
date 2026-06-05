@@ -922,6 +922,72 @@ async fn plan_item_set_status_posts_body() {
     assert_eq!(res["ok"], true);
 }
 
+// ── operator conversation (chat, D-002) ────────────────────────────────
+
+#[tokio::test]
+async fn operator_conversation_decodes_thread() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/operator/conversation"))
+        .and(query_param("limit", "50"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "conversation": {
+                "id": "conv-1", "workspaceId": "default", "harnessSlug": null,
+                "title": null, "status": "active", "startedAt": 1_779_000_000_000i64,
+                "endedAt": null, "elConversationIds": [], "hasAudio": false
+            },
+            "turns": [
+                {
+                    "id": "t1", "conversationId": "conv-1", "seq": 1, "role": "user",
+                    "text": "status?", "source": "text_typed",
+                    "elConvId": null, "audioUrl": null, "createdAt": 1_779_000_000_001i64,
+                    "tools": null
+                },
+                {
+                    "id": "t2", "conversationId": "conv-1", "seq": 2, "role": "assistant",
+                    "text": "All green.", "source": "text_typed",
+                    "elConvId": null, "audioUrl": null, "createdAt": 1_779_000_000_002i64,
+                    "tools": null
+                }
+            ],
+            "hasMoreEarlier": false
+        })))
+        .mount(&server)
+        .await;
+    let read = client.operator_conversation(50).await.unwrap();
+    assert_eq!(read.conversation.id, "conv-1");
+    assert_eq!(read.turns.len(), 2);
+    assert_eq!(read.turns[1].role, "assistant");
+    assert_eq!(read.turns[1].text, "All green.");
+    assert_eq!(read.turns[0].seq, 1);
+    assert!(!read.has_more_earlier);
+}
+
+// converse: POST a typed message; the route answers SSE, the client drains
+// it to completion (turns are persisted server-side, re-read separately).
+#[tokio::test]
+async fn operator_converse_posts_and_drains_sse() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/device/operator/converse"))
+        .and(bearer_token(TOKEN))
+        .and(body_json(json!({
+            "text": "hello operator",
+            "modality": "text",
+            "trigger": "user_message"
+        })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string("event: delta\ndata: {\"text\":\"hi\"}\n\nevent: done\ndata: {\"costUsd\":0.01}\n\n"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    client.operator_converse("hello operator").await.unwrap();
+}
+
 #[tokio::test]
 async fn fallback_url_used_when_primary_unreachable() {
     // Primary URL points at a closed port → connection refused → ApiError::Network.

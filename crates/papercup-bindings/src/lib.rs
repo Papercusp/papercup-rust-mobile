@@ -758,6 +758,41 @@ impl From<papercup_core::types::PlanDetail> for PlanDetail {
     }
 }
 
+// ── operator conversation (chat, D-002) ──────────────────────────────────
+
+pub struct ConversationRead {
+    pub conversation_id: String,
+    pub status: String,
+    pub turns: Vec<OperatorTurn>,
+    pub has_more_earlier: bool,
+}
+
+pub struct OperatorTurn {
+    pub id: String,
+    pub seq: i64,
+    /// "user" | "assistant" | "system".
+    pub role: String,
+    pub text: String,
+    pub source: String,
+    pub created_at: i64,
+    /// Tool-call entries as JSON (chat:ask_choice cards, etc.), or "null".
+    pub tools_json: String,
+}
+
+impl From<papercup_core::types::OperatorTurn> for OperatorTurn {
+    fn from(t: papercup_core::types::OperatorTurn) -> Self {
+        Self {
+            id: t.id,
+            seq: t.seq,
+            role: t.role,
+            text: t.text,
+            source: t.source,
+            created_at: t.created_at,
+            tools_json: t.tools.to_string(),
+        }
+    }
+}
+
 // ── voice ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, thiserror::Error)]
@@ -1265,6 +1300,37 @@ impl OperatorClient {
                 detail: "tokio join".into(),
             })??;
         Ok(result.rows.to_string())
+    }
+
+    /// `GET /api/device/operator/conversation` — the shared operator
+    /// chat thread + recent turns (D-002).
+    pub async fn operator_conversation(&self, limit: u32) -> Result<ConversationRead, ApiError> {
+        let core = self.inner.clone();
+        let read = rt()
+            .spawn(async move { core.operator_conversation(limit).await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(ConversationRead {
+            conversation_id: read.conversation.id,
+            status: read.conversation.status,
+            has_more_earlier: read.has_more_earlier,
+            turns: read.turns.into_iter().map(OperatorTurn::from).collect(),
+        })
+    }
+
+    /// `POST /api/device/operator/converse` — send a typed message. Awaits
+    /// the operator's full turn (drains the SSE stream); re-call
+    /// operator_conversation() afterwards to display the new turns.
+    pub async fn operator_converse(&self, text: String) -> Result<(), ApiError> {
+        let core = self.inner.clone();
+        rt().spawn(async move { core.operator_converse(&text).await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(())
     }
 
     /// `GET /api/device/attention` — the Inbox attention feed (D-002).

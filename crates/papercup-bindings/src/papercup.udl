@@ -298,6 +298,26 @@ dictionary Device {
     string? paired_at;
 };
 
+/// The shared operator conversation (chat) + recent turns (D-002).
+dictionary ConversationRead {
+    string conversation_id;
+    string status;
+    sequence<OperatorTurn> turns;
+    boolean has_more_earlier;
+};
+
+dictionary OperatorTurn {
+    string id;
+    i64 seq;
+    /// "user" | "assistant" | "system".
+    string role;
+    string text;
+    string source;
+    i64 created_at;
+    /// Tool-call entries as JSON (chat:ask_choice cards…), or "null".
+    string tools_json;
+};
+
 /// The Inbox attention feed (D-002). groups_json is the opaque
 /// attention-group payload; work_items is the decoded actionable layer.
 dictionary AttentionFeed {

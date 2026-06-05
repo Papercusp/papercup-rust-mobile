@@ -20,12 +20,13 @@
 use serde::de::DeserializeOwned;
 
 use crate::types::{
-    AttentionResp, AuditResp, AuditRow, DesktopDevicesResp, DeviceRow, ErrorBody, HarnessLite,
-    HarnessStatusFull, ListResp, PairBody, PairResp, PauseInfo, PlanDetail, PlanItemStatusBody,
-    PlanSummary, PlansResp, PushRegisterBody, RestQueryResp, RunningHarnessPhase, RunningResp,
-    RunningScan, RuntimeConfig, StandingCandidate, StandingCandidatesResp, StandingDecisionBody,
-    ToastRow, ToastsResp, VoiceLeaseRead, VoiceLeaseShape, VoiceSessionInit, WorkspaceItem,
-    WorkspaceSwitchBody, WorkspaceSwitchResp, WorkspacesResp,
+    AttentionResp, AuditResp, AuditRow, ConversationRead, ConverseBody, DesktopDevicesResp,
+    DeviceRow, ErrorBody, HarnessLite, HarnessStatusFull, ListResp, PairBody, PairResp, PauseInfo,
+    PlanDetail, PlanItemStatusBody, PlanSummary, PlansResp, PushRegisterBody, RestQueryResp,
+    RunningHarnessPhase, RunningResp, RunningScan, RuntimeConfig, StandingCandidate,
+    StandingCandidatesResp, StandingDecisionBody, ToastRow, ToastsResp, VoiceLeaseRead,
+    VoiceLeaseShape, VoiceSessionInit, WorkspaceItem, WorkspaceSwitchBody, WorkspaceSwitchResp,
+    WorkspacesResp,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -421,6 +422,52 @@ impl OperatorClient {
         let path = format!("/api/device/devices/{device_id}");
         self.request_empty(reqwest::Method::DELETE, &path, None)
             .await
+    }
+
+    /// `GET /api/device/operator/conversation?limit=N` — the shared
+    /// operator conversation + its most-recent turns (D-002). The Operator
+    /// tab's chat history.
+    pub async fn operator_conversation(&self, limit: u32) -> Result<ConversationRead, ApiError> {
+        let path = format!("/api/device/operator/conversation?limit={limit}");
+        self.request_json::<ConversationRead>(reqwest::Method::GET, &path, None)
+            .await
+    }
+
+    /// `POST /api/device/operator/converse` — send a typed message to the
+    /// operator. The route streams the assistant turn over SSE; we drain
+    /// the stream to completion (the server persists both the user and
+    /// assistant turns as it goes), then the caller re-reads the
+    /// conversation. No delta parsing — the persisted turns are the source
+    /// of truth. A brain turn can take tens of seconds, so this uses an
+    /// extended per-request timeout instead of the 15s default.
+    pub async fn operator_converse(&self, text: &str) -> Result<(), ApiError> {
+        let token = match &self.device_token {
+            Some(t) => t.clone(),
+            None => return Err(ApiError::Unauthorized),
+        };
+        let body = serde_json::to_value(ConverseBody {
+            text: text.to_string(),
+            modality: "text".to_string(),
+            trigger: "user_message".to_string(),
+        })
+        .expect("ConverseBody serialises");
+        let url = format!("{}/api/device/operator/converse", self.base_url());
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&token)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(90))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(into_api_error(resp).await);
+        }
+        // Drain the SSE body to completion — when it closes, the assistant
+        // turn has been persisted. We don't parse the deltas; the caller
+        // re-reads operator_conversation() to display the new turns.
+        let _ = resp.bytes().await?;
+        Ok(())
     }
 
     /// `GET /api/device/attention` — the Inbox attention feed (D-002):
