@@ -1080,7 +1080,7 @@ fun HarnessListScreen(
         // top-level tab — not just this one.
         topBar = {
             PapercupScreenHeader(
-                title = "Brew",
+                title = "Fleet",
                 subtitle = when (val currentState = state) {
                     ScreenState.Loading -> "Loading…"
                     is ScreenState.Ready -> "${currentState.harnesses.size} pots"

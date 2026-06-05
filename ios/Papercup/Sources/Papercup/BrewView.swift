@@ -7,7 +7,7 @@
 // harness (AppRoot pushes HarnessDetailView → RunLogView), exactly as the
 // two old tabs did — this view just unifies their entry points.
 //
-// The "Brew" name is the cup-theme rename of a work-group; on mobile the
+// Labeled "Fleet" (the Brew cup-theme label was reversed by the owner 2026-06-05); on mobile the
 // fleet view is where you watch a Pot's brews make progress.
 
 import SwiftUI

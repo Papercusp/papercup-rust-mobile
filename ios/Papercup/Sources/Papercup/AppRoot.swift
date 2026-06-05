@@ -3,7 +3,7 @@ import SwiftUI
 import os.log
 
 /// Mirrors Android's PairedShell — the Inbox-first 5-tab nav
-/// (Inbox / Operator / Plans / Brew / Settings, mobile-apps-revival
+/// (Inbox / Operator / Plans / Fleet / Settings — "Fleet" label per the owner's 2026-06-05 Brew→Fleet reversal; mobile-apps-revival
 /// D-003) plus pushed routes and a header Pot (workspace) switcher.
 struct AppRoot: View {
     @State private var creds: DeviceCredentials? = CredentialStore.load()

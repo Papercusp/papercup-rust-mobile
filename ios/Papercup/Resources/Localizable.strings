@@ -14,7 +14,7 @@
 "tab.inbox" = "Inbox";
 "tab.operator" = "Operator";
 "tab.plans" = "Plans";
-"tab.brew" = "Brew";
+"tab.brew" = "Fleet";
 "tab.settings" = "Settings";
 /* legacy keys kept so older string lookups don't return raw keys */
 "tab.harnesses" = "Brew";

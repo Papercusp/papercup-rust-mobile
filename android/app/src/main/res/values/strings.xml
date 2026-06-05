@@ -15,7 +15,7 @@
     <string name="tab_inbox">Inbox</string>
     <string name="tab_operator">Operator</string>
     <string name="tab_plans">Plans</string>
-    <string name="tab_brew">Brew</string>
+    <string name="tab_brew">Fleet</string>
     <string name="tab_settings">Settings</string>
     <!-- Retained for any legacy references -->
     <string name="tab_harnesses">Brew</string>
