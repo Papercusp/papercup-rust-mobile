@@ -1,14 +1,5 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" aria-label="Operator app icon — Cup">
   <defs>
-    <radialGradient id="orbBg" cx="35%" cy="25%" r="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
-      <stop offset="35%" stop-color="#38BDF8" stop-opacity="0.22"/>
-      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.08"/>
-    </radialGradient>
-    <linearGradient id="orbBgLin" x1="50%" y1="0%" x2="50%" y2="100%">
-      <stop offset="0%" stop-color="#0b1624"/>
-      <stop offset="100%" stop-color="#07101d"/>
-    </linearGradient>
     <radialGradient id="bg" cx="50%" cy="38%" r="68%">
       <stop offset="0%" stop-color="#17324a"/>
       <stop offset="58%" stop-color="#0b1624"/>
@@ -20,49 +11,23 @@
       <stop offset="100%" stop-color="#178db8"/>
     </linearGradient>
     <linearGradient id="cup" x1="50%" y1="0%" x2="50%" y2="100%">
-      <stop offset="0%" stop-color="#f3eef9" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#d7d2e2" stop-opacity="0.78"/>
+      <stop offset="0%" stop-color="#f3eef9" stop-opacity="0.97"/>
+      <stop offset="100%" stop-color="#d7d2e2" stop-opacity="0.84"/>
     </linearGradient>
     <linearGradient id="coffee" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#c8a57b"/>
       <stop offset="100%" stop-color="#8b5e3d"/>
     </linearGradient>
-    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="4" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
-
-  <!-- Solid dark background (so icon doesn't show through to the launcher background) -->
-  <rect width="1024" height="1024" fill="url(#orbBgLin)"/>
-  <!-- Orb sheen highlight -->
-  <rect width="1024" height="1024" fill="url(#orbBg)"/>
-
-  <!-- OperatorLogoMark "full" variant, scaled to fill the canvas with 110px padding.
-       Source viewBox is 18 12 92 92 (i.e. 92x92 logical). Map that to a 800x800 box
-       centered at (512,512) — i.e. translate then scale.
-       Translate so logo center (64, 58) lands at (512, 512): scale = 800/92 = 8.7
-       Center offset: 512 - 64*8.7 = -44.8 in x, 512 - 58*8.7 = 7.4 in y
-       Use 8.7 scale, then translate.
-  -->
-  <g transform="translate(-44.8 7.4) scale(8.7)">
-    <circle cx="64" cy="64" r="59" fill="url(#bg)" stroke="rgba(185,239,255,0.10)" stroke-width="0.8"/>
-    <circle cx="64" cy="64" r="56" fill="none" stroke="url(#ring)" stroke-opacity="0.38" stroke-width="1.4"/>
-    <path d="M64 18c0 8-9 13-17 20" fill="none" stroke="#d9a977" stroke-width="3.45" stroke-linecap="round"/>
-    <path d="M64 18c0 8 9 13 17 20" fill="none" stroke="#d9a977" stroke-width="3.45" stroke-linecap="round"/>
-    <g filter="url(#glow)">
-      <circle cx="64" cy="29" r="2.8" fill="#7ce2ff"/>
-    </g>
-    <g transform="translate(0 3)">
-      <path d="M31 39h66l-4.5 48c0 6.8-10.8 12.2-28.5 12.2S35.5 93.8 35.5 87z" fill="url(#cup)" fill-opacity="0.16" stroke="#d8f4ff" stroke-opacity="0.88" stroke-width="2.45" stroke-linejoin="round"/>
-      <ellipse cx="64" cy="39" rx="33" ry="6.8" fill="url(#cup)" fill-opacity="0.2" stroke="#d8f4ff" stroke-opacity="0.88" stroke-width="2.45"/>
-      <ellipse cx="64" cy="39" rx="25.5" ry="4.1" fill="url(#coffee)" fill-opacity="0.9"/>
-      <path d="M43.5 59c11.8-3.2 29.2-3.2 41 0" fill="none" stroke="#d9a977" stroke-opacity="0.74" stroke-width="2.25" stroke-linecap="round"/>
-      <rect x="60.6" y="56" width="6.8" height="22" rx="3.2" fill="#7ce2ff" fill-opacity="0.84"/>
-      <path d="M54 88c2.6 3.3 6 4.9 10 4.9s7.4-1.6 10-4.9" fill="none" stroke="#7ce2ff" stroke-opacity="0.84" stroke-width="2.1" stroke-linecap="round"/>
-    </g>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#bg)" stroke="url(#ring)" stroke-width="3.2"/>
+  <path d="M64 19c0 7.5-8.5 12-16 18" fill="none" stroke="#d9a977" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M64 19c0 7.5 8.5 12 16 18" fill="none" stroke="#d9a977" stroke-width="3.2" stroke-linecap="round"/>
+  <g transform="translate(0 8)">
+    <path d="M34 39h60l-4.5 45c0 6-9.5 10.5-25.5 10.5S38.5 90 38.5 84z" fill="url(#cup)" fill-opacity="0.16" stroke="#d8f4ff" stroke-opacity="0.88" stroke-width="2.35" stroke-linejoin="round"/>
+    <ellipse cx="64" cy="39" rx="30" ry="6.2" fill="url(#cup)" fill-opacity="0.2" stroke="#d8f4ff" stroke-opacity="0.88" stroke-width="2.35"/>
+    <ellipse cx="64" cy="39" rx="23.5" ry="3.8" fill="url(#coffee)" fill-opacity="0.9"/>
+    <path d="M44.5 58c11.2-3 27.8-3 39 0" fill="none" stroke="#d9a977" stroke-opacity="0.74" stroke-width="2.15" stroke-linecap="round"/>
+    <rect x="60.75" y="55" width="6.5" height="21" rx="3" fill="#7ce2ff" fill-opacity="0.84"/>
+    <path d="M54.5 86c2.4 3 5.6 4.5 9.5 4.5s7.1-1.5 9.5-4.5" fill="none" stroke="#7ce2ff" stroke-opacity="0.84" stroke-width="2.05" stroke-linecap="round"/>
   </g>
 </svg>
