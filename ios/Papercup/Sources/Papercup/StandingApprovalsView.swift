@@ -168,7 +168,7 @@ struct StandingApprovalsView: View {
             candidates = try await creds.client().standingCandidates()
             error = nil
         } catch {
-            self.error = "\(error)"
+            self.error = FriendlyError.message(error, doing: "loading standing approvals")
         }
     }
 
@@ -181,7 +181,7 @@ struct StandingApprovalsView: View {
                 try await creds.client()
                     .standingCandidateDecide(capability: c.capability, targetHarness: c.targetHarness, approve: approve)
             } catch {
-                self.error = "\(error)"
+                self.error = FriendlyError.message(error, doing: "saving your decision")
                 hidden.remove(k)
             }
             pending.remove(k)

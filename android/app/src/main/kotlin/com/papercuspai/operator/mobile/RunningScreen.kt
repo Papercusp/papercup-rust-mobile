@@ -68,9 +68,9 @@ fun RunningScreen(
         state = try {
             RunningState.Ready(creds.client().runningSnapshot())
         } catch (e: ApiException) {
-            RunningState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")
+            RunningState.Failed(HumanError.describe(e, "Loading running work"))
         } catch (t: Throwable) {
-            RunningState.Failed("Unexpected: ${t::class.simpleName}: ${t.message ?: "no detail"}")
+            RunningState.Failed(HumanError.describe(t, "Loading running work"))
         }
     }
 
@@ -204,7 +204,7 @@ private fun RunningScanCard(creds: DeviceCredentials, scan: RunningScan, nowMs: 
                                 creds.client().pauseSet(true)
                                 paused = true
                             } catch (t: Throwable) {
-                                pauseError = "Pause failed: ${t.message ?: t::class.simpleName ?: "unknown error"}"
+                                pauseError = HumanError.describe(t, "Pausing the operator")
                             } finally {
                                 busy = false
                             }

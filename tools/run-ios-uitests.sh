@@ -67,14 +67,41 @@ done
 # test-without-building, scoped to the UI test bundle, with the pair
 # payload threaded through TEST_RUNNER_* env vars (XCUITest forwards
 # anything prefixed with TEST_RUNNER_ into the test process's env).
-TEST_RUNNER_ENV=()
-if [ -n "${PAPERCUP_PAIR_PAYLOAD:-}" ]; then
-    TEST_RUNNER_ENV+=("TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD=$PAPERCUP_PAIR_PAYLOAD")
+#
+# One-shot pair-token discipline (WI-4985): mobile_pair_tokens are
+# consumed on FIRST use, so re-running the paired suite with the SAME
+# payload can never pass — attempt 1 spends the token and attempts 2-5
+# then fail at "Operator tab should appear", masquerading as app flake.
+# Two supported shapes:
+#   • PAPERCUP_MINT_PAIR_PAYLOAD_CMD — a shell command that prints a
+#     FRESH pair payload JSON on stdout; invoked before EVERY attempt,
+#     enabling safe retries.
+#   • static PAPERCUP_PAIR_PAYLOAD only — the paired suite runs exactly
+#     ONCE (the runner refuses to burn dead attempts on a spent token).
+# No payload at all ⇒ only idempotent smoke tests run; retries are safe.
+MAX_ATTEMPTS=5
+if [ -n "${PAPERCUP_PAIR_PAYLOAD:-}" ] && [ -z "${PAPERCUP_MINT_PAIR_PAYLOAD_CMD:-}" ]; then
+    echo "▶ static one-shot pair payload: paired suite runs ONCE, no retries (WI-4985)"
+    MAX_ATTEMPTS=1
 fi
 
-for i in 1 2 3 4 5; do
+attempt=0
+while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
+    attempt=$((attempt + 1))
+    if [ -n "${PAPERCUP_MINT_PAIR_PAYLOAD_CMD:-}" ]; then
+        PAPERCUP_PAIR_PAYLOAD="$(bash -c "$PAPERCUP_MINT_PAIR_PAYLOAD_CMD")"
+        if [ -z "$PAPERCUP_PAIR_PAYLOAD" ]; then
+            echo "ERROR: PAPERCUP_MINT_PAIR_PAYLOAD_CMD printed an empty payload" >&2
+            exit 1
+        fi
+        echo "▶ minted fresh pair payload for attempt $attempt"
+    fi
+    TEST_RUNNER_ENV=()
+    if [ -n "${PAPERCUP_PAIR_PAYLOAD:-}" ]; then
+        TEST_RUNNER_ENV+=("TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD=$PAPERCUP_PAIR_PAYLOAD")
+    fi
     set +e
-    env "${TEST_RUNNER_ENV[@]}" xcodebuild test-without-building \
+    env ${TEST_RUNNER_ENV[@]+"${TEST_RUNNER_ENV[@]}"} xcodebuild test-without-building \
         -project Papercup.xcodeproj -scheme Papercup \
         -destination "$DEST" \
         -only-testing PapercupUITests \
@@ -84,8 +111,8 @@ for i in 1 2 3 4 5; do
     if [ $rc -eq 0 ]; then
         exit 0
     fi
-    echo "[test retry $i: rc=$rc]"
+    echo "[test retry $attempt: rc=$rc]"
     sleep 5
 done
-echo "ERROR: test-without-building failed after 5 retries" >&2
+echo "ERROR: test-without-building failed after $MAX_ATTEMPTS attempt(s)" >&2
 exit 1

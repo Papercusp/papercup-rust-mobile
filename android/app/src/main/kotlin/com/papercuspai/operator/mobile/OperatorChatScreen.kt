@@ -78,7 +78,7 @@ fun OperatorChatScreen(
             }
             error = null
         } catch (t: Throwable) {
-            error = t.message ?: t::class.simpleName ?: "Failed to load conversation"
+            error = HumanError.describe(t, "Loading the conversation")
         }
     }
 
@@ -129,7 +129,7 @@ fun OperatorChatScreen(
                 } else {
                     turns.dropLast(1) + ChatTurn(userSeq + 1, "assistant", streamed)
                 }
-                error = t.message ?: t::class.simpleName ?: "stream failed"
+                error = HumanError.describe(t, "Sending the message")
             } finally {
                 sending = false
             }

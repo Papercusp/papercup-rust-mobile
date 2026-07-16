@@ -112,7 +112,7 @@ fun RunLogScreen(
                     error = when {
                         code == 401 -> "log stream not available to mobile (cookie-auth only). Awaiting backend mobile-JWT variant."
                         code != null -> "stream failed: HTTP $code"
-                        else -> "stream failed: ${t?.message ?: "unknown"}"
+                        else -> HumanError.fromNetworkText(t?.message ?: "", "The log stream")
                     }
                     streamState = StreamState.Failed
                 }

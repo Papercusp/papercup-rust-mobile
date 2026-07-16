@@ -146,10 +146,10 @@ struct PairView: View {
                     error = "That payload doesn't look right — expected JSON with " +
                         "server, pairToken, workspaceId."
                 } else {
-                    error = "Pair failed: \(err)"
+                    error = FriendlyError.message(err, doing: "pairing")
                 }
             } catch let e {
-                error = "Pair failed: \(e)"
+                error = FriendlyError.message(e, doing: "pairing")
             }
         }
     }

@@ -63,9 +63,9 @@ fun HarnessDetailScreen(
             val client = creds.client()
             DetailState.Ready(client.getHarnessStatus(slug))
         } catch (e: ApiException) {
-            DetailState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")
+            DetailState.Failed(HumanError.describe(e, "Loading this harness"))
         } catch (t: Throwable) {
-            DetailState.Failed("Unexpected: ${t::class.simpleName}: ${t.message ?: "no detail"}")
+            DetailState.Failed(HumanError.describe(t, "Loading this harness"))
         }
     }
 

@@ -55,9 +55,9 @@ fun WorkspaceSelectorScreen(
             workspaces = creds.client().listWorkspaces()
             error = null
         } catch (e: ApiException) {
-            error = "API: ${e::class.simpleName}: ${e.message ?: ""}"
+            error = HumanError.describe(e, "Loading workspaces")
         } catch (t: Throwable) {
-            error = "Unexpected: ${t::class.simpleName}: ${t.message ?: ""}"
+            error = HumanError.describe(t, "Loading workspaces")
         }
     }
 
@@ -139,7 +139,7 @@ fun WorkspaceSelectorScreen(
                                             currentWorkspaceId = res.workspaceId
                                             onWorkspaceSwitched(fresh)
                                         } catch (t: Throwable) {
-                                            error = "Switch failed: ${t.message}"
+                                            error = HumanError.describe(t, "Switching workspace")
                                         } finally {
                                             busyWorkspaceId = null
                                         }

@@ -64,7 +64,7 @@ class PushService : FirebaseMessagingService() {
             return
         }
 
-        val title = data["title"] ?: message.notification?.title ?: "Papercup"
+        val title = data["title"] ?: message.notification?.title ?: "Papercusp"
         val body = data["body"] ?: message.notification?.body ?: return
         // The attention-notify backend sends `harness` (not `slug`) + a `kind`
         // (intervention/smoke-fail/plan-review/needs-human). A harness deep-links

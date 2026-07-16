@@ -380,10 +380,8 @@ struct SettingsView: View {
             workspaces = try await client.listWorkspaces()
             devices = try await client.listDesktopDevices()
             error = nil
-        } catch let err as ApiError {
-            error = "API: \(err)"
-        } catch let e {
-            error = "Unexpected: \(e)"
+        } catch {
+            self.error = FriendlyError.message(error, doing: "loading devices")
         }
     }
 
@@ -411,7 +409,7 @@ struct SettingsView: View {
             try await gatedClient().revokeDevice(deviceId: d.deviceId)
             await load()
         } catch let e {
-            self.error = "Revoke failed: \(e)"
+            self.error = FriendlyError.message(e, doing: "revoking the device")
         }
     }
 }

@@ -89,6 +89,10 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
             // tell whether it's the pair, the server, or EL.
             VoicePathDiagnostic(ctx)
 
+            // Desktop transport route (desktop-local voice, P-006) — which
+            // path (mesh / lan / tunnel) the voice turns stream over.
+            DesktopRouteRow()
+
             SectionShell(title = "Conversation mode") {
                 VoiceModeRow(prefs.voiceMode) { mode -> update(prefs.copy(voiceMode = mode)) }
                 HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
@@ -553,7 +557,7 @@ private suspend fun runVoicePathProbe(ctx: android.content.Context): ProbeResult
                 resp.code >= 500 ->
                     return ProbeResult.Failure(
                         "operator brain offline",
-                        "${creds.server} returned ${resp.code}. Launch Papercup on your computer.",
+                        "${creds.server} returned ${resp.code}. Launch Papercusp on your computer.",
                     )
                 else ->
                     return ProbeResult.Failure(
@@ -571,4 +575,15 @@ private suspend fun runVoicePathProbe(ctx: android.content.Context): ProbeResult
     val initMs = System.currentTimeMillis() - initT0
 
     return ProbeResult.Success(heartbeatMs = heartbeatMs, sessionInitMs = initMs)
+}
+
+@Composable
+private fun DesktopRouteRow() {
+    val route by VoiceManager.activeRouteFlow.collectAsState()
+    SectionShell(title = "Desktop route") {
+        PapercupMetaText(
+            text = route
+                ?: "Not connected yet — set with the first voice turn (desktop-local mode). Preference: mesh → lan → tunnel.",
+        )
+    }
 }

@@ -142,6 +142,15 @@ class VoiceManager(
     private var tapAtMs: Long = 0L
     private var firstWordRecorded: Boolean = false
 
+    /// WI-4967: the FAB's runtime-permission request routes its DENIAL here
+    /// so the standard MicPermission failure surface (VoiceErrorBanner with
+    /// its Open-Settings action + the FAB's Error style) fires. Previously a
+    /// denial silently returned the UI to "Voice: Listen" with no feedback,
+    /// and a permanently-denied mic could never be diagnosed in-app.
+    fun reportMicPermissionDenied(permanentlyDenied: Boolean) {
+        _state.value = micDenialFailure(permanentlyDenied)
+    }
+
     fun start() {
         if (scope != null) return
         val s = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -154,11 +163,25 @@ class VoiceManager(
 
         sessionJob = s.launch(Dispatchers.IO) {
             val initResult = runCatching { fetchSessionInit() }
-            val init = initResult.getOrElse { err ->
+            val anyInit = initResult.getOrElse { err ->
                 Log.w(TAG, "session-init failed: ${err.message}")
                 _state.value = classifyInitFailure(err)
+                // Tear down so the FAB / banner Retry can start() again —
+                // without this `scope` stays non-null and every later
+                // start() short-circuits (dead voice FAB until app
+                // restart). teardown() preserves the Failed state set
+                // above.
+                teardown(reason = "session-init-failed")
                 return@launch
             }
+            // Desktop-local pipeline (free, EL-less) — dispatched by the
+            // session-init `mode` (on-desktop-direct-lan-voice-2026-07-14).
+            // ElevenLabs keeps the entire path below unchanged (D-010).
+            if (anyInit is SessionInit.DesktopLocal) {
+                startLocalSession(anyInit.init)
+                return@launch
+            }
+            val init = anyInit as SessionInit.El
             // Stash the timer budgets so onStatusChange / onUserTranscript
             // can arm + nudge them without re-parsing the init payload.
             idleTimeoutMs = init.idleTimeoutMin.coerceAtLeast(0) * 60_000L
@@ -255,6 +278,56 @@ class VoiceManager(
 
     fun stop() = teardown(reason = "user")
 
+    /// FAB tap while a session is active. Desktop-local PTT: a tap during
+    /// Listening ENDS the utterance and sends the turn; any other active
+    /// state cancels the turn. EL mode: always a hard stop (unchanged).
+    fun tapStop() {
+        val local = localSession
+        if (local != null && _state.value is State.Listening) {
+            local.endUtteranceAndSend()
+        } else {
+            stop()
+        }
+    }
+
+    /// Desktop-local session (mode:'desktop-local') — see DesktopVoiceSession.
+    private var localSession: DesktopVoiceSession? = null
+
+    private fun startLocalSession(init: DesktopVoiceSession.Init) {
+        val s = scope ?: return
+        val session = DesktopVoiceSession(
+            scope = s,
+            creds = creds,
+            init = init,
+            listener = object : DesktopVoiceSession.Listener {
+                override fun onState(state: State) {
+                    _state.value = state
+                }
+
+                override fun onMicLevel(level: Float) {
+                    _micLevel.value = level
+                }
+
+                override fun onFirstWord() {
+                    if (!firstWordRecorded && tapAtMs > 0L) {
+                        VoiceMetrics.recordFirstWordMs(context, System.currentTimeMillis() - tapAtMs)
+                        firstWordRecorded = true
+                    }
+                }
+
+                override fun onActiveRoute(route: String?) {
+                    activeRouteFlow.value = route
+                }
+
+                override fun onFinished() {
+                    teardown(reason = "local-turn-complete")
+                }
+            },
+        )
+        localSession = session
+        session.beginCapture()
+    }
+
     /// Arm a one-shot timeout job that fires when no user transcript
     /// has been received for `idleTimeoutMs`. Cancelled on teardown
     /// and rearmed every time the user says something. No-op when the
@@ -307,6 +380,9 @@ class VoiceManager(
     private fun teardown(reason: String) {
         val s = scope ?: return
         scope = null
+        val local = localSession
+        localSession = null
+        local?.cancel()
         idleTimerJob?.cancel()
         idleTimerJob = null
         sessionMaxTimerJob?.cancel()
@@ -393,7 +469,7 @@ class VoiceManager(
                     msg.endsWith(":") // even emptier
                 if (looksDownstream)
                     State.Failed(
-                        "Voice unavailable — operator desktop is offline. Launch Papercup on your computer, then tap retry.",
+                        "Voice unavailable — operator desktop is offline. Launch Papercusp on your computer, then tap retry.",
                         FailureKind.NetworkUnreachable,
                     )
                 else
@@ -633,8 +709,11 @@ class VoiceManager(
                 error("session-init ${resp.code}: ${body.take(160)}")
             }
             val j = JSONObject(body)
+            if (j.optString("mode") == "desktop-local") {
+                return SessionInit.DesktopLocal(DesktopVoiceSession.Init.fromJson(j))
+            }
             val dyn = j.optJSONObject("dynamicVariables") ?: JSONObject()
-            return SessionInit(
+            return SessionInit.El(
                 conversationToken = j.getString("conversationToken"),
                 agentId = j.getString("agentId"),
                 // Server defaults match VoicePrefs.DEFAULT — keep these
@@ -652,13 +731,17 @@ class VoiceManager(
         }
     }
 
-    private data class SessionInit(
-        val conversationToken: String,
-        val agentId: String,
-        val idleTimeoutMin: Int,
-        val sessionMaxMin: Int,
-        val dynamicVariables: DynamicVars,
-    )
+    private sealed interface SessionInit {
+        data class El(
+            val conversationToken: String,
+            val agentId: String,
+            val idleTimeoutMin: Int,
+            val sessionMaxMin: Int,
+            val dynamicVariables: DynamicVars,
+        ) : SessionInit
+
+        data class DesktopLocal(val init: DesktopVoiceSession.Init) : SessionInit
+    }
 
     private data class DynamicVars(
         val deviceId: String,
@@ -668,7 +751,31 @@ class VoiceManager(
     )
 
     companion object {
+        /// WI-4967: user-comprehensible copy for the two mic-denial shapes.
+        /// A pure factory so unit tests can pin the UX contract: the kind
+        /// routes to the banner's Open-Settings action, and the message
+        /// tells the user HOW to recover without leaking raw internals.
+        fun micDenialFailure(permanentlyDenied: Boolean): State.Failed =
+            if (permanentlyDenied) {
+                State.Failed(
+                    "Microphone access is blocked for Papercup. Use Settings → " +
+                        "Permissions → Microphone to allow it, then tap Listen again.",
+                    FailureKind.MicPermission,
+                )
+            } else {
+                State.Failed(
+                    "Papercup needs the microphone for voice. Tap Listen again " +
+                        "and choose Allow.",
+                    FailureKind.MicPermission,
+                )
+            }
+
         private const val TAG = "PapercupVoice"
         private val JSON_MEDIA = "application/json".toMediaTypeOrNull()
+
+        /// Active desktop route ("mesh · http://10.10.0.2:3070") chosen by
+        /// the desktop-local transport probe (P-006). Process-wide so the
+        /// Voice Settings screen can render it without plumbing.
+        val activeRouteFlow = MutableStateFlow<String?>(null)
     }
 }

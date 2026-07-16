@@ -370,10 +370,8 @@ struct HarnessDetailView: View {
             let client = creds.client()
             let s = try await client.getHarnessStatus(slug: slug)
             state = .ready(s)
-        } catch let err as ApiError {
-            state = .failed("API: \(err)")
         } catch {
-            state = .failed("Unexpected: \(error)")
+            state = .failed(FriendlyError.message(error, doing: "loading harness status"))
         }
     }
 }

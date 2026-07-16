@@ -57,14 +57,32 @@ final class PairFlowUITests: XCTestCase {
             "-com.papercuspai.uitests.wipeCredentials", "YES",
             "-com.papercuspai.uitests.pairPayload", payload,
         ]
+        // WI-4984 regression rig: delay the converse SSE drain by 8s so the
+        // chat leg below can prove the submitted turn renders BEFORE the
+        // drain completes (the optimistic/persisted-early path). Without
+        // the fix, the marker only appears after converse finishes — which
+        // this delay pushes past the 6s assertion window.
+        app.launchEnvironment["PAPERCUP_UITEST_CONVERSE_DELAY_MS"] = "8000"
         app.launch()
 
-        let operatorTab = app.buttons["Operator"]
+        // Tab-bar items combine icon + label into one accessibility element and
+        // the label is title-case, so an exact `app.buttons["Operator"]` query
+        // misses them (the same combined-element issue documented for the
+        // Settings rows below; the app IS paired via the backdoor — verified
+        // out-of-band with simctl 2026-07-14). Match a button whose label
+        // CONTAINS the tab name, case-insensitively.
+        func tabItem(_ label: String) -> XCUIElement {
+            app.buttons
+                .matching(NSPredicate(format: "label CONTAINS[c] %@", label))
+                .firstMatch
+        }
+
+        let operatorTab = tabItem("Operator")
         XCTAssertTrue(operatorTab.waitForExistence(timeout: 20),
                       "Operator tab should appear after launch-arg pair backdoor")
 
         // Hop to Settings, scroll to find the new nav rows, open each.
-        let settingsTab = app.buttons["Settings"]
+        let settingsTab = tabItem("Settings")
         XCTAssertTrue(settingsTab.waitForExistence(timeout: 5))
         settingsTab.tap()
 
@@ -146,13 +164,17 @@ final class PairFlowUITests: XCTestCase {
         field.tap()
         field.typeText(marker)
         app.buttons["Send"].firstMatch.tap()
-        // The send drains the converse SSE then re-reads the thread; the
-        // marker coming back as a persisted turn IS the round-trip.
+        // WI-4984: the submitted turn must render IMMEDIATELY — the
+        // launch-injected 8s converse delay means this 6s window can only
+        // be met by the optimistic/persisted-early render path, never by
+        // waiting for the SSE drain to complete.
         let echoed = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "Live iOS sim E2E (su-e7a83)")
         ).firstMatch
-        XCTAssertTrue(echoed.waitForExistence(timeout: 30),
-                      "sent message should appear as a persisted turn")
+        XCTAssertTrue(echoed.waitForExistence(timeout: 6),
+                      "submitted message should render before the converse SSE completes (WI-4984)")
+        XCTAssertTrue(app.staticTexts["Operator is working…"].exists,
+                      "converse should still be draining while the user's turn is already visible")
         // And the operator's reply lands once the converse completes (the
         // thinking bubble clears; a fresh assistant turn renders under our
         // marker). 120s budget — a real operator turn burns a model call.

@@ -19,6 +19,7 @@ export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT/ios"
+mkdir -p "$REPO_ROOT/ios/build"
 
 if [ -z "${PAPERCUP_IOS_SIM_UDID:-}" ]; then
     PAPERCUP_IOS_SIM_UDID=$(xcrun simctl list devices available \

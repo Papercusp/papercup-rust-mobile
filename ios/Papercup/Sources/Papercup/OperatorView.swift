@@ -5,10 +5,15 @@
 // The same workspace-scoped thread the desktop + TUI use: a turn typed
 // here shows up there and vice-versa.
 //
-// Sending drains the converse SSE server-side (the route persists both
-// turns), then re-reads the conversation — so the rendered thread is
-// always the persisted truth. The voice FAB (hosted by AppRoot) feeds
-// this same conversation by voice.
+// Sending renders the submitted turn IMMEDIATELY (optimistic append),
+// then drains the converse SSE server-side (the route persists both
+// turns) and re-reads the conversation — so the rendered thread always
+// converges on the persisted truth without the user's own message ever
+// looking lost while a slow brain drains (WI-4984: under provider
+// exhaustion the SSE can take minutes; the persisted user turn must not
+// wait on it). An early re-read ~1.5s after submit swaps the optimistic
+// bubble for the persisted row as soon as the server has it. The voice
+// FAB (hosted by AppRoot) feeds this same conversation by voice.
 
 import SwiftUI
 
@@ -28,7 +33,10 @@ struct OperatorView: View {
     @State private var draft: String = ""
     @State private var sending = false
     @State private var sendError: String? = nil
-    @State private var reloadTick = 0
+    /// Optimistically appended user turns, rendered until the persisted
+    /// read covers them (WI-4984). At most one is live at a time because
+    /// `sending` serializes sends.
+    @State private var pendingTurns: [OperatorTurn] = []
 
     var body: some View {
         NavigationStack {
@@ -54,6 +62,9 @@ struct OperatorView: View {
                                 ForEach(read.turns, id: \.id) { turn in
                                     turnBubble(turn).id(turn.id)
                                 }
+                            }
+                            ForEach(visiblePendingTurns, id: \.id) { turn in
+                                turnBubble(turn).id(turn.id)
                             }
                             if sending {
                                 thinkingBubble.id("thinking")
@@ -98,13 +109,20 @@ struct OperatorView: View {
                     }
                 }
             }
-            .task(id: "\(creds.deviceToken)|\(invalidationTick)|\(reloadTick)") { await load() }
+            .task(id: "\(creds.deviceToken)|\(invalidationTick)") { await load() }
         }
     }
 
     private var lastTurnId: String? {
+        if let pendingId = visiblePendingTurns.last?.id { return pendingId }
         if case .ready(let read) = state { return read.turns.last?.id }
         return nil
+    }
+
+    /// Pending turns not yet visible in the persisted read (WI-4984).
+    private var visiblePendingTurns: [OperatorTurn] {
+        guard case .ready(let read) = state else { return pendingTurns }
+        return pendingTurns.filter { !PendingTurnCoverage.isCovered(by: read.turns, pending: $0) }
     }
 
     // MARK: - bubbles
@@ -238,10 +256,14 @@ struct OperatorView: View {
 
     private func load() async {
         do {
-            state = .ready(try await creds.client().operatorConversation(limit: 50))
+            let read = try await creds.client().operatorConversation(limit: 50)
+            state = .ready(read)
+            // The persisted read now carries these turns — drop the
+            // optimistic copies so nothing renders twice (WI-4984).
+            pendingTurns.removeAll { PendingTurnCoverage.isCovered(by: read.turns, pending: $0) }
         } catch {
             if case .loading = state {
-                state = .failed("conversation: \(error)")
+                state = .failed(FriendlyError.message(error, doing: "loading the conversation"))
             }
         }
     }
@@ -252,16 +274,55 @@ struct OperatorView: View {
         draft = ""
         sending = true
         sendError = nil
+        // WI-4984: render the submitted turn IMMEDIATELY. The converse
+        // SSE below can take minutes under a slow brain; the user's own
+        // message must never look lost while it drains.
+        let pending = OperatorTurn(
+            id: "pending-\(UUID().uuidString)",
+            seq: .max,
+            role: "user",
+            text: text,
+            source: "text",
+            createdAt: Int64(Date().timeIntervalSince1970 * 1000),
+            toolsJson: "null"
+        )
+        pendingTurns.append(pending)
         Task {
             defer { sending = false }
+            // Early re-read: the route persists the user turn at
+            // submission, so a refresh shortly after send swaps the
+            // optimistic bubble for the persisted row without waiting
+            // on the assistant.
+            let earlyRefresh = Task {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                if !Task.isCancelled { await load() }
+            }
+            // UI-test hook (WI-4984 regression): a launch-injected delay
+            // simulates a slow brain so XCUITest can assert the submitted
+            // turn renders BEFORE the converse drain completes. Absent in
+            // production (env unset ⇒ no-op).
+            if let raw = ProcessInfo.processInfo.environment["PAPERCUP_UITEST_CONVERSE_DELAY_MS"],
+               let delayMs = UInt64(raw), delayMs > 0 {
+                try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+            }
             do {
                 // Drains the converse SSE — returns once the operator's
                 // turn is persisted — then re-read to render both turns.
                 try await creds.client().operatorConverse(text: text)
             } catch {
-                sendError = "send: \(error)"
+                sendError = FriendlyError.message(error, doing: "sending your message")
             }
-            reloadTick += 1
+            earlyRefresh.cancel()
+            await load()
+            // The persisted read is now truth. A still-uncovered pending
+            // turn means the send genuinely failed: drop the bubble (the
+            // error is showing) and hand the text back to retry.
+            if pendingTurns.contains(where: { $0.id == pending.id }) {
+                pendingTurns.removeAll { $0.id == pending.id }
+                if sendError != nil, draft.isEmpty {
+                    draft = text
+                }
+            }
         }
     }
 
@@ -270,5 +331,23 @@ struct OperatorView: View {
         let fmt = DateFormatter()
         fmt.dateFormat = "HH:mm"
         return fmt.string(from: date)
+    }
+}
+
+/// WI-4984: decides when a persisted conversation read covers an
+/// optimistically rendered user turn (same author-role + text, persisted
+/// at-or-after the optimistic submission, with slack for device↔server
+/// clock skew). Internal — unit-tested in PendingTurnCoverageTests.
+enum PendingTurnCoverage {
+    /// Clock-skew slack between the device timestamp stamped on the
+    /// optimistic turn and the server timestamp on the persisted row.
+    static let clockSkewSlackMs: Int64 = 120_000
+
+    static func isCovered(by persisted: [OperatorTurn], pending: OperatorTurn) -> Bool {
+        persisted.contains { turn in
+            turn.role == "user"
+                && turn.text == pending.text
+                && turn.createdAt >= pending.createdAt - clockSkewSlackMs
+        }
     }
 }

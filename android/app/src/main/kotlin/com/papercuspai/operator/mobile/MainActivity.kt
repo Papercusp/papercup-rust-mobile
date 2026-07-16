@@ -15,6 +15,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.tasks.await
@@ -1091,9 +1092,9 @@ fun HarnessListScreen(
             val client = creds.client()
             ScreenState.Ready(client.listHarnesses())
         } catch (e: ApiException) {
-            ScreenState.Failed("API: ${e::class.simpleName}: ${e.message ?: "no detail"}")
+            ScreenState.Failed(HumanError.describe(e, "Loading harnesses"))
         } catch (t: Throwable) {
-            ScreenState.Failed("Unexpected: ${t::class.simpleName}: ${t.message ?: "no detail"}")
+            ScreenState.Failed(HumanError.describe(t, "Loading harnesses"))
         }
     }
 
@@ -1313,6 +1314,15 @@ private fun VoiceErrorBanner(
     }
 }
 
+/// Unwrap the Activity behind a (possibly wrapped) Compose LocalContext —
+/// needed for shouldShowRequestPermissionRationale (WI-4967).
+private tailrec fun android.content.Context.findActivity(): android.app.Activity? =
+    when (this) {
+        is android.app.Activity -> this
+        is android.content.ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
 @Composable
 private fun VoiceFab(voice: VoiceManager) {
     val state by voice.state.collectAsState()
@@ -1323,7 +1333,20 @@ private fun VoiceFab(voice: VoiceManager) {
     val micLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted && pendingStart) voice.start()
+        if (granted && pendingStart) {
+            voice.start()
+        } else if (!granted) {
+            // WI-4967: never swallow a denial. After a denial,
+            // shouldShowRequestPermissionRationale == false means Android
+            // will not show the prompt again (permanently denied) — the
+            // banner's Settings action is then the only recovery path.
+            val permanent = context.findActivity()?.let {
+                !ActivityCompat.shouldShowRequestPermissionRationale(
+                    it, Manifest.permission.RECORD_AUDIO,
+                )
+            } ?: false
+            voice.reportMicPermissionDenied(permanent)
+        }
         pendingStart = false
     }
 
@@ -1354,7 +1377,9 @@ private fun VoiceFab(voice: VoiceManager) {
                 micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
             }
         } else {
-            voice.stop()
+            // Desktop-local PTT: tap during Listening SENDS the utterance;
+            // EL mode / any other state: hard stop (unchanged).
+            voice.tapStop()
         }
     }
 

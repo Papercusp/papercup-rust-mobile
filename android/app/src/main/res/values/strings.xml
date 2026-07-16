@@ -35,7 +35,7 @@
     <string name="connection_lost">Lost desktop connection</string>
 
     <!-- Wake-word service notification -->
-    <string name="wake_word_notification_title">Papercup</string>
+    <string name="wake_word_notification_title">Papercusp</string>
     <string name="wake_word_notification_text">Listening for "hey papercup"</string>
     <string name="wake_word_channel_name">Wake-word listener</string>
     <string name="wake_word_channel_description">Persistent listener for the "hey papercup" wake word.</string>
@@ -46,7 +46,7 @@
     <string name="biometric_subtitle_revoke_device">Revoke device %1$s</string>
 
     <!-- Push notification channel -->
-    <string name="push_channel_name">Papercup updates</string>
+    <string name="push_channel_name">Papercusp updates</string>
     <string name="push_channel_description">Push notifications from your paired desktop.</string>
 
     <!-- Common error messages -->
@@ -134,5 +134,5 @@
     <string name="voice_settings_system_default">System default</string>
 
     <!-- App brand (top-bar) -->
-    <string name="app_brand">Papercup</string>
+    <string name="app_brand">Papercusp</string>
 </resources>

@@ -157,10 +157,8 @@ struct ActivityView: View {
             toasts = try await recentNotifications
             actions = try await recentActions
             error = nil
-        } catch let err as ApiError {
-            error = "API: \(err)"
         } catch {
-            self.error = "Unexpected: \(error)"
+            self.error = FriendlyError.message(error, doing: "loading activity")
         }
     }
 }

@@ -986,7 +986,9 @@ private struct VoicePill: View {
         let s = style
         Button {
             if isActive {
-                voice.stop()
+                // Desktop-local PTT: tap during listening SENDS the
+                // utterance; EL mode / other states: hard stop.
+                voice.tapStop()
             } else {
                 voice.start()
             }

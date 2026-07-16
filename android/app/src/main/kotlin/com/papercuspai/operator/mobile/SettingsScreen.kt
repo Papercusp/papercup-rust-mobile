@@ -58,9 +58,9 @@ fun SettingsScreen(
             devices = creds.client().listDesktopDevices()
             error = null
         } catch (e: ApiException) {
-            error = "API: ${e::class.simpleName}: ${e.message ?: ""}"
+            error = HumanError.describe(e, "Loading paired devices")
         } catch (t: Throwable) {
-            error = "Unexpected: ${t::class.simpleName}: ${t.message ?: ""}"
+            error = HumanError.describe(t, "Loading paired devices")
         }
     }
 

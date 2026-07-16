@@ -100,7 +100,7 @@ fun InboxScreen(
     LaunchedEffect(creds.deviceToken, liveTick) {
         loading = true
         try { feed = creds.client().attention(); error = null }
-        catch (t: Throwable) { error = t.message ?: t::class.simpleName ?: "Failed to load inbox" }
+        catch (t: Throwable) { error = HumanError.describe(t, "Loading the inbox") }
         finally { loading = false }
     }
 

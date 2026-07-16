@@ -310,7 +310,7 @@ struct RunLogView: View {
                 }
             } catch {
                 if !Task.isCancelled {
-                    self.error = "\(error)"
+                    self.error = FriendlyError.message(error, doing: "streaming the run log")
                 }
             }
         }

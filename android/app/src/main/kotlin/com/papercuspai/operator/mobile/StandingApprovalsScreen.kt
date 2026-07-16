@@ -46,9 +46,9 @@ fun StandingApprovalsScreen(
             candidates = creds.client().standingCandidates()
             error = null
         } catch (e: ApiException) {
-            error = e.message ?: e::class.simpleName ?: "load failed"
+            error = HumanError.describe(e, "Loading approvals")
         } catch (t: Throwable) {
-            error = t.message ?: t::class.simpleName ?: "load failed"
+            error = HumanError.describe(t, "Loading approvals")
         }
     }
 
@@ -62,7 +62,7 @@ fun StandingApprovalsScreen(
             try {
                 creds.client().standingCandidateDecide(candidate.capability, candidate.targetHarness, approve)
             } catch (t: Throwable) {
-                error = t.message ?: "decision failed"
+                error = HumanError.describe(t, "Sending the decision")
                 hidden = hidden - candidateKey
             } finally {
                 pending = pending - candidateKey

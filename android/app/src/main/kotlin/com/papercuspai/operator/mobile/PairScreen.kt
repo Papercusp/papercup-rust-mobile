@@ -92,9 +92,9 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                     ),
                 )
             } catch (e: PairException) {
-                error = "Pair failed: ${e::class.simpleName}: ${e.message ?: ""}"
+                error = HumanError.describe(e, "Pairing")
             } catch (t: Throwable) {
-                error = "Pair failed: ${t::class.simpleName}: ${t.message ?: ""}"
+                error = HumanError.describe(t, "Pairing")
             } finally {
                 redeeming = false
             }
@@ -385,7 +385,7 @@ private fun CameraPreview(
                     onPayload(parseQrPayload(raw))
                 } catch (_: PairException.InvalidQr) {
                     consumed = false
-                    onError("Scanned QR isn't a Papercup pair payload.")
+                    onError("Scanned QR isn't a Papercusp pair payload.")
                 }
             },
         )

@@ -201,10 +201,8 @@ struct WorkspaceSelectorView: View {
         do {
             workspaces = try await creds.client().listWorkspaces()
             error = nil
-        } catch let err as ApiError {
-            error = "API: \(err)"
-        } catch let err {
-            error = "Unexpected: \(err)"
+        } catch {
+            self.error = FriendlyError.message(error, doing: "loading workspaces")
         }
     }
 
@@ -224,7 +222,7 @@ struct WorkspaceSelectorView: View {
                 )
             }
         } catch {
-            self.error = "Switch failed: \(error)"
+            self.error = FriendlyError.message(error, doing: "switching workspaces")
         }
     }
 

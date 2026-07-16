@@ -103,18 +103,26 @@ final class VoiceManager: ObservableObject {
     }
 
     func start() {
-        guard conversation == nil else { return }
+        guard conversation == nil, localSession == nil else { return }
         state = .connecting
         tapAt = Date()
         firstWordRecorded = false
         Task { @MainActor in
-            let init_: SessionInit
+            let initResult: SessionInitResult
             do {
-                init_ = try await fetchSessionInit()
+                initResult = try await fetchSessionInit()
             } catch {
                 state = Self.classifyInitFailure(error)
                 return
             }
+            // Desktop-local pipeline (free, EL-less) — dispatched by the
+            // session-init `mode` (on-desktop-direct-lan-voice-2026-07-14).
+            // ElevenLabs keeps the entire path below unchanged (D-010).
+            if case .desktopLocal(let payload) = initResult {
+                startLocalSession(payload)
+                return
+            }
+            guard case .el(let init_) = initResult else { return }
             // Stash the timer budgets from the init payload so the
             // armed timers can use them.
             self.idleTimeoutSecs = max(0, TimeInterval(init_.idleTimeoutMin) * 60)
@@ -173,6 +181,10 @@ final class VoiceManager: ObservableObject {
     }
 
     func stop() {
+        if let local = localSession {
+            localSession = nil
+            local.cancel()
+        }
         toolPump?.cancel(); toolPump = nil
         statePump?.cancel(); statePump = nil
         levelPump?.cancel(); levelPump = nil
@@ -192,6 +204,62 @@ final class VoiceManager: ObservableObject {
         }
         micLevel = 0
         state = .idle
+    }
+
+    /// FAB tap while a session is active. Desktop-local PTT: a tap during
+    /// .listening ENDS the utterance and sends the turn; any other active
+    /// state cancels the turn. EL mode: always a hard stop (unchanged).
+    func tapStop() {
+        if let local = localSession, case .listening = state {
+            local.endUtteranceAndSend()
+        } else {
+            stop()
+        }
+    }
+
+    /// Desktop-local session (mode:'desktop-local') — see DesktopVoiceSession.
+    private var localSession: DesktopVoiceSession? = nil
+
+    private func startLocalSession(_ payload: DesktopVoiceSession.InitPayload) {
+        let session = DesktopVoiceSession(
+            creds: creds,
+            payload: payload,
+            callbacks: .init(
+                onState: { [weak self] s in
+                    Task { @MainActor in self?.state = s }
+                },
+                onMicLevel: { [weak self] level in
+                    Task { @MainActor in self?.micLevel = level }
+                },
+                onFirstWord: { [weak self] in
+                    Task { @MainActor in
+                        guard let self, !self.firstWordRecorded, let t = self.tapAt else { return }
+                        VoiceMetrics.recordFirstWordMs(Int(Date().timeIntervalSince(t) * 1000))
+                        self.firstWordRecorded = true
+                    }
+                },
+                onActiveRoute: { route in
+                    Task { @MainActor in DesktopRouteStatus.shared.route = route }
+                },
+                onFinished: { [weak self] in
+                    Task { @MainActor in self?.finishLocalSession() }
+                }
+            )
+        )
+        localSession = session
+        session.beginCapture()
+    }
+
+    private func finishLocalSession() {
+        guard localSession != nil else { return }
+        localSession = nil
+        if firstWordRecorded, let t = tapAt {
+            VoiceMetrics.recordSessionLenMs(Int(Date().timeIntervalSince(t) * 1000))
+        }
+        tapAt = nil
+        firstWordRecorded = false
+        micLevel = 0
+        // A .failed the session set survives; .idle was already emitted.
     }
 
     /// Arm a one-shot timeout that fires when no user transcript has
@@ -240,7 +308,7 @@ final class VoiceManager: ObservableObject {
                 lower.hasSuffix("unknown") || lower.hasSuffix(":")
             if looksDownstream {
                 return .failed(
-                    message: "Voice unavailable — operator desktop is offline. Launch Papercup on your computer, then tap retry.",
+                    message: "Voice unavailable — operator desktop is offline. Launch Papercusp on your computer, then tap retry.",
                     kind: .networkUnreachable
                 )
             }
@@ -499,7 +567,7 @@ final class VoiceManager: ObservableObject {
         }
     }
 
-    private func fetchSessionInit() async throws -> SessionInit {
+    private func fetchSessionInit() async throws -> SessionInitResult {
         // Pass device-local prefs as query params. Server resolves
         // device override > workspace default and clamps single-utterance
         // mode to idle ≤1 regardless of what we ask. Zero values are
@@ -525,8 +593,18 @@ final class VoiceManager: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: "session-init \(code): \(body.prefix(160))"]
             )
         }
-        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let token = obj["conversationToken"] as? String,
+        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(
+                domain: "VoiceSessionInit",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "malformed session-init response"]
+            )
+        }
+        // Desktop-local pipeline (free, EL-less; D-010 keeps EL beside it).
+        if (obj["mode"] as? String) == "desktop-local" {
+            return .desktopLocal(DesktopVoiceSession.InitPayload.from(json: obj))
+        }
+        guard let token = obj["conversationToken"] as? String,
               let agentId = obj["agentId"] as? String else {
             throw NSError(
                 domain: "VoiceSessionInit",
@@ -540,7 +618,7 @@ final class VoiceManager: ObservableObject {
         // disable both timers silently.
         let idleMin = (obj["idleTimeoutMin"] as? Int) ?? 2
         let maxMin = (obj["sessionMaxMin"] as? Int) ?? 30
-        return SessionInit(
+        return .el(SessionInit(
             conversationToken: token,
             agentId: agentId,
             idleTimeoutMin: idleMin,
@@ -549,7 +627,7 @@ final class VoiceManager: ObservableObject {
             workspaceId: dyn["workspace_id"] as? String ?? "",
             surface: dyn["surface"] as? String ?? "mobile-ios",
             desktopHost: dyn["desktop_host"] as? String ?? ""
-        )
+        ))
     }
 
     private struct SessionInit {
@@ -561,5 +639,10 @@ final class VoiceManager: ObservableObject {
         let workspaceId: String
         let surface: String
         let desktopHost: String
+    }
+
+    private enum SessionInitResult {
+        case el(SessionInit)
+        case desktopLocal(DesktopVoiceSession.InitPayload)
     }
 }

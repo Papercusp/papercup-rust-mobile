@@ -153,7 +153,7 @@ private fun PlansListView(
             plans = creds.client().plansList(potFilter, false)
             error = null
         } catch (t: Throwable) {
-            error = t.message ?: "Failed to load plans"
+            error = HumanError.describe(t, "Loading plans")
         } finally {
             loading = false
         }
@@ -299,7 +299,7 @@ private fun PlanDetailView(
             detail = creds.client().planGet(plan.slug, plan.harness)
             error = null
         } catch (t: Throwable) {
-            error = t.message ?: "Failed to load plan"
+            error = HumanError.describe(t, "Loading the plan")
         } finally {
             loading = false
         }
@@ -404,7 +404,7 @@ private fun PlanDetailView(
                                             )
                                             refresh++
                                         } catch (t: Throwable) {
-                                            actionError = t.message ?: "Failed to update item"
+                                            actionError = HumanError.describe(t, "Updating the item")
                                         } finally {
                                             busyItem = null
                                         }

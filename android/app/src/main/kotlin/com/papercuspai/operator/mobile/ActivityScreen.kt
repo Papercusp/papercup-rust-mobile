@@ -63,9 +63,9 @@ fun ActivityScreen(
                 audit = client.recentActions(),
             )
         } catch (e: ApiException) {
-            ActivityState.Failed("API: ${e::class.simpleName}: ${e.message ?: ""}")
+            ActivityState.Failed(HumanError.describe(e, "Loading activity"))
         } catch (t: Throwable) {
-            ActivityState.Failed("Unexpected: ${t::class.simpleName}: ${t.message ?: ""}")
+            ActivityState.Failed(HumanError.describe(t, "Loading activity"))
         }
     }
 

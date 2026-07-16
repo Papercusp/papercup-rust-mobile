@@ -88,10 +88,8 @@ struct HarnessListView: View {
             let client = creds.client()
             let harnesses = try await client.listHarnesses()
             state = .ready(harnesses)
-        } catch let err as ApiError {
-            state = .failed("API: \(err)")
         } catch {
-            state = .failed("Unexpected: \(error)")
+            state = .failed(FriendlyError.message(error, doing: "loading harnesses"))
         }
     }
 }

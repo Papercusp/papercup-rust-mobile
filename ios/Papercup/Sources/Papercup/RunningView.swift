@@ -216,10 +216,8 @@ struct RunningView: View {
         state = .loading
         do {
             state = .ready(try await creds.client().runningSnapshot())
-        } catch let err as ApiError {
-            state = .failed("API: \(err)")
         } catch {
-            state = .failed("Unexpected: \(error)")
+            state = .failed(FriendlyError.message(error, doing: "loading running agents"))
         }
     }
 
@@ -231,10 +229,8 @@ struct RunningView: View {
             do {
                 _ = try await creds.client().pauseSet(paused: true)
                 pauseDone = true
-            } catch let err as ApiError {
-                pauseError = "Pause failed: \(err)"
             } catch {
-                pauseError = "Pause failed: \(error)"
+                pauseError = FriendlyError.message(error, doing: "pausing the operator")
             }
             pauseBusy = false
         }

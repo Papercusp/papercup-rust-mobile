@@ -136,7 +136,7 @@ struct PlansView: View {
             let plans = try await creds.client().plansList(harness: nil, includeArchived: false)
             state = .ready(plans)
         } catch {
-            state = .failed("plans: \(error)")
+            state = .failed(FriendlyError.message(error, doing: "loading plans"))
         }
     }
 
@@ -272,7 +272,7 @@ private struct PlanDetailView: View {
             let detail = try await creds.client().planGet(slug: summary.slug, harness: summary.harness)
             state = .ready(detail: detail, items: parseItems(detail.itemsJson))
         } catch {
-            state = .failed("plan: \(error)")
+            state = .failed(FriendlyError.message(error, doing: "loading the plan"))
         }
     }
 
@@ -291,7 +291,7 @@ private struct PlanDetailView: View {
             )
             reloadTick += 1 // re-pull so the flipped status shows
         } catch {
-            actionError = "\(item.id): \(error)"
+            actionError = "\(item.id): " + FriendlyError.message(error, doing: "updating the item")
         }
     }
 

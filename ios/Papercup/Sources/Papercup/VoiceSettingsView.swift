@@ -7,6 +7,7 @@ struct VoiceSettingsView: View {
     @State private var voices: [AVSpeechSynthesisVoice] = []
     @State private var synth = AVSpeechSynthesizer()
     @State private var probeResult: VoicePathProbeResult = .idle
+    @ObservedObject private var routeStatus = DesktopRouteStatus.shared
 
     var body: some View {
         ScrollView {
@@ -14,6 +15,7 @@ struct VoiceSettingsView: View {
                 screenHeader
                 performanceSection
                 voicePathDiagnosticSection
+                desktopRouteSection
                 conversationModeSection
                 timersSection
                 wakeWordSection
@@ -47,6 +49,17 @@ struct VoiceSettingsView: View {
                 .foregroundStyle(PapercupTheme.textMuted)
         }
         .padding(.vertical, 10)
+    }
+
+    /// Which transport (mesh / lan / tunnel) desktop-local voice turns
+    /// stream over (P-006). Set by the per-session route probe.
+    private var desktopRouteSection: some View {
+        sectionShell("Desktop route") {
+            Text(routeStatus.route
+                ?? "Not connected yet — set with the first voice turn (desktop-local mode). Preference: mesh → lan → tunnel.")
+                .font(.caption)
+                .foregroundStyle(PapercupTheme.textMuted)
+        }
     }
 
     private var performanceSection: some View {

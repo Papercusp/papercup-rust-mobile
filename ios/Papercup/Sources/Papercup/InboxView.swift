@@ -196,7 +196,7 @@ struct InboxView: View {
         do {
             state = .ready(try await creds.client().attention())
         } catch {
-            state = .failed("inbox: \(error)")
+            state = .failed(FriendlyError.message(error, doing: "loading your inbox"))
         }
     }
 

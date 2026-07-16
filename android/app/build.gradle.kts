@@ -14,6 +14,15 @@ android {
     lint {
         lintConfig = file("lint.xml")
         abortOnError = true
+        // WI-4983: androidx.lifecycle 2.8.7 ships a NullSafeMutableLiveData
+        // lint detector that is binary-incompatible with the Kotlin 2.0.21
+        // analysis API — it crashes :app:lintVitalAnalyzeRelease with
+        // IncompatibleClassChangeError (verified to persist on AGP 8.7.3).
+        // This app uses ZERO (Mutable)LiveData — Compose + StateFlow
+        // throughout — so the check is inapplicable; disabling it changes no
+        // shipped bytes and unblocks release assembly. Re-enable when
+        // lifecycle ≥ 2.9 (fixed detector) lands: WI-5033 tracks that.
+        disable += "NullSafeMutableLiveData"
         // Bring all the messy upstream warnings into the report so we
         // can pick at them over time, but don't break the build for
         // them — only errors do. (lint.xml suppresses the four NewApi
@@ -53,12 +62,37 @@ android {
         compose = true
     }
 
+    // Release signing (packaging-signing criterion of the mobile release
+    // rubric). The keystore + credentials live OUTSIDE the repo:
+    //   ~/.papercusp/secrets/papercup-android-release.keystore
+    //   ~/.gradle/gradle.properties → PAPERCUP_RELEASE_KEYSTORE{,_PASSWORD},
+    //   PAPERCUP_RELEASE_KEY_ALIAS (see docs/BUILD.md § secrets).
+    // When absent (CI, fresh clone) release assembly still succeeds and
+    // produces an unsigned artifact — signing never breaks a build.
+    val releaseKeystorePath = providers.gradleProperty("PAPERCUP_RELEASE_KEYSTORE").orNull
+        ?: System.getenv("PAPERCUP_RELEASE_KEYSTORE")
+    val hasReleaseKeystore = releaseKeystorePath != null && file(releaseKeystorePath).exists()
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(releaseKeystorePath!!)
+                storePassword = providers.gradleProperty("PAPERCUP_RELEASE_KEYSTORE_PASSWORD").orNull
+                    ?: System.getenv("PAPERCUP_RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = providers.gradleProperty("PAPERCUP_RELEASE_KEY_ALIAS").orNull
+                    ?: System.getenv("PAPERCUP_RELEASE_KEY_ALIAS") ?: "papercup"
+                keyPassword = providers.gradleProperty("PAPERCUP_RELEASE_KEY_PASSWORD").orNull
+                    ?: System.getenv("PAPERCUP_RELEASE_KEY_PASSWORD") ?: storePassword
+            }
+        }
+    }
+
     buildTypes {
         getByName("debug") {
             isMinifyEnabled = false
         }
         getByName("release") {
             isMinifyEnabled = true
+            signingConfigs.findByName("release")?.also { signingConfig = it }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -139,6 +173,10 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics-ktx")
     // Tasks → coroutines bridge for awaiting FirebaseMessaging.getToken().
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
+
+    // WI-4967/WI-4966: JVM unit tests (src/test) — UX-contract tests pinning
+    // voice failure copy (mic-denial + transport-failure messages).
+    testImplementation("junit:junit:4.13.2")
 
     debugImplementation(composeBom)
     debugImplementation("androidx.compose.ui:ui-tooling")
