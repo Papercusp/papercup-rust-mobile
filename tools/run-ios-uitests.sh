@@ -113,16 +113,31 @@ while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
     # not be spent by the other paired tests in the bundle (WI-5091).
     ONLY_TARGET="PapercupUITests${PAPERCUP_UITEST_ONLY:+/$PAPERCUP_UITEST_ONLY}"
     set +e
+    TEST_OUT="$(mktemp -t papercup-uitest-out)"
     env ${TEST_RUNNER_ENV[@]+"${TEST_RUNNER_ENV[@]}"} xcodebuild test-without-building \
         -project Papercup.xcodeproj -scheme Papercup \
         -destination "$DEST" \
         -only-testing "$ONLY_TARGET" \
-        -derivedDataPath build/dd
-    rc=$?
+        -derivedDataPath build/dd 2>&1 | tee "$TEST_OUT"
+    rc=${PIPESTATUS[0]}
     set -e
     if [ $rc -eq 0 ]; then
+        rm -f "$TEST_OUT"
         exit 0
     fi
+    # A test-runner BOOTSTRAP crash ("operation never finished bootstrapping",
+    # a sim warm-up flake) exits 65 without ever launching the app — the
+    # one-shot pair payload was NOT spent, so one retry is safe even in the
+    # static-payload ONCE mode (WI-5091 round 13). Caution when grading from
+    # this script's exit code alone: Xcode has been seen recovering the
+    # session AFTER the rc=65 and re-running the suite green, detached —
+    # trust the result artifacts (xcresult / per-turn result JSONs).
+    if [ "$MAX_ATTEMPTS" -eq 1 ] && [ "$attempt" -eq 1 ] \
+        && grep -q "never finished bootstrapping" "$TEST_OUT"; then
+        echo "▶ bootstrap crash before app launch — payload unspent, granting one retry"
+        MAX_ATTEMPTS=2
+    fi
+    rm -f "$TEST_OUT"
     echo "[test retry $attempt: rc=$rc]"
     sleep 5
 done
