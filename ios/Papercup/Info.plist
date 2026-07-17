@@ -38,8 +38,12 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Papercup uses the camera to scan the pair-code QR shown by your desktop.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Papercup connects directly to your desktop on your local network for fast, private voice and chat.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Papercup uses Face ID to confirm high-risk actions like revoking a paired device.</string>
 	<key>NSMicrophoneUsageDescription</key>
