@@ -103,6 +103,62 @@ final class DesktopVoiceSession: NSObject {
     private var endState: VoiceManager.State?
     private var finished = false
 
+    // ── UITEST voice-parity injection (PAPERCUP_UITEST_VOICE_PCM_DIR) ──
+    // Mirrors the Android gRPC-inject soak: the Mac-VM simulator has no
+    // input device, so when the env var is set beginCapture() loads the
+    // next raw 16kHz mono PCM16 fixture (<dir>/turn-*.pcm, sorted,
+    // cycling) instead of tapping the mic. Everything downstream — WAV
+    // framing, streamTurn SSE, delta/audio handling, playback, state
+    // machine — runs the REAL path, and maybeFinish() writes a per-turn
+    // result JSON to <dir>/results/ for the host-side grader.
+    private static var injectIndex = 0
+    private var injectDir: String? = nil
+    private var injectName: String? = nil
+    private var sentAt: Date? = nil
+    private var lastSpoken = ""
+    private var audioChunkCount = 0
+
+    private static func nextInjectedPcm(dir: String) -> (name: String, pcm: Data)? {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: dir)
+            .filter({ $0.hasSuffix(".pcm") }).sorted(), !names.isEmpty else { return nil }
+        let name = names[injectIndex % names.count]
+        injectIndex += 1
+        guard let pcm = fm.contents(atPath: dir + "/" + name) else { return nil }
+        return (name, pcm)
+    }
+
+    private func writeInjectResult() {
+        guard let dir = injectDir else { return }
+        let resultsDir = dir + "/results"
+        try? FileManager.default.createDirectory(
+            atPath: resultsDir, withIntermediateDirectories: true)
+        let stateStr: String
+        switch endState {
+        case .some(.failed(message: let msg, kind: _, retryAfterSec: _)):
+            stateStr = "failed: \(msg)"
+        default:
+            stateStr = "ok"
+        }
+        let turnMs: Int
+        if let sent = sentAt {
+            turnMs = Int(Date().timeIntervalSince(sent) * 1000)
+        } else {
+            turnMs = -1
+        }
+        let obj: [String: Any] = [
+            "fixture": injectName ?? "?",
+            "state": stateStr,
+            "spoken": lastSpoken,
+            "audioChunks": audioChunkCount,
+            "turnMs": turnMs,
+        ]
+        let name = (injectName ?? "turn").replacingOccurrences(of: ".pcm", with: "")
+        if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) {
+            try? data.write(to: URL(fileURLWithPath: resultsDir + "/\(name).result.json"))
+        }
+    }
+
     init(creds: DeviceCredentials, payload: InitPayload, callbacks: Callbacks) {
         self.creds = creds
         self.payload = payload
@@ -127,6 +183,24 @@ final class DesktopVoiceSession: NSObject {
             let best = await Self.probeRoutes(creds: creds, routes: payload.routes)
             self?.onMain { self?.cb.onActiveRoute(best.map { "\($0.kind) · \($0.url)" }) }
             return best?.url
+        }
+        // UITEST injection: bypass the mic entirely (see the block above).
+        if let dir = ProcessInfo.processInfo.environment["PAPERCUP_UITEST_VOICE_PCM_DIR"] {
+            if let next = Self.nextInjectedPcm(dir: dir) {
+                injectDir = dir
+                injectName = next.name
+                lock.lock()
+                pcmData = next.pcm
+                lock.unlock()
+            } else {
+                onMain {
+                    self.cb.onState(.failed(
+                        message: "UITEST inject: no turn-*.pcm fixtures in \(dir)",
+                        kind: .unknown))
+                    self.cb.onFinished()
+                }
+            }
+            return
         }
         switch AVAudioSession.sharedInstance().recordPermission {
         case .granted:
@@ -161,6 +235,7 @@ final class DesktopVoiceSession: NSObject {
             return
         }
         onMain { self.cb.onState(.connecting) }
+        sentAt = Date()
         let wav = Self.wavFromPcm16(pcm)
         sendTask = Task { [weak self] in
             guard let self else { return }
@@ -361,7 +436,12 @@ final class DesktopVoiceSession: NSObject {
         req.httpMethod = "POST"
         req.setValue("Bearer \(creds.deviceToken)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "content-type")
-        req.timeoutInterval = 180
+        // Idle timeout between SSE bytes. A server killed mid-stream can
+        // leave the socket open with no reset (NAT'd networks), so this is
+        // the only thing that unwedges the turn — keep it above the worst
+        // observed silent gap (~70s brain-first-token under pressure) but
+        // well under "user gave up".
+        req.timeoutInterval = 90
         req.httpBody = try JSONSerialization.data(withJSONObject: [
             "audioBase64": wav.base64EncodedString(),
             "format": "wav",
@@ -398,7 +478,11 @@ final class DesktopVoiceSession: NSObject {
                     }
                     spoken += text
                     let display = String(spoken.suffix(400))
-                    onMain { self.cb.onState(.speaking(text: display, source: "agent")) }
+                    let full = spoken
+                    onMain {
+                        self.lastSpoken = full
+                        self.cb.onState(.speaking(text: display, source: "agent"))
+                    }
                 }
             case "audio":
                 if let obj = Self.json(payloadStr), let b64 = obj["audioBase64"] as? String,
@@ -462,6 +546,11 @@ final class DesktopVoiceSession: NSObject {
     private func enqueueAudio(_ wavData: Data) {
         DispatchQueue.main.async { [weak self] in
             guard let self, !self.cancelled else { return }
+            self.audioChunkCount += 1
+            // UITEST injection: a headless simulator has no audio output
+            // device, so AVAudioPlayer completion never fires — count the
+            // chunk (the graded signal) and skip actual playback.
+            if self.injectDir != nil { return }
             self.playQueue.append(wavData)
             self.playNextIfIdle()
         }
@@ -481,12 +570,19 @@ final class DesktopVoiceSession: NSObject {
         playing = true
         player = p
         p.delegate = self
-        p.play()
+        if !p.play() {
+            // A dead audio route never calls the delegate — don't let it
+            // wedge the turn; skip to the next chunk (or finish).
+            playing = false
+            player = nil
+            playNextIfIdle()
+        }
     }
 
     private func maybeFinish() {
         guard streamEnded, !playing, playQueue.isEmpty, !finished else { return }
         finished = true
+        if injectDir != nil { writeInjectResult() }
         if !cancelled {
             cb.onState(endState ?? .idle)
         }

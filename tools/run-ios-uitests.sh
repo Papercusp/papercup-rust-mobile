@@ -100,11 +100,23 @@ while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
     if [ -n "${PAPERCUP_PAIR_PAYLOAD:-}" ]; then
         TEST_RUNNER_ENV+=("TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD=$PAPERCUP_PAIR_PAYLOAD")
     fi
+    # Voice-parity soak (WI-5091): forward the fixture dir + turn count so
+    # VoiceParityUITests un-skips and the app-side inject hook engages.
+    if [ -n "${PAPERCUP_UITEST_VOICE_PCM_DIR:-}" ]; then
+        TEST_RUNNER_ENV+=("TEST_RUNNER_PAPERCUP_UITEST_VOICE_PCM_DIR=$PAPERCUP_UITEST_VOICE_PCM_DIR")
+    fi
+    if [ -n "${PAPERCUP_UITEST_VOICE_TURNS:-}" ]; then
+        TEST_RUNNER_ENV+=("TEST_RUNNER_PAPERCUP_UITEST_VOICE_TURNS=$PAPERCUP_UITEST_VOICE_TURNS")
+    fi
+    # PAPERCUP_UITEST_ONLY narrows to one class/test (e.g.
+    # "VoiceParityUITests") — REQUIRED when a one-shot pair payload must
+    # not be spent by the other paired tests in the bundle (WI-5091).
+    ONLY_TARGET="PapercupUITests${PAPERCUP_UITEST_ONLY:+/$PAPERCUP_UITEST_ONLY}"
     set +e
     env ${TEST_RUNNER_ENV[@]+"${TEST_RUNNER_ENV[@]}"} xcodebuild test-without-building \
         -project Papercup.xcodeproj -scheme Papercup \
         -destination "$DEST" \
-        -only-testing PapercupUITests \
+        -only-testing "$ONLY_TARGET" \
         -derivedDataPath build/dd
     rc=$?
     set -e
