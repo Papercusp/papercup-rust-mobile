@@ -61,26 +61,41 @@ final class VoiceParityUITests: XCTestCase {
         for turn in 1...turns {
             // The pill re-renders through a post-turn transient (reply text)
             // before settling back to idle — never tap without waiting.
-            XCTAssertTrue(idlePill.waitForExistence(timeout: 20),
-                          "turn \(turn): idle pill should be present before tap")
-            idlePill.tap()
+            // After a FAILED turn the pill stays "Error" by design, and
+            // tapping it RETRIES (VoicePill maps .failed → start()), so a
+            // soak must accept either pill here — idle-only wedged the run
+            // one turn after any error.
+            let preDeadline = Date().addingTimeInterval(20)
+            var startPill: XCUIElement? = nil
+            while Date() < preDeadline {
+                if idlePill.exists { startPill = idlePill; break }
+                if pill("Error").exists { startPill = pill("Error"); break }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            }
+            XCTAssertNotNil(startPill,
+                            "turn \(turn): pill neither idle nor Error before tap")
+            guard let startPill else { break }
+            startPill.tap()
 
             // Inject hook fills the PCM and reports .listening. A transient
             // backend blip (session-init against a restarting server) shows
             // as Error instead — count it as a failed turn and move on,
             // like the Android soak tolerated transients.
             let startDeadline = Date().addingTimeInterval(15)
+            // When the start tap was on the Error pill (retry), that pill
+            // lingers until .listening lands — grace it so a stale Error
+            // isn't miscounted as a fresh start failure.
+            let errorGraceUntil = Date().addingTimeInterval(2)
             var started = false
             while Date() < startDeadline {
                 if pill("Listening").exists { started = true; break }
-                if pill("Error").exists { break }
+                if Date() > errorGraceUntil, pill("Error").exists { break }
                 RunLoop.current.run(until: Date().addingTimeInterval(0.5))
             }
             if !started {
                 errors += 1
-                if pill("Error").exists { pill("Error").tap() }
-                XCTAssertTrue(idlePill.waitForExistence(timeout: 10),
-                              "turn \(turn): pill should reset to Listen after a start failure")
+                // Leave the Error pill in place — the next turn's pre-tap
+                // wait taps it as the retry entry point.
                 continue
             }
             pill("Listening").tap() // send
@@ -98,9 +113,9 @@ final class VoiceParityUITests: XCTestCase {
             XCTAssertNotNil(terminal, "turn \(turn): voice turn never terminated within 150s")
             if terminal == "error" {
                 errors += 1
-                // Reset the pill for the next turn (tap dismisses/stops).
-                pill("Error").tap()
-                _ = idlePill.waitForExistence(timeout: 10)
+                // Leave the Error pill showing — tapping it would START a
+                // retry session (not reset to idle); the next turn's
+                // pre-tap wait uses it as the start tap.
             }
         }
 
