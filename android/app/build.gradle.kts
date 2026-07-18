@@ -14,15 +14,9 @@ android {
     lint {
         lintConfig = file("lint.xml")
         abortOnError = true
-        // WI-4983: androidx.lifecycle 2.8.7 ships a NullSafeMutableLiveData
-        // lint detector that is binary-incompatible with the Kotlin 2.0.21
-        // analysis API — it crashes :app:lintVitalAnalyzeRelease with
-        // IncompatibleClassChangeError (verified to persist on AGP 8.7.3).
-        // This app uses ZERO (Mutable)LiveData — Compose + StateFlow
-        // throughout — so the check is inapplicable; disabling it changes no
-        // shipped bytes and unblocks release assembly. Re-enable when
-        // lifecycle ≥ 2.9 (fixed detector) lands: WI-5033 tracks that.
-        disable += "NullSafeMutableLiveData"
+        // WI-5033: WI-4983's NullSafeMutableLiveData disable is lifted now
+        // that lifecycle-runtime-compose is >= 2.9 (fixed detector) —
+        // :app:lintVitalAnalyzeRelease verified green with the check active.
         // Bring all the messy upstream warnings into the report so we
         // can pick at them over time, but don't break the build for
         // them — only errors do. (lint.xml suppresses the four NewApi
@@ -143,7 +137,7 @@ dependencies {
     implementation("androidx.camera:camera-mlkit-vision:1.4.0")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     // Compose ↔ Lifecycle helpers used in the pair screen.
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
 
     // (WireGuard tunnel binding removed — mesh is now Defguard self-enrollment
     //  via the system VPN; mobile-apps-revival-redesign D-005.)
