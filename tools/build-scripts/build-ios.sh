@@ -18,6 +18,12 @@ for t in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
     rustup target add "$t" 2>/dev/null || true
 done
 
+# Preflight: swiftformat (auto-installs via Homebrew if missing). UniFFI's
+# Swift bindgen below silently ships UNFORMATTED bindings when swiftformat
+# isn't on PATH instead of failing, so this can't be left to whatever
+# happens to be provisioned on the build host (WI-4986).
+"$REPO_ROOT/tools/build-scripts/ensure-swiftformat.sh"
+
 echo "==> Building papercup-bindings static lib for iOS (device + sim)"
 cargo build --release --target aarch64-apple-ios -p papercup-bindings
 cargo build --release --target aarch64-apple-ios-sim -p papercup-bindings

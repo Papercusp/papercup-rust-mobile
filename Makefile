@@ -105,6 +105,10 @@ bindings-kotlin:
 	    --out-dir android/app/src/main/kotlin
 
 bindings-swift:
+	# swiftformat preflight (auto-installs on macOS, no-op elsewhere): the
+	# uniffi-bindgen generate below silently ships unformatted Swift when
+	# swiftformat isn't on PATH instead of failing (WI-4986).
+	tools/build-scripts/ensure-swiftformat.sh
 	cargo run --quiet --bin uniffi-bindgen -- generate \
 	    crates/papercup-bindings/src/papercup.udl \
 	    --language swift \
