@@ -29,6 +29,10 @@
     <string name="settings_voice_subtitle">Wake word, speech rate, voices</string>
     <string name="settings_diagnostics">Diagnostics</string>
     <string name="settings_diagnostics_subtitle">Connection, mesh, build info</string>
+    <string name="settings_privacy_policy">Privacy policy</string>
+    <string name="settings_privacy_policy_subtitle">How app, voice, and diagnostic data are handled</string>
+    <string name="settings_support">Support</string>
+    <string name="settings_support_subtitle">Help with pairing, connectivity, or the app</string>
     <string name="settings_forget_device">Forget this device</string>
 
     <!-- Connection banner -->

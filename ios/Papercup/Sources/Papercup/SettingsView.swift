@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     let creds: DeviceCredentials
     let monitor: ConnectionMonitor
+    let voice: VoiceManager
     let onForget: () -> Void
     let onWorkspaceSwitched: (DeviceCredentials) -> Void
     let onOpenPushRoute: (PushTapTestRoute) -> Void
@@ -13,6 +14,7 @@ struct SettingsView: View {
     @State private var error: String? = nil
     @State private var revoking: String? = nil
     @State private var voicePrefs: VoicePrefs = VoicePrefsStore.load()
+    @State private var cloudVoiceConsent = VoicePrivacyConsentStore.isGranted()
 
     var body: some View {
         NavigationStack {
@@ -36,7 +38,10 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .task(id: creds.deviceToken) { await load() }
-            .onAppear { voicePrefs = VoicePrefsStore.load() }
+            .onAppear {
+                voicePrefs = VoicePrefsStore.load()
+                cloudVoiceConsent = VoicePrivacyConsentStore.isGranted()
+            }
         }
     }
 
@@ -134,8 +139,43 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             .accessibilityHint(Text("Opens voice and wake-word settings."))
             dividerLine()
-            infoRow("Speech", value: "Local TTS + wake-word tuning", isLast: true)
+            infoRow("Speech", value: "Local TTS + wake-word tuning")
+            cloudVoiceDisclosure
+            if cloudVoiceConsent {
+                dividerLine()
+                Button(role: .destructive) {
+                    voice.revokeCloudVoiceConsent()
+                    cloudVoiceConsent = false
+                } label: {
+                    actionRow(
+                        title: "Turn off cloud voice sharing",
+                        detail: "Future cloud voice sessions will ask again.",
+                        destructive: true,
+                        isLast: true
+                    )
+                }
+                .buttonStyle(.plain)
+            }
         }
+    }
+
+    private var cloudVoiceDisclosure: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text("Cloud voice sharing")
+                    .font(.caption)
+                    .foregroundStyle(PapercupTheme.textMuted)
+                Spacer()
+                Text(cloudVoiceConsent ? "Allowed" : "Ask before sharing")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(cloudVoiceConsent ? PapercupTheme.success : PapercupTheme.text)
+            }
+            Text("Cloud voice sends microphone audio and transcripts to ElevenLabs and the AI provider configured on your desktop. Desktop-local voice stays on your devices.")
+                .font(.caption)
+                .foregroundStyle(PapercupTheme.textMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private var aboutSection: some View {
@@ -156,6 +196,24 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint(Text("Opens connection and build diagnostics."))
+            dividerLine()
+            Link(destination: AppLinks.privacy) {
+                navRow(
+                    title: "Privacy Policy",
+                    detail: "How Papercusp handles app and voice data."
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Opens the Papercusp privacy policy in your browser."))
+            dividerLine()
+            Link(destination: AppLinks.support) {
+                navRow(
+                    title: "Support",
+                    detail: "Get help with pairing, connectivity, or the app."
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Opens Papercusp support in your browser."))
         }
     }
 

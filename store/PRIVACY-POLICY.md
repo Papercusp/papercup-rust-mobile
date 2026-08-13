@@ -1,64 +1,85 @@
-# Papercup — Privacy Policy
+# Papercusp mobile privacy policy
 
-_App: **Papercup** (`com.papercuspai.operator.mobile`) · iOS + Android · v0.1.0_
-_Draft prepared 2026-07-17 for App Store / Play Store submission (WI-5325). **Owner: review, then host at a public URL and paste that URL into App Store Connect + Play Console.**_
+_Effective August 11, 2026_
 
-## The short version
+This policy covers the Papercusp iPhone app and Android app with bundle/package
+identifier `com.papercuspai.operator.mobile`. The public copy is available at
+<https://papercusp.com/mobile/privacy>.
 
-Papercup is a **companion for your own Papercup desktop**. You pair the app to a
-desktop you control ("your operator") and talk or chat with it. **Your voice and
-messages are sent to your own operator — not to us.** We do not sell your data, we
-do not show ads, and we do not run behavioral analytics on you.
+## Overview
 
-## What the app handles, and where it goes
+Papercusp is a companion to a desktop operator you pair with. We do not sell
+personal data, show ads, use behavioral advertising, or track people across
+apps or websites. The mobile app does not require a Papercusp account.
 
-| Data | Why | Where it goes | Kept by us? |
-|------|-----|---------------|-------------|
-| **Voice audio** | Voice commands | Streamed to **your own operator** (your desktop) for speech-to-text, the assistant, and text-to-speech | **No** |
-| **Chat text** | Chat with your operator | Sent to **your own operator** | **No** |
-| **Pairing credential** (device token) | Authenticate the app to your operator | On your device + your operator | **No** |
-| **Push token** (FCM / APNs) | Deliver notifications from your operator | Google FCM / Apple APNs + your operator | Only as a routing token |
-| **Crash diagnostics** | Fix crashes | **Firebase Crashlytics** (Android). iOS crash reporting is currently disabled. | Yes, crash reports only |
+## Data the apps handle
 
-We do **not** collect your name, email, contacts, calendar, location, photos, or
-files. The app has no account and no sign-up — it authenticates to *your* desktop.
+| Data | Use and destination |
+|---|---|
+| Pairing credential, device ID, workspace ID, and operator address | Stored on the phone and sent to the paired operator to authenticate the device. The iPhone credential is stored in the Apple Keychain; Android uses encrypted app storage. |
+| Chat, commands, and operator replies | Sent to the paired operator. The operator may send prompts and replies to the AI provider configured by its administrator. |
+| Microphone audio and voice transcripts | Desktop-local voice sends data to the paired operator. Cloud voice is blocked until the user explicitly agrees; it sends audio, transcripts, replies, and functional identifiers to ElevenLabs and its service providers, including AI model providers. |
+| Push token | Sent to Apple Push Notification service on iPhone, or Firebase Cloud Messaging on Android, and to the paired operator so notifications can reach the device. |
+| Android crash logs, device/OS details, and Crashlytics installation ID | Sent to Firebase Crashlytics to diagnose Android failures. The iPhone 1.0 app does not include a crash-reporting SDK and does not send crash diagnostics to Papercusp. |
 
-## Third-party services
+Cloud voice providers may record, view, store, and share communications to
+provide and improve the service, train models when the applicable account has
+not opted out, and comply with law. ElevenLabs documents a two-year default for
+conversation audio and transcript retention unless the workspace is configured
+for a shorter period or zero retention. Do not use cloud voice for information
+you are not comfortable sending to those providers.
 
-- **Firebase Cloud Messaging** (Google) — delivers push notifications. Receives a
-  device push token.
-- **Firebase Crashlytics** (Google, Android only) — collects crash reports (stack
-  trace, device model, OS version, a Crashlytics install identifier) **only when the
-  app crashes**, so we can fix bugs.
-- **Firebase Analytics is disabled** — behavioral analytics collection, advertising
-  ID, and Android ID collection are turned off in the app manifest.
-- **Sentry** (iOS crash reporting) is present but **inactive** in shipped builds (no
-  DSN configured); if it is ever enabled, this policy and our store data-safety
-  declarations will be updated to disclose crash-diagnostics collection on iOS.
+## Services and tracking
 
-We do not use any advertising SDKs and do not track you across apps or websites.
+- **ElevenLabs Agents** powers the optional, consented cloud voice path. See
+  [ElevenLabs retention controls](https://elevenlabs.io/docs/eleven-agents/customization/privacy/retention).
+- **Apple Push Notification service** delivers iPhone notifications.
+- **Firebase Cloud Messaging** delivers Android notifications.
+- **Firebase Crashlytics** collects Android crash diagnostics.
+- **Firebase Analytics is disabled.** Advertising-ID collection and Android-ID
+  analytics collection are also disabled in the Android release manifest.
+- **The iPhone 1.0 app has no crash-reporting SDK.** If crash reporting is
+  enabled in a later version, the policy and App Store privacy answers must be
+  updated before that build is submitted.
+
+We do not include advertising SDKs and do not track users across apps or
+websites.
 
 ## Permissions
 
-- **Microphone** — to hear your voice commands.
-- **Camera** — to scan the pairing QR code shown by your desktop.
-- **Notifications** — to deliver messages from your operator.
-- **Face ID / biometric** (iOS) — to confirm high-risk actions like revoking a
-  paired device. Handled by the OS; the biometric never leaves your device.
+- Microphone: voice interaction.
+- Camera: scan a pairing QR code.
+- Notifications: deliver messages from the paired operator.
+- Local network on iPhone: connect directly to the paired desktop when it is on
+  the same network.
+- Face ID on supported iPhones: confirm high-risk actions such as revoking a
+  paired device.
 
-## Data retention & your control
+The apps do not request contacts, calendar, location, photos, or financial
+information.
 
-- Voice/chat content is processed by **your own operator** under your control;
-  retention there is governed by your desktop, not this app.
-- Crash reports are retained by Firebase Crashlytics per Google's retention policy.
-- **Unpair** the app (or revoke the device from your operator) at any time to sever
-  the link; uninstalling removes the on-device pairing credential.
+## Security, retention, and control
 
-## Children
+Public internet connections require HTTPS. iPhone permits unencrypted traffic
+only for Apple's local-network category so a phone can connect directly to a
+paired desktop on the same trusted network. Android public release builds reject
+non-HTTPS pairing endpoints and disable cleartext traffic.
 
-Papercup is not directed to children under 13.
+On-device credentials and preferences remain until the user forgets the paired
+device, clears app data, or uninstalls. Data on the paired operator follows that
+operator's settings. Cloud voice, notification, and Android crash data follow
+the processors' configured retention and legal requirements.
 
-## Changes & contact
+Users can withdraw cloud voice consent in Settings; the next cloud session will
+ask again. Users can also forget the paired device. To request deletion of
+developer-controlled cloud voice or Android crash records, use
+<https://papercusp.com/mobile/support>.
 
-We will update this policy as the app evolves. Questions: **[owner: add a support
-email / URL]**.
+## Children, changes, and contact
+
+Papercusp is not directed to children under 13. We will update this policy when
+data practices materially change and present a new cloud-voice consent prompt
+when required.
+
+Questions or deletion requests: <https://papercusp.com/mobile/support> or
+`access@papercusp.com`.

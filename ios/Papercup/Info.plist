@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -30,12 +30,12 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -47,9 +47,7 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Papercup uses Face ID to confirm high-risk actions like revoking a paired device.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Papercup uses the microphone to listen for voice commands.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Papercup transcribes your voice commands on-device to send to the operator.</string>
+	<string>Papercusp uses the microphone for voice commands. Desktop-local voice sends audio only to your paired operator; optional cloud voice requires separate consent and sends audio and transcripts to ElevenLabs and the configured AI provider.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

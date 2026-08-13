@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.papercuspai.operator.mobile
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -8,6 +11,7 @@ import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.util.Base64
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +50,7 @@ import kotlin.math.sqrt
 /// BESIDE this (D-010) — VoiceManager dispatches on the session-init
 /// `mode`; this class is only constructed for `mode:'desktop-local'`.
 class DesktopVoiceSession(
+    private val context: Context,
     private val scope: CoroutineScope,
     private val creds: DeviceCredentials,
     private val init: Init,
@@ -171,6 +176,19 @@ class DesktopVoiceSession(
     // ── capture ──────────────────────────────────────────────────────
 
     private fun captureLoop() {
+        if (
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            listener.onState(
+                VoiceManager.State.Failed(
+                    "Mic unavailable — allow microphone access in Settings.",
+                    VoiceManager.FailureKind.MicPermission,
+                ),
+            )
+            listener.onFinished()
+            return
+        }
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
         )

@@ -1,0 +1,23 @@
+id: papercup-rust-mobile
+extends: coding-factory
+knobs:
+  harnessKind: coding
+  testCommand: cargo test
+  fromRepo:
+    toolchains:
+      - node
+      - rust
+    packageManager: npm
+    monorepo: true
+    frontend: false
+    isGitRepo: true
+    testCommandSource: cargo
+    testCommandVerified: true
+    harvestedDocs: []
+recursion:
+  enabled: true
+  maxDepth: 1
+  strategy: escalate
+  spawnOn:
+    custom: monorepo-subproject
+description: Coding harness generated from repo (node, rust, monorepo).

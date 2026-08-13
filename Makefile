@@ -5,14 +5,16 @@
 # one place.
 
 .PHONY: help build-rust build-android build-ios install-android \
-        bindings-kotlin bindings-swift test test-ios test-ios-ui check \
-        fmt fmt-check clippy lint-android install-hooks clean tokens tokens-check
+        bindings-kotlin bindings-swift test test-ios test-ios-ui \
+        verify-ios-release test-ios-release release-ios check \
+        fmt fmt-check clippy lint-android test-android-java install-hooks clean tokens tokens-check
 
 help:
 	@echo "Targets:"
 	@echo "  make check              — pre-push gate: fmt-check + clippy -D warnings + tests"
 	@echo "  make install-hooks      — install git pre-push hook that runs 'make check'"
-	@echo "  make lint-android       — run Android lint (auto-uses Android Studio JBR if found)"
+	@echo "  make lint-android       — run Android lint (resolves Java 17+ from JAVA_HOME/JBR)"
+	@echo "  make test-android-java  — test the dynamic Android Java resolver"
 	@echo "  make fmt                — cargo fmt --all"
 	@echo "  make fmt-check          — cargo fmt --all -- --check (fails on diff)"
 	@echo "  make clippy             — cargo clippy --workspace --all-targets -- -D warnings"
@@ -20,6 +22,9 @@ help:
 	@echo "  make test               — run all Rust tests"
 	@echo "  make test-ios           — run iOS XCTest unit suite (requires macOS + Xcode)"
 	@echo "  make test-ios-ui        — run iOS XCUITest end-to-end suite (paired flows need PAPERCUP_PAIR_PAYLOAD)"
+	@echo "  make verify-ios-release — validate iOS metadata, privacy, signing config, and release copy"
+	@echo "  make test-ios-release   — exercise the iOS release verifier and its failure guards"
+	@echo "  make release-ios        — archive/export iOS 1.0.0 (set signing env; ACTION=preflight|archive|export|validate|upload)"
 	@echo "  make bindings-kotlin    — regenerate Kotlin bindings into android/app/src/main/kotlin/uniffi"
 	@echo "  make bindings-swift     — regenerate Swift bindings into ios/PapercupCore"
 	@echo "  make build-android      — cross-compile Rust core for all Android ABIs + assemble debug APK"
@@ -66,16 +71,17 @@ clippy:
 install-hooks:
 	./tools/install-git-hooks.sh
 
-# Run Android lintDebug — needs JAVA_HOME pointing at JDK 17+ (AGP requirement).
-# Falls back to Android Studio's bundled JBR if a system java isn't 17+.
+# Run Android lintDebug — resolve Java 17+ dynamically so Snap revision changes
+# cannot strand the gate on a deleted Android Studio JBR path.
 lint-android:
-	@if [ -d /snap/android-studio/209/jbr ]; then \
-		echo "▶ JAVA_HOME=/snap/android-studio/209/jbr (Android Studio bundled JBR)"; \
-		JAVA_HOME=/snap/android-studio/209/jbr android/gradlew -p android :app:lintDebug; \
-	else \
-		echo "▶ Using ambient java"; \
-		android/gradlew -p android :app:lintDebug; \
-	fi
+	@set -e; \
+	JAVA_HOME="$$(tools/build-scripts/resolve-java-home.sh)"; \
+	export JAVA_HOME; \
+	echo "▶ JAVA_HOME=$$JAVA_HOME (validated Java 17+)"; \
+	android/gradlew -p android :app:lintDebug
+
+test-android-java:
+	./tools/tests/resolve-java-home-test.sh
 
 build-rust:
 	cargo build --workspace
@@ -97,6 +103,15 @@ test-ios:
 # test runs (paired flows XCTSkip).
 test-ios-ui:
 	./tools/run-ios-uitests.sh
+
+verify-ios-release:
+	./tools/build-scripts/verify-ios-release.sh
+
+test-ios-release:
+	./tools/tests/verify-ios-release-test.sh
+
+release-ios:
+	./tools/build-scripts/release-ios.sh $(or $(ACTION),export)
 
 bindings-kotlin:
 	cargo run --quiet --bin uniffi-bindgen -- generate \
@@ -120,7 +135,7 @@ tokens:
 	npm run tokens
 
 build-android: tokens bindings-kotlin
-	tools/build-scripts/build-android.sh
+	JAVA_HOME="$$(tools/build-scripts/resolve-java-home.sh)" tools/build-scripts/build-android.sh
 	tools/build-scripts/install-and-launch.sh
 
 install-android: build-android

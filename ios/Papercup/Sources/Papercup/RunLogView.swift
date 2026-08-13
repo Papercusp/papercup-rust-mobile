@@ -137,7 +137,7 @@ struct RunLogView: View {
                             Text(error == nil ? "No log lines yet." : "Log stream unavailable.")
                                 .font(.callout.weight(.medium))
                                 .foregroundStyle(PapercupTheme.text)
-                            Text(error == nil ? "Waiting for the next harness event." : "Check credentials or backend mobile log streaming support.")
+                            Text(error == nil ? "Waiting for the next harness event." : "Check your connection or pair this iPhone again if access expired.")
                                 .font(.caption)
                                 .foregroundStyle(PapercupTheme.textMuted)
                         }
@@ -277,7 +277,7 @@ struct RunLogView: View {
                 let (bytes, resp) = try await URLSession.shared.bytes(for: req)
                 if let http = resp as? HTTPURLResponse, http.statusCode != 200 {
                     if http.statusCode == 401 {
-                        error = "log stream not available to mobile (cookie-auth only). Awaiting backend mobile-JWT variant."
+                        error = "Pairing authorization expired. Pair this iPhone again to restore run-log access."
                     } else {
                         error = "stream failed: HTTP \(http.statusCode)"
                     }

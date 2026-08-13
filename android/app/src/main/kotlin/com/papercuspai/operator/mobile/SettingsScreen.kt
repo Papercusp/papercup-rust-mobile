@@ -30,12 +30,15 @@ import uniffi.papercup.OperatorClient
 @Composable
 fun SettingsScreen(
     creds: DeviceCredentials,
+    voice: VoiceManager,
     onForget: () -> Unit,
     onOpenWorkspaceSelector: () -> Unit = {},
     onOpenStandingApprovals: () -> Unit = {},
     onOpenVoiceSettings: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
+    onOpenPrivacyPolicy: () -> Unit = {},
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val activity = androidx.compose.ui.platform.LocalContext.current.let { ctx ->
         var c: android.content.Context = ctx
         while (c is android.content.ContextWrapper && c !is androidx.fragment.app.FragmentActivity) {
@@ -52,6 +55,7 @@ fun SettingsScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var busyKey by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val cloudVoiceAllowed by voice.cloudVoiceConsentGranted.collectAsState()
 
     suspend fun load() {
         try {
@@ -128,8 +132,28 @@ fun SettingsScreen(
                         onClick = onOpenVoiceSettings,
                         last = false,
                     )
-                    ValueRow(label = "STT / TTS", value = "Android local speech", last = false)
-                    ValueRow(label = "Audio routing", value = "Phone speaker", last = true)
+                    ValueRow(label = "STT / TTS", value = "Local or consented cloud voice", last = false)
+                    ValueRow(label = "Audio routing", value = "Phone speaker", last = false)
+                    ActionRow(
+                        title = "Cloud voice sharing",
+                        subtitle = if (cloudVoiceAllowed) {
+                            "Allowed · audio and transcripts may go to ElevenLabs"
+                        } else {
+                            "Ask before sending audio to ElevenLabs"
+                        },
+                        trailing = null,
+                        last = !cloudVoiceAllowed,
+                    )
+                    if (cloudVoiceAllowed) {
+                        ActionRow(
+                            title = "Turn off cloud voice sharing",
+                            subtitle = "The next cloud session will ask again",
+                            onClick = voice::revokeCloudVoiceConsent,
+                            danger = true,
+                            trailing = null,
+                            last = true,
+                        )
+                    }
                 }
             }
 
@@ -140,6 +164,25 @@ fun SettingsScreen(
                         title = stringResource(R.string.settings_diagnostics),
                         subtitle = stringResource(R.string.settings_diagnostics_subtitle),
                         onClick = onOpenDiagnostics,
+                        last = false,
+                    )
+                    ActionRow(
+                        title = stringResource(R.string.settings_privacy_policy),
+                        subtitle = stringResource(R.string.settings_privacy_policy_subtitle),
+                        onClick = onOpenPrivacyPolicy,
+                        last = false,
+                    )
+                    ActionRow(
+                        title = stringResource(R.string.settings_support),
+                        subtitle = stringResource(R.string.settings_support_subtitle),
+                        onClick = {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(VoicePrivacyDisclosure.SUPPORT_URL),
+                                ),
+                            )
+                        },
                         last = true,
                     )
                 }

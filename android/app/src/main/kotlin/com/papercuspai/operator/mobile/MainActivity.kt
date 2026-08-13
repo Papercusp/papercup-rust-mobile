@@ -125,7 +125,7 @@ private fun AppRoot(
             Route.Running -> Route.Brew
             Route.PushTapTest -> Route.Diagnostics
             Route.StandingApprovals, Route.VoiceSettings,
-            Route.Diagnostics, Route.WorkspaceSelector -> Route.Settings
+            Route.Diagnostics, Route.WorkspaceSelector, Route.PrivacyPolicy -> Route.Settings
             else -> Route.Inbox
         }
     }
@@ -396,6 +396,7 @@ private fun AppRoot(
             onBack = { route = Route.Settings },
             onWorkspaceSwitched = onWorkspaceSwitched,
         )
+        Route.PrivacyPolicy -> PrivacyPolicyScreen(onBack = { route = Route.Settings })
         Route.NotificationHistory -> ActivityScreen(
             creds = current,
             invalidationTick = liveTick,
@@ -428,6 +429,7 @@ private fun AppRoot(
             onOpenStandingApprovals = { route = Route.StandingApprovals },
             onOpenVoiceSettings = { route = Route.VoiceSettings },
             onOpenDiagnostics = { route = Route.Diagnostics },
+            onOpenPrivacyPolicy = { route = Route.PrivacyPolicy },
             onForget = onForget,
         )
         else -> {}
@@ -452,8 +454,10 @@ private fun PairedShell(
     onOpenStandingApprovals: () -> Unit,
     onOpenVoiceSettings: () -> Unit,
     onOpenDiagnostics: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
     onForget: () -> Unit,
 ) {
+    val cloudConsentRequired by voice.cloudConsentRequired.collectAsState()
     val connState by monitor.state.collectAsState()
     val voiceStateForBanner by voice.state.collectAsState()
     var recentToastBadgeCount by remember { mutableIntStateOf(0) }
@@ -499,6 +503,23 @@ private fun PairedShell(
             offlineNowMs = System.currentTimeMillis()
             delay(1_000)
         }
+    }
+    if (cloudConsentRequired) {
+        AlertDialog(
+            onDismissRequest = voice::declineCloudVoice,
+            title = { Text(VoicePrivacyDisclosure.TITLE) },
+            text = { Text(VoicePrivacyDisclosure.BODY) },
+            confirmButton = {
+                TextButton(onClick = voice::approveCloudVoice) {
+                    Text("Agree and start")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = voice::declineCloudVoice) {
+                    Text("Not now")
+                }
+            },
+        )
     }
     Scaffold(
         topBar = {
@@ -563,10 +584,12 @@ private fun PairedShell(
                 )
                 Route.Settings -> SettingsScreen(
                     creds = current,
+                    voice = voice,
                     onOpenWorkspaceSelector = onOpenWorkspaceSelector,
                     onOpenStandingApprovals = onOpenStandingApprovals,
                     onOpenVoiceSettings = onOpenVoiceSettings,
                     onOpenDiagnostics = onOpenDiagnostics,
+                    onOpenPrivacyPolicy = onOpenPrivacyPolicy,
                     onForget = onForget,
                 )
                 else -> {}
@@ -1064,6 +1087,7 @@ private sealed interface Route {
     data object Diagnostics : Route
     data object PushTapTest : Route
     data object WorkspaceSelector : Route
+    data object PrivacyPolicy : Route
     data object NotificationHistory : Route
     data object RecentActions : Route
 }

@@ -212,6 +212,7 @@ private struct PairedShell: View {
                         SettingsView(
                             creds: current,
                             monitor: monitor,
+                            voice: voice,
                             onForget: onForget,
                             onWorkspaceSwitched: onWorkspaceSwitched,
                             onOpenPushRoute: onOpenPushRoute
@@ -261,6 +262,22 @@ private struct PairedShell: View {
             MobileBottomNav(tab: $tab, counts: badgeHost.counts)
         }
         .task(id: current.deviceToken) { monitor.start(); await runSync() }
+        .alert(
+            "Allow cloud voice?",
+            isPresented: Binding(
+                get: { voice.cloudConsentRequired },
+                set: { showing in
+                    if !showing, voice.cloudConsentRequired {
+                        voice.declineCloudVoice()
+                    }
+                }
+            )
+        ) {
+            Button("Not now", role: .cancel) { voice.declineCloudVoice() }
+            Button("Allow cloud voice") { voice.approveCloudVoice() }
+        } message: {
+            Text("Papercusp will send your microphone audio and voice transcripts to ElevenLabs and the AI provider configured on your paired desktop to answer you. Desktop-local voice does not share audio with ElevenLabs. You can withdraw permission in Settings.")
+        }
         .onReceive(cacheHost.$tick) { _ in
             // The polling cache refetched a tracked query (D-001.1). Bump
             // the shared liveTick so screens observing `invalidationTick:

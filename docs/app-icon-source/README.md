@@ -2,7 +2,9 @@
 
 `operator-icon.svg` is a standalone copy of `OperatorLogoMark` (from
 `papercup/apps/operator/app/_components/OperatorLogoMark.tsx`, variant `full`)
-wrapped in the dark `op-chat-header-orb` background gradient.
+wrapped in the dark `op-chat-header-orb` background gradient. Its square canvas
+is deliberately opaque: Apple applies the platform mask, and App Store icons
+with transparent pixels are rejected.
 
 `operator-icon-foreground.svg` is the same logo with **transparent** background,
 sized so the content fits inside the Android adaptive-icon 72dp safe area

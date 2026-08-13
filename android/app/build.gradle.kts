@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.papercuspai.operator.mobile"
-    compileSdk = 35
+    compileSdk = 36
 
     lint {
         lintConfig = file("lint.xml")
@@ -28,9 +28,18 @@ android {
     defaultConfig {
         applicationId = "com.papercuspai.operator.mobile"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        // JNA's AAR still carries obsolete armeabi/MIPS binaries. Keep the
+        // published artifact to Android's four supported app ABIs; otherwise
+        // those legacy payloads leak into both the APK and AAB.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+        }
+        // Release builds never send bearer credentials or user content over
+        // cleartext. Debug keeps the emulator's explicit local endpoint.
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
         // Phase 10g: Picovoice AccessKey. Empty when nobody's configured
         // it locally — WakeWordEngine treats that as "wake word disabled".
         // Set via android/local.properties:
@@ -83,6 +92,7 @@ android {
     buildTypes {
         getByName("debug") {
             isMinifyEnabled = false
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
         }
         getByName("release") {
             isMinifyEnabled = true
@@ -95,6 +105,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -109,6 +120,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")
@@ -121,7 +133,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
 
     // UniFFI's generated Kotlin needs JNA at runtime.
-    implementation("net.java.dev.jna:jna:5.14.0@aar")
+    // 5.17+ fixes jnidispatch on Android's 16 KB page-size devices.
+    implementation("net.java.dev.jna:jna:5.19.1@aar")
 
     // Coroutines — UniFFI's generated `suspend` fns use them.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
@@ -146,7 +159,9 @@ dependencies {
     // Engine is dormant unless PICOVOICE_ACCESS_KEY is set in
     // android/local.properties (or BuildConfig.PICOVOICE_ACCESS_KEY at
     // build time); WakeWordEngine.kt early-returns otherwise.
-    implementation("ai.picovoice:porcupine-android:3.0.1")
+    // 4.x ships 16 KB page-size-compatible Android binaries; 3.0.1's
+    // arm64-v8a libpv_porcupine.so used 4 KB LOAD alignment.
+    implementation("ai.picovoice:porcupine-android:4.0.0")
     // ElevenLabs Conversational AI SDK — voice transport for V1.
     // Pulls LiveKit Android as the WebRTC layer. See docs/VOICE_V1_PLAN.md.
     implementation("io.elevenlabs:elevenlabs-android:0.9.0")

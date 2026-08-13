@@ -1,24 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// APNs push registration scaffold. Mirror of Android's PushService.kt
-// (which speaks FCM). **Inert until an Apple Developer Program account
-// + Push Notifications capability are configured.**
+// APNs push registration. Mirror of Android's PushService.kt (which
+// speaks FCM). The Xcode project declares the Push Notifications
+// entitlement for both build configurations; a signed device build also
+// needs the bundle ID enabled for Push in the Apple developer account.
 //
-// To enable:
-//   1. Enroll in the Apple Developer Program.
-//   2. In project.yml, add:
-//        entitlements:
-//          path: Papercup/Papercup.entitlements
-//        attributes:
-//          DevelopmentTeam: <YOUR_TEAM_ID>
-//      and create Papercup.entitlements with `aps-environment = development`
-//      (or `production` for release).
-//   3. Drop a real provisioning profile that includes the
-//      com.papercuspai.operator.mobile bundle ID with Push capability.
-//   4. Set CODE_SIGN_STYLE = Manual + DEVELOPMENT_TEAM in project.yml.
-//
-// The code below is correct as-is; it just won't actually receive a
-// device token until the entitlement is signed in.
+// The release script supplies DEVELOPMENT_TEAM at archive time rather
+// than committing account-specific signing material. Automatic signing
+// selects a matching provisioning profile for
+// com.papercuspai.operator.mobile with the production APNs entitlement.
 //
 // Server contract: POST /api/device/push/register
 //   body: { platform: "apns", token: "<hex>" }

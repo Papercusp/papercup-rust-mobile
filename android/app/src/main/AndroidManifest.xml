@@ -30,7 +30,7 @@
         android:theme="@style/Theme.Papercup.Starting"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="${usesCleartextTraffic}">
         <!-- Privacy (WI-5325): Papercup is a companion to the user's OWN desktop —
              no behavioral tracking. Firebase Analytics collection is DISABLED here.
              Crashlytics (crash diagnostics) + FCM (push) remain and are declared in

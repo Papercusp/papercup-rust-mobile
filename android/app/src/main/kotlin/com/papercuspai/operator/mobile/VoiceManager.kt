@@ -115,6 +115,12 @@ class VoiceManager(
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
 
+    private val consentStore = VoicePrivacyConsentStore(context)
+    private val _cloudConsentRequired = MutableStateFlow(false)
+    val cloudConsentRequired: StateFlow<Boolean> = _cloudConsentRequired.asStateFlow()
+    private val _cloudVoiceConsentGranted = MutableStateFlow(consentStore.isGranted())
+    val cloudVoiceConsentGranted: StateFlow<Boolean> = _cloudVoiceConsentGranted.asStateFlow()
+
     private val _intents = MutableSharedFlow<Intent>(extraBufferCapacity = 8)
     val intents: SharedFlow<Intent> = _intents.asSharedFlow()
 
@@ -172,6 +178,11 @@ class VoiceManager(
                 // restart). teardown() preserves the Failed state set
                 // above.
                 teardown(reason = "session-init-failed")
+                return@launch
+            }
+            if (requiresCloudVoiceConsent(anyInit is SessionInit.El, consentStore.isGranted())) {
+                _cloudConsentRequired.value = true
+                teardown(reason = "cloud-consent-required")
                 return@launch
             }
             // Desktop-local pipeline (free, EL-less) — dispatched by the
@@ -278,6 +289,26 @@ class VoiceManager(
 
     fun stop() = teardown(reason = "user")
 
+    fun approveCloudVoice() {
+        consentStore.grant()
+        _cloudVoiceConsentGranted.value = true
+        _cloudConsentRequired.value = false
+        start()
+    }
+
+    fun declineCloudVoice() {
+        _cloudConsentRequired.value = false
+        if (scope != null) teardown(reason = "cloud-consent-declined")
+        _state.value = State.Idle
+    }
+
+    fun revokeCloudVoiceConsent() {
+        consentStore.revoke()
+        _cloudVoiceConsentGranted.value = false
+        _cloudConsentRequired.value = false
+        if (session != null) stop()
+    }
+
     /// FAB tap while a session is active. Desktop-local PTT: a tap during
     /// Listening ENDS the utterance and sends the turn; any other active
     /// state cancels the turn. EL mode: always a hard stop (unchanged).
@@ -296,6 +327,7 @@ class VoiceManager(
     private fun startLocalSession(init: DesktopVoiceSession.Init) {
         val s = scope ?: return
         val session = DesktopVoiceSession(
+            context = context,
             scope = s,
             creds = creds,
             init = init,

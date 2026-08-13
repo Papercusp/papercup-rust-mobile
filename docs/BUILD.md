@@ -19,7 +19,7 @@ truth; native projects consume generated bindings + the cross-compiled core.
 ### Android
 
 - Java 17 (`JAVA_HOME=…/jdk17`)
-- Android SDK + NDK (defaults to `~/Android/Sdk/ndk/27.0.12077973`; override with `ANDROID_NDK_HOME`)
+- Android SDK platform 36 + NDK (defaults to `~/Android/Sdk/ndk/27.0.12077973`; override with `ANDROID_NDK_HOME`)
 - `cargo install cargo-ndk`
 - `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
 
@@ -38,6 +38,7 @@ truth; native projects consume generated bindings + the cross-compiled core.
 | `make test` | cargo test workspace (44 tests). |
 | `make build-rust` | cargo build workspace. |
 | `make build-android` | cargo-ndk cross-compile → assembleDebug APK at `android/app/build/outputs/apk/debug/app-debug.apk` (~79 MB). |
+| `tools/build-scripts/build-android.sh release` | Verified UniFFI cross-compile → signed release APK + AAB (when release signing properties are present). |
 | `make install-android` | assembleDebug + `adb install -r`. |
 | `make build-ios` | iOS cross-compile → `ios/PapercupCore.xcframework` (3 slices: arm64-device, arm64-sim, x86_64-sim). |
 | `make test-ios` | Build for testing + test-without-building on iPhone 16 sim. Flaky post-Sentry; retries 8x with 5s backoff. Needs `PAPERCUP_IOS_SIM_UDID=<udid>` env. |
@@ -61,6 +62,10 @@ truth; native projects consume generated bindings + the cross-compiled core.
 Templates exist at `android/app/secrets-template/google-services.json.example`.
 
 ## Common workflows
+
+Public release builds target API 36, reject non-HTTPS pairing endpoints, and
+disable platform cleartext traffic. Debug builds permit cleartext only for the
+explicit emulator/loopback endpoints enforced by `EndpointSecurity`.
 
 ### Run the Android app on emulator/device
 

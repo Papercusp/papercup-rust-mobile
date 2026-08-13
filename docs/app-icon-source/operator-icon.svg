@@ -19,6 +19,8 @@
       <stop offset="100%" stop-color="#8b5e3d"/>
     </linearGradient>
   </defs>
+  <!-- App Store icons must be fully opaque; Apple applies its own mask. -->
+  <rect width="128" height="128" fill="#07101d"/>
   <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#bg)" stroke="url(#ring)" stroke-width="3.2"/>
   <path d="M64 19c0 7.5-8.5 12-16 18" fill="none" stroke="#d9a977" stroke-width="3.2" stroke-linecap="round"/>
   <path d="M64 19c0 7.5 8.5 12 16 18" fill="none" stroke="#d9a977" stroke-width="3.2" stroke-linecap="round"/>

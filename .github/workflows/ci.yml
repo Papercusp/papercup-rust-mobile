@@ -73,6 +73,42 @@ jobs:
             --out-dir /tmp/sw-out
           test -f /tmp/sw-out/papercup.swift
 
+  ios:
+    name: iPhone release gate (iOS 26 SDK)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install build dependencies
+        run: |
+          npm ci
+          brew install xcodegen swiftformat
+
+      - name: Build iOS core and Xcode project
+        run: make build-ios
+
+      - name: Test iOS app
+        run: |
+          sim_udid="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/{print $2; exit}')"
+          test -n "$sim_udid"
+          PAPERCUP_IOS_SIM_UDID="$sim_udid" make test-ios
+
+      - name: Verify release contract and current SDK
+        run: |
+          make test-ios-release
+          tools/build-scripts/verify-ios-release.sh --require-current-sdk
+
   design-tokens:
     name: Design tokens drift
     runs-on: ubuntu-latest

@@ -52,6 +52,10 @@ final class VoiceManager: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
+    /// True only while an ElevenLabs token is held but no microphone data
+    /// has been sent. The UI must resolve this explicit consent gate before
+    /// `ElevenLabs.startConversation` can run.
+    @Published private(set) var cloudConsentRequired = false
     /// 0…1 normalized agent audio level (used by the FAB halo).
     @Published private(set) var micLevel: Float = 0
 
@@ -75,6 +79,7 @@ final class VoiceManager: ObservableObject {
 
     private let creds: DeviceCredentials
     private var conversation: Conversation? = nil
+    private var pendingCloudInit: SessionInit? = nil
     private var toolPump: Task<Void, Never>? = nil
     private var statePump: Task<Void, Never>? = nil
     private var levelPump: Task<Void, Never>? = nil
@@ -103,7 +108,11 @@ final class VoiceManager: ObservableObject {
     }
 
     func start() {
-        guard conversation == nil, localSession == nil else { return }
+        guard conversation == nil, localSession == nil, pendingCloudInit == nil else { return }
+        switch state {
+        case .connecting, .listening, .speaking: return
+        case .idle, .failed: break
+        }
         state = .connecting
         tapAt = Date()
         firstWordRecorded = false
@@ -123,64 +132,99 @@ final class VoiceManager: ObservableObject {
                 return
             }
             guard case .el(let init_) = initResult else { return }
-            // Stash the timer budgets from the init payload so the
-            // armed timers can use them.
-            self.idleTimeoutSecs = max(0, TimeInterval(init_.idleTimeoutMin) * 60)
-            self.sessionMaxSecs = max(0, TimeInterval(init_.sessionMaxMin) * 60)
-            do {
-                let config = ConversationConfig(
-                    onAgentResponse: { [weak self] text, _ in
-                        // Idle = USER idle. Intentionally NOT calling
-                        // nudgeIdleTimer here — matches desktop
-                        // voice-mode.ts onAssistantText behavior (EL
-                        // credit-burn audit fix #2). A chatty agent
-                        // shouldn't keep the session billable forever.
-                        Task { @MainActor in
-                            guard let self else { return }
-                            if !self.firstWordRecorded, let t = self.tapAt {
-                                let ms = Int(Date().timeIntervalSince(t) * 1000)
-                                VoiceMetrics.recordFirstWordMs(ms)
-                                self.firstWordRecorded = true
-                            }
-                            self.state = .speaking(text: text, source: "agent")
-                        }
-                    },
-                    onUserTranscript: { [weak self] _, _ in
-                        // User said something — reset the idle clock.
-                        Task { @MainActor in self?.nudgeIdleTimer() }
-                    }
-                )
-                let conv = try await ElevenLabs.startConversation(
-                    conversationToken: init_.conversationToken,
-                    config: config
-                )
-                conversation = conv
-                // Connected — arm both timers. Mirrors Android
-                // VoiceManager.onConnect which arms after the EL SDK
-                // surfaces a CONNECTED status.
-                armIdleTimer()
-                armSessionMaxTimer()
-                wirePumps(conv)
-            } catch {
-                let msg = error.localizedDescription
-                let kind: FailureKind = {
-                    let lower = msg.lowercased()
-                    if lower.contains("quota") || lower.contains("limit exceeded")
-                        || lower.contains("1011") || lower.contains("1002") {
-                        return .quotaExceeded
-                    }
-                    if lower.contains("network") || lower.contains("unreachable")
-                        || lower.contains("timeout") {
-                        return .networkUnreachable
-                    }
-                    return .unknown
-                }()
-                state = .failed(message: "Voice unavailable — \(msg)", kind: kind)
+            if VoicePrivacyConsentStore.isGranted() {
+                await connectCloudVoice(init_)
+            } else {
+                // Do not start the SDK until the user has explicitly allowed
+                // this third-party data transfer. Holding the short-lived
+                // token does not transmit microphone audio.
+                pendingCloudInit = init_
+                cloudConsentRequired = true
+                state = .idle
             }
         }
     }
 
+    func approveCloudVoice() {
+        guard let init_ = pendingCloudInit else { return }
+        VoicePrivacyConsentStore.grant()
+        pendingCloudInit = nil
+        cloudConsentRequired = false
+        state = .connecting
+        Task { @MainActor in await connectCloudVoice(init_) }
+    }
+
+    func declineCloudVoice() {
+        pendingCloudInit = nil
+        cloudConsentRequired = false
+        tapAt = nil
+        firstWordRecorded = false
+        state = .idle
+    }
+
+    func revokeCloudVoiceConsent() {
+        VoicePrivacyConsentStore.revoke()
+        stop()
+    }
+
+    private func connectCloudVoice(_ init_: SessionInit) async {
+        idleTimeoutSecs = max(0, TimeInterval(init_.idleTimeoutMin) * 60)
+        sessionMaxSecs = max(0, TimeInterval(init_.sessionMaxMin) * 60)
+        do {
+            let config = ConversationConfig(
+                onAgentResponse: { [weak self] text, _ in
+                    // Idle = USER idle. Intentionally NOT calling
+                    // nudgeIdleTimer here — matches desktop
+                    // voice-mode.ts onAssistantText behavior (EL
+                    // credit-burn audit fix #2). A chatty agent
+                    // shouldn't keep the session billable forever.
+                    Task { @MainActor in
+                        guard let self else { return }
+                        if !self.firstWordRecorded, let t = self.tapAt {
+                            let ms = Int(Date().timeIntervalSince(t) * 1000)
+                            VoiceMetrics.recordFirstWordMs(ms)
+                            self.firstWordRecorded = true
+                        }
+                        self.state = .speaking(text: text, source: "agent")
+                    }
+                },
+                onUserTranscript: { [weak self] _, _ in
+                    // User said something — reset the idle clock.
+                    Task { @MainActor in self?.nudgeIdleTimer() }
+                }
+            )
+            let conv = try await ElevenLabs.startConversation(
+                conversationToken: init_.conversationToken,
+                config: config
+            )
+            conversation = conv
+            // Connected — arm both timers. Mirrors Android
+            // VoiceManager.onConnect which arms after the EL SDK
+            // surfaces a CONNECTED status.
+            armIdleTimer()
+            armSessionMaxTimer()
+            wirePumps(conv)
+        } catch {
+            let msg = error.localizedDescription
+            let kind: FailureKind = {
+                let lower = msg.lowercased()
+                if lower.contains("quota") || lower.contains("limit exceeded")
+                    || lower.contains("1011") || lower.contains("1002") {
+                    return .quotaExceeded
+                }
+                if lower.contains("network") || lower.contains("unreachable")
+                    || lower.contains("timeout") {
+                    return .networkUnreachable
+                }
+                return .unknown
+            }()
+            state = .failed(message: "Voice unavailable — \(msg)", kind: kind)
+        }
+    }
+
     func stop() {
+        pendingCloudInit = nil
+        cloudConsentRequired = false
         if let local = localSession {
             localSession = nil
             local.cancel()

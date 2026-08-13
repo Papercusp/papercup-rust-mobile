@@ -114,6 +114,13 @@ struct PairView: View {
                     .padding(12)
                     .background(PapercupTheme.cardBackground(accent: PapercupTheme.error.opacity(0.16)))
                 }
+
+                HStack(spacing: 20) {
+                    Link("Privacy", destination: AppLinks.privacy)
+                    Link("Support", destination: AppLinks.support)
+                }
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(PapercupTheme.accentStrong)
             }
             .padding(.horizontal, 32)
             .multilineTextAlignment(.center)
