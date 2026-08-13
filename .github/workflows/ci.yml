@@ -78,6 +78,25 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve pinned token-kit revision
+        id: token-kit-ref
+        shell: bash
+        run: |
+          token_kit_sha="$(git rev-parse HEAD:libs/token-kit)"
+          [[ "$token_kit_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$token_kit_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout token-kit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.TOKEN_KIT_REPOSITORY }}
+          ref: ${{ steps.token-kit-ref.outputs.sha }}
+          ssh-key: ${{ secrets.TOKEN_KIT_DEPLOY_KEY }}
+          path: libs/token-kit
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -115,17 +134,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Need sibling papercup repo for mirror.mjs hash check.
           fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve pinned token-kit revision
+        id: token-kit-ref
+        shell: bash
+        run: |
+          token_kit_sha="$(git rev-parse HEAD:libs/token-kit)"
+          [[ "$token_kit_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$token_kit_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout token-kit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.TOKEN_KIT_REPOSITORY }}
+          ref: ${{ steps.token-kit-ref.outputs.sha }}
+          ssh-key: ${{ secrets.TOKEN_KIT_DEPLOY_KEY }}
+          path: libs/token-kit
+          persist-credentials: false
+
       - uses: actions/checkout@v4
         with:
-          repository: Papercusp/papercup
-          path: ../papercup
+          repository: ${{ vars.PAPERCUP_REPOSITORY }}
+          ssh-key: ${{ secrets.PAPERCUP_DEPLOY_KEY }}
+          path: ci/papercup
           fetch-depth: 1
+          persist-credentials: false
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install
         run: npm ci --ignore-scripts || npm install --ignore-scripts
       - name: Regen + verify clean
+        env:
+          PAPERCUP_DESIGN_TOKENS_DIR: ${{ github.workspace }}/ci/papercup/design-tokens
+          REQUIRE_PRIMITIVES_SOURCE: "1"
         run: npm run tokens:check

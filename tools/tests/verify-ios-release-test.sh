@@ -11,6 +11,7 @@ TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 files=(
+    .github/workflows/ci.yml
     ios/Papercup/Info.plist
     ios/Papercup/Papercup.entitlements
     ios/Papercup/Resources/PrivacyInfo.xcprivacy
@@ -87,4 +88,25 @@ path.write_bytes(png)
 PY
 expect_failure "alpha channel"
 
-echo "OK: iOS release verifier rejects unsafe transport, placeholders, stale versions, and transparent icons"
+copy_fixture
+python3 - "$TMP_ROOT/fixture/.github/workflows/ci.yml" <<'PY'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+workflow = path.read_text()
+workflow = workflow.replace(
+    "ssh-key: ${{ secrets.TOKEN_KIT_DEPLOY_KEY }}",
+    "ssh-key: ${{ secrets.BROKEN_DEPLOY_KEY }}",
+    1,
+)
+path.write_text(workflow)
+PY
+expect_failure "iOS token-kit checkout must use its read-only deploy key"
+
+copy_fixture
+sed -i.bak 's#path: ci/papercup#path: ../papercup#' \
+    "$TMP_ROOT/fixture/.github/workflows/ci.yml"
+expect_failure "design source checkout must remain inside GITHUB_WORKSPACE"
+
+echo "OK: iOS release verifier rejects unsafe transport, placeholders, stale versions, transparent icons, and unsafe CI dependency checkouts"
