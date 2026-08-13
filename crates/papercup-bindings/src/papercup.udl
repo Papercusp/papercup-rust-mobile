@@ -212,16 +212,22 @@ dictionary RuntimeConfig {
     string voice_ws_path;
 };
 
-/// `GET /api/device/voice-session-init` — ElevenLabs Conv AI session
-/// bootstrap (the conversational voice flow). dynamic_variables_json is
-/// forwarded to the EL SDK verbatim.
+/// `GET /api/device/voice-session-init` — mobile voice bootstrap for the
+/// selected desktop-local or hosted ElevenLabs transport.
 dictionary VoiceSessionInit {
+    string mode;
     string conversation_token;
     string agent_id;
     double idle_timeout_min;
     double session_max_min;
     string voice_mode;
     string dynamic_variables_json;
+    string? turn_path;
+    string? warmup_path;
+    string? audience_mode;
+    string? device_id;
+    string? workspace_id;
+    string base_urls_json;
 };
 
 dictionary PauseInfo {
@@ -476,9 +482,9 @@ interface OperatorClient {
     [Throws=ApiError, Async]
     RuntimeConfig runtime_config();
 
-    /// `GET /api/device/voice-session-init` — mint an ElevenLabs Conv
-    /// AI session token. Cooldown/concurrency rejections raise
-    /// ApiError.Server with the server's hint in detail.
+    /// `GET /api/device/voice-session-init` — initialize the selected
+    /// desktop-local or ElevenLabs transport. Cooldown/concurrency
+    /// rejections raise ApiError.Server with the server's hint in detail.
     [Throws=ApiError, Async]
     VoiceSessionInit voice_session_init();
 

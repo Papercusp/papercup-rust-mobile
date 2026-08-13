@@ -420,27 +420,41 @@ impl From<CoreRuntimeConfig> for RuntimeConfig {
     }
 }
 
-/// `GET /api/device/voice-session-init` — ElevenLabs Conv AI session
-/// bootstrap (the conversational voice flow). `dynamic_variables_json`
-/// is forwarded to the EL SDK verbatim.
+/// `GET /api/device/voice-session-init` — the selected mobile voice
+/// transport. Hosted ElevenLabs fields remain intact; desktop-local mode
+/// adds its streaming routes and ordered transport candidates.
 pub struct VoiceSessionInit {
+    pub mode: String,
     pub conversation_token: String,
     pub agent_id: String,
     pub idle_timeout_min: f64,
     pub session_max_min: f64,
     pub voice_mode: String,
     pub dynamic_variables_json: String,
+    pub turn_path: Option<String>,
+    pub warmup_path: Option<String>,
+    pub audience_mode: Option<String>,
+    pub device_id: Option<String>,
+    pub workspace_id: Option<String>,
+    pub base_urls_json: String,
 }
 
 impl From<CoreVoiceSessionInit> for VoiceSessionInit {
     fn from(v: CoreVoiceSessionInit) -> Self {
         Self {
+            mode: v.mode,
             conversation_token: v.conversation_token,
             agent_id: v.agent_id,
             idle_timeout_min: v.idle_timeout_min,
             session_max_min: v.session_max_min,
             voice_mode: v.voice_mode,
             dynamic_variables_json: v.dynamic_variables.to_string(),
+            turn_path: v.turn_path,
+            warmup_path: v.warmup_path,
+            audience_mode: v.audience_mode,
+            device_id: v.device_id,
+            workspace_id: v.workspace_id,
+            base_urls_json: v.base_urls.to_string(),
         }
     }
 }
@@ -1280,9 +1294,9 @@ impl OperatorClient {
         Ok(result.into())
     }
 
-    /// ElevenLabs Conv AI session bootstrap (the conversational voice
-    /// flow). Cooldown/concurrency rejections surface as ApiError::Server
-    /// with the server's hint in `detail`.
+    /// Mobile voice bootstrap for either desktop-local or ElevenLabs Conv
+    /// AI. Cooldown/concurrency rejections surface as ApiError::Server with
+    /// the server's hint in `detail`.
     pub async fn voice_session_init(&self) -> Result<VoiceSessionInit, ApiError> {
         let core = self.inner.clone();
         let result = rt()

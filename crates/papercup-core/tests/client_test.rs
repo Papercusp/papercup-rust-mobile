@@ -434,6 +434,7 @@ async fn voice_session_init_decodes_el_bootstrap() {
         .and(path("/api/device/voice-session-init"))
         .and(bearer_token(TOKEN))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "mode": "elevenlabs-conv",
             "conversationToken": "EL-TOK",
             "agentId": "agent-1",
             "idleTimeoutMin": 2.0,
@@ -449,10 +450,49 @@ async fn voice_session_init_decodes_el_bootstrap() {
         .mount(&server)
         .await;
     let init = client.voice_session_init().await.unwrap();
+    assert_eq!(init.mode, "elevenlabs-conv");
     assert_eq!(init.conversation_token, "EL-TOK");
     assert_eq!(init.agent_id, "agent-1");
     assert_eq!(init.voice_mode, "ptt");
     assert_eq!(init.dynamic_variables["device_id"], "did-1");
+}
+
+#[tokio::test]
+async fn voice_session_init_decodes_desktop_local_bootstrap() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/voice-session-init"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "mode": "desktop-local",
+            "turnPath": "/api/device/voice/turn",
+            "warmupPath": "/api/device/voice/warmup",
+            "idleTimeoutMin": 2.0,
+            "sessionMaxMin": 30.0,
+            "voiceMode": "ptt",
+            "audienceMode": "engineer",
+            "deviceId": "did-1",
+            "workspaceId": "default",
+            "baseUrls": [
+                {"kind": "mesh", "url": "http://10.10.0.2:3170"},
+                {"kind": "lan", "url": "http://192.168.1.2:3170"}
+            ]
+        })))
+        .mount(&server)
+        .await;
+
+    let init = client.voice_session_init().await.unwrap();
+    assert_eq!(init.mode, "desktop-local");
+    assert!(init.conversation_token.is_empty());
+    assert!(init.agent_id.is_empty());
+    assert_eq!(init.turn_path.as_deref(), Some("/api/device/voice/turn"));
+    assert_eq!(
+        init.warmup_path.as_deref(),
+        Some("/api/device/voice/warmup")
+    );
+    assert_eq!(init.device_id.as_deref(), Some("did-1"));
+    assert_eq!(init.workspace_id.as_deref(), Some("default"));
+    assert_eq!(init.base_urls.as_array().map(Vec::len), Some(2));
 }
 
 #[tokio::test]

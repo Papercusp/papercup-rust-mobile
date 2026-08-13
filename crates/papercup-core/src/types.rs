@@ -323,7 +323,15 @@ pub struct VoiceWsInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceSessionInit {
+    /// Selected mobile voice transport. Older EL-only servers omitted this;
+    /// treat that legacy shape as `elevenlabs-conv`.
+    #[serde(default = "default_voice_session_mode")]
+    pub mode: String,
+    /// Present for the hosted ElevenLabs transport; empty in desktop-local
+    /// mode so existing bindings stay source-compatible.
+    #[serde(default)]
     pub conversation_token: String,
+    #[serde(default)]
     pub agent_id: String,
     pub idle_timeout_min: f64,
     pub session_max_min: f64,
@@ -331,6 +339,25 @@ pub struct VoiceSessionInit {
     /// Opaque map forwarded to the ElevenLabs Conv AI SDK verbatim.
     #[serde(default)]
     pub dynamic_variables: serde_json::Value,
+    /// Desktop-local streaming routes. Absent for ElevenLabs sessions.
+    #[serde(default)]
+    pub turn_path: Option<String>,
+    #[serde(default)]
+    pub warmup_path: Option<String>,
+    #[serde(default)]
+    pub audience_mode: Option<String>,
+    #[serde(default)]
+    pub device_id: Option<String>,
+    #[serde(default)]
+    pub workspace_id: Option<String>,
+    /// Ordered mesh/LAN/tunnel candidates. Kept opaque so additive server
+    /// transport metadata cannot break the mobile core decoder.
+    #[serde(default)]
+    pub base_urls: serde_json::Value,
+}
+
+fn default_voice_session_mode() -> String {
+    "elevenlabs-conv".into()
 }
 
 // ── /api/device/rest-query ─────────────────────────────────────────────

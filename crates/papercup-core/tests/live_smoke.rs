@@ -12,7 +12,8 @@
 //
 // Mint a token first (loopback-only):
 //   curl -s -X POST http://127.0.0.1:3170/api/device/desktop/mint-pair-token \
-//     -H 'content-type: application/json' -d '{"workspaceId":"default"}'
+//     -H 'content-type: application/json' -d '{"workspaceId":"<active-workspace-id>"}' \
+//     | jq -r '.qrPayload.pairToken'
 //
 // Exercises the full repaired P0 contract: pair (Defguard URL), bearer
 // auth, runtime-config (voice WS discovery), rest-query (polling sync),
@@ -187,10 +188,40 @@ async fn live_p0_contract_smoke() {
     // 5. voice-session-init — any outcome is fine as long as it's the
     // documented contract: a session OR a flat-envelope config error.
     match client.voice_session_init().await {
-        Ok(init) => println!(
-            "voice-session-init: agent={} mode={}",
-            init.agent_id, init.voice_mode
-        ),
+        Ok(init) if init.mode == "desktop-local" => {
+            assert_eq!(init.turn_path.as_deref(), Some("/api/device/voice/turn"));
+            assert_eq!(
+                init.warmup_path.as_deref(),
+                Some("/api/device/voice/warmup")
+            );
+            assert_eq!(init.device_id.as_deref(), Some(pair.device_id.as_str()));
+            assert_eq!(
+                init.workspace_id.as_deref(),
+                Some(pair.workspace_id.as_str())
+            );
+            assert!(
+                init.base_urls.is_array(),
+                "desktop-local baseUrls is an array"
+            );
+            println!(
+                "voice-session-init: mode={} voiceMode={} transports={}",
+                init.mode,
+                init.voice_mode,
+                init.base_urls.as_array().map(Vec::len).unwrap_or(0),
+            );
+        }
+        Ok(init) => {
+            assert_eq!(init.mode, "elevenlabs-conv");
+            assert!(
+                !init.conversation_token.is_empty(),
+                "EL conversation token present"
+            );
+            assert!(!init.agent_id.is_empty(), "EL agent id present");
+            println!(
+                "voice-session-init: mode={} agent={} voiceMode={}",
+                init.mode, init.agent_id, init.voice_mode
+            );
+        }
         Err(ApiError::Server { status, detail }) => {
             println!("voice-session-init unavailable ({status}): {detail}");
             assert!(
