@@ -7,7 +7,7 @@
 .PHONY: help build-rust build-android build-ios install-android \
         bindings-kotlin bindings-swift test test-ios test-ios-ui \
         verify-ios-release test-ios-release release-ios check \
-        fmt fmt-check clippy lint-android test-android-java install-hooks clean tokens tokens-check
+        fmt fmt-check clippy lint-android test-android-java test-android-release-provenance install-hooks clean tokens tokens-check
 
 help:
 	@echo "Targets:"
@@ -15,6 +15,7 @@ help:
 	@echo "  make install-hooks      — install git pre-push hook that runs 'make check'"
 	@echo "  make lint-android       — run Android lint (resolves Java 17+ from JAVA_HOME/JBR)"
 	@echo "  make test-android-java  — test the dynamic Android Java resolver"
+	@echo "  make test-android-release-provenance — test Android release source/version/hash binding"
 	@echo "  make fmt                — cargo fmt --all"
 	@echo "  make fmt-check          — cargo fmt --all -- --check (fails on diff)"
 	@echo "  make clippy             — cargo clippy --workspace --all-targets -- -D warnings"
@@ -37,7 +38,7 @@ help:
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test tokens-check
+check: fmt-check clippy test tokens-check test-android-release-provenance
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -82,6 +83,9 @@ lint-android:
 
 test-android-java:
 	./tools/tests/resolve-java-home-test.sh
+
+test-android-release-provenance:
+	./tools/tests/android-release-provenance-test.sh
 
 build-rust:
 	cargo build --workspace

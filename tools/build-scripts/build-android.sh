@@ -18,6 +18,21 @@ case "$BUILD_MODE" in
         ;;
 esac
 
+RELEASE_VERSION="${PAPERCUP_RELEASE_VERSION:-}"
+RELEASE_APK="$REPO_ROOT/android/app/build/outputs/apk/release/app-release.apk"
+RELEASE_AAB="$REPO_ROOT/android/app/build/outputs/bundle/release/app-release.aab"
+RELEASE_PROVENANCE="$REPO_ROOT/android/app/build/outputs/papercusp-release-provenance.json"
+if [ "$BUILD_MODE" = "release" ]; then
+    [ -n "$RELEASE_VERSION" ] || {
+        echo "ERROR: PAPERCUP_RELEASE_VERSION is required for a release build" >&2
+        exit 2
+    }
+    # A failed/partial Gradle invocation must not leave the preceding release as
+    # a candidate. The manifest is written atomically only after both outputs pass
+    # every release verification below.
+    rm -f "$RELEASE_APK" "$RELEASE_AAB" "$RELEASE_PROVENANCE"
+fi
+
 # NDK path. Prefer ANDROID_NDK_HOME, fall back to the version we know
 # is on this dev machine.
 : "${ANDROID_NDK_HOME:=$HOME/Android/Sdk/ndk/27.0.12077973}"
@@ -124,15 +139,17 @@ if [ -f android/gradlew ]; then
         echo "==> Assembling Android release APK + AAB"
         ./gradlew :app:assembleRelease :app:bundleRelease
         verify_packaged_abis \
-            "$REPO_ROOT/android/app/build/outputs/apk/release/app-release.apk" \
+            "$RELEASE_APK" \
             'lib/'
         verify_packaged_abis \
-            "$REPO_ROOT/android/app/build/outputs/bundle/release/app-release.aab" \
+            "$RELEASE_AAB" \
             'base/lib/'
-        verify_16kb_alignment \
-            "$REPO_ROOT/android/app/build/outputs/apk/release/app-release.apk"
-        echo "==> Release APK: $REPO_ROOT/android/app/build/outputs/apk/release/app-release.apk"
-        echo "==> Release AAB: $REPO_ROOT/android/app/build/outputs/bundle/release/app-release.aab"
+        verify_16kb_alignment "$RELEASE_APK"
+        tools/build-scripts/android-release-provenance.sh write \
+            "$RELEASE_VERSION" "$RELEASE_APK" "$RELEASE_AAB"
+        echo "==> Release APK: $RELEASE_APK"
+        echo "==> Release AAB: $RELEASE_AAB"
+        echo "==> Provenance: $RELEASE_PROVENANCE"
     else
         echo "==> Assembling Android debug APK"
         ./gradlew :app:assembleDebug
