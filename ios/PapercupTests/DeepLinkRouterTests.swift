@@ -118,4 +118,23 @@ final class DeepLinkRouterTests: XCTestCase {
         XCTAssertFalse(router.handle(url: url))
         XCTAssertNil(router.pendingPair)
     }
+
+    func testLaunchPairPayloadIsInstalledSynchronously() {
+        let router = DeepLinkRouter.shared
+        router.pendingPair = nil
+        let payload = #"{"server":"http://192.168.40.216:3070","pairToken":"one-shot","workspaceId":"papercusp-workspace"}"#
+        XCTAssertTrue(router.handle(pairPayload: payload))
+        XCTAssertEqual(router.pendingPair, PendingPair(
+            server: "http://192.168.40.216:3070",
+            pairToken: "one-shot",
+            workspaceId: "papercusp-workspace"
+        ))
+    }
+
+    func testLaunchPairPayloadMissingFieldRejectedWithoutMutatingPendingPair() {
+        let router = DeepLinkRouter.shared
+        router.pendingPair = nil
+        XCTAssertFalse(router.handle(pairPayload: #"{"server":"http://host","pairToken":"one-shot"}"#))
+        XCTAssertNil(router.pendingPair)
+    }
 }

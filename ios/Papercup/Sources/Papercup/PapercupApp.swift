@@ -19,18 +19,10 @@ struct PapercupApp: App {
         }
         if let i = args.firstIndex(of: "-com.papercuspai.uitests.pairPayload"),
            i + 1 < args.count {
-            let raw = args[i + 1]
-            if let data = raw.data(using: .utf8),
-               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-               let server = dict["server"],
-               let token = dict["pairToken"],
-               let ws = dict["workspaceId"] {
-                DispatchQueue.main.async {
-                    DeepLinkRouter.shared.pendingPair = PendingPair(
-                        server: server, pairToken: token, workspaceId: ws
-                    )
-                }
-            }
+            // App.init is main-actor isolated. Install the launch payload
+            // synchronously so AppRoot's first render cannot miss it between
+            // its onChange registration and PairView.onAppear (WI-38448).
+            DeepLinkRouter.shared.handle(pairPayload: args[i + 1])
         }
         // Push-tap backdoor: feed a notification userInfo dict through the
         // SAME DeepLinkRouter path a real APNs tap uses (D-004). Real APNs

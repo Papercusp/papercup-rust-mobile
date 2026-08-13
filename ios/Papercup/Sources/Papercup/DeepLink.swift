@@ -47,6 +47,25 @@ final class DeepLinkRouter: ObservableObject {
 
     private static let log = OSLog(subsystem: "com.papercuspai.operator.mobile", category: "DeepLink")
 
+    /// Parse and install the JSON payload carried by the DEBUG-only
+    /// XCUITest launch argument. This is synchronous by design: deferring
+    /// assignment from `PapercupApp.init` can race AppRoot's first render
+    /// and strand a valid one-shot token on PairView without redeeming it.
+    @discardableResult
+    func handle(pairPayload raw: String) -> Bool {
+        guard let data = raw.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              let server = dict["server"], !server.isEmpty,
+              let token = dict["pairToken"], !token.isEmpty,
+              let ws = dict["workspaceId"], !ws.isEmpty else {
+            os_log(.info, log: Self.log, "launch pair payload missing required fields")
+            return false
+        }
+        pendingPair = PendingPair(server: server, pairToken: token, workspaceId: ws)
+        os_log(.info, log: Self.log, "launch pendingPair set server=%{public}@ ws=%{public}@", server, ws)
+        return true
+    }
+
     /// Returns true if the URL was a recognised papercup deep-link.
     @discardableResult
     func handle(url: URL) -> Bool {
