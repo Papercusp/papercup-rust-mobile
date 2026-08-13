@@ -7,7 +7,8 @@
 .PHONY: help build-rust build-android build-ios install-android \
         bindings-kotlin bindings-swift test test-ios test-ios-ui \
         verify-ios-release test-ios-release release-ios check \
-        fmt fmt-check clippy lint-android test-android-java test-android-release-provenance install-hooks clean tokens tokens-check
+        fmt fmt-check clippy lint-android test-android-java test-android-release-provenance \
+        test-ios-host-health install-hooks clean tokens tokens-check
 
 help:
 	@echo "Targets:"
@@ -25,6 +26,7 @@ help:
 	@echo "  make test-ios-ui        — run iOS XCUITest end-to-end suite (paired flows need PAPERCUP_PAIR_PAYLOAD)"
 	@echo "  make verify-ios-release — validate iOS metadata, privacy, signing config, and release copy"
 	@echo "  make test-ios-release   — exercise the iOS release verifier and its failure guards"
+	@echo "  make test-ios-host-health — test the macOS GUI/media saturation preflight"
 	@echo "  make release-ios        — archive/export iOS 1.0.0 (set signing env; ACTION=preflight|archive|export|validate|upload)"
 	@echo "  make bindings-kotlin    — regenerate Kotlin bindings into android/app/src/main/kotlin/uniffi"
 	@echo "  make bindings-swift     — regenerate Swift bindings into ios/PapercupCore"
@@ -38,7 +40,7 @@ help:
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test tokens-check test-android-release-provenance
+check: fmt-check clippy test tokens-check test-android-release-provenance test-ios-host-health
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -114,6 +116,9 @@ verify-ios-release:
 test-ios-release:
 	./tools/tests/verify-ios-release-test.sh
 
+test-ios-host-health:
+	./tools/tests/ios-build-host-health-test.sh
+
 release-ios:
 	./tools/build-scripts/release-ios.sh $(or $(ACTION),export)
 
@@ -124,6 +129,7 @@ bindings-kotlin:
 	    --out-dir android/app/src/main/kotlin
 
 bindings-swift:
+	tools/build-scripts/check-ios-build-host-health.sh
 	# swiftformat preflight (auto-installs on macOS, no-op elsewhere): the
 	# uniffi-bindgen generate below silently ships unformatted Swift when
 	# swiftformat isn't on PATH instead of failing (WI-4986).

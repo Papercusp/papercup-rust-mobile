@@ -13,6 +13,12 @@ if [ "$(uname)" != "Darwin" ]; then
     exit 1
 fi
 
+# A dynamic wallpaper/first-login media session can consume the VM's display
+# stack and starve SSH plus the Rust/Xcode build. Check again here even though
+# the Makefile checks before bindgen: release-ios.sh also invokes this script
+# directly, and the GUI can become busy between those two phases.
+"$REPO_ROOT/tools/build-scripts/check-ios-build-host-health.sh"
+
 # Add iOS targets if missing
 for t in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
     rustup target add "$t" 2>/dev/null || true
