@@ -145,7 +145,7 @@ if [ -f android/gradlew ]; then
             "$RELEASE_AAB" \
             'base/lib/'
         verify_16kb_alignment "$RELEASE_APK"
-        tools/build-scripts/android-release-provenance.sh write \
+        "$REPO_ROOT/tools/build-scripts/android-release-provenance.sh" write \
             "$RELEASE_VERSION" "$RELEASE_APK" "$RELEASE_AAB"
         echo "==> Release APK: $RELEASE_APK"
         echo "==> Release AAB: $RELEASE_AAB"
