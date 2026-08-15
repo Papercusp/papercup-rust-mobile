@@ -30,7 +30,16 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        // A desktop release cut passes PAPERCUP_RELEASE_VERSION (release-local.sh sets it
+        // on the Android leg; tools/build-scripts/build-android.sh REQUIRES it for a
+        // release build). tools/build-scripts/android-release-provenance.sh then asserts
+        // the packaged APK's versionName equals that requested version — an assertion that
+        // could never hold while this value was hardcoded, so every cut's Android leg died
+        // AFTER a successful build ("APK versionName is 0.1.0, but requested release
+        // version is 0.0.17"), and join_leg's fatal join took the whole cut down with it.
+        // Reading the env here is the missing half of that already-built plumbing; ordinary
+        // dev/debug builds leave it unset and keep the repo's own 0.1.0.
+        versionName = System.getenv("PAPERCUP_RELEASE_VERSION")?.takeIf { it.isNotBlank() } ?: "0.1.0"
         // JNA's AAR still carries obsolete armeabi/MIPS binaries. Keep the
         // published artifact to Android's four supported app ABIs; otherwise
         // those legacy payloads leak into both the APK and AAB.
