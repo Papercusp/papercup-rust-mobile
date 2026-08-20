@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import PapercupCore
 
 enum VoiceMode: String, CaseIterable, Equatable {
     case continuous = "continuous"

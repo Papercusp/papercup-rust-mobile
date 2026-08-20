@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
+import PapercupCore
 
 // Thin override layer over PapercupTokens (generated from design-tokens/tokens.json).
 // Keep this enum for: gradients, shapes, platform-specific tweaks. Single-color tokens

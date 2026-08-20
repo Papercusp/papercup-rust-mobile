@@ -7,6 +7,7 @@
 // unit suite, not by a user screenshot.
 
 import XCTest
+import PapercupCore
 @testable import Papercup
 
 final class FriendlyErrorTests: XCTestCase {

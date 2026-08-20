@@ -15,6 +15,7 @@
 //      activate the moment APNs delivery is wired (PushManager.swift).
 
 import Foundation
+import PapercupCore
 import SwiftUI
 import UserNotifications
 import os.log

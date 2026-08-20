@@ -7,6 +7,7 @@
 // to dispatch_semaphore than to expose async-await across UniFFI).
 
 import Foundation
+import PapercupCore
 import LocalAuthentication
 import os.log
 

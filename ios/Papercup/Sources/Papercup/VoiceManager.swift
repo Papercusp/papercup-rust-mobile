@@ -17,6 +17,7 @@
 // / start() / stop().
 
 import Foundation
+import PapercupCore
 import ElevenLabs
 
 @MainActor

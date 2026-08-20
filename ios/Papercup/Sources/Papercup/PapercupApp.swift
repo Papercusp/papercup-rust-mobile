@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
+import PapercupCore
 import os.log
 
 private let appLog = OSLog(subsystem: "com.papercuspai.operator.mobile", category: "App")

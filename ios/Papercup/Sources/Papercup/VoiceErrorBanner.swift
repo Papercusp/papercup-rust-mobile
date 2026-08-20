@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
+import PapercupCore
 import UIKit
 
 /// Banner that surfaces a Failed voice state with a kind-specific

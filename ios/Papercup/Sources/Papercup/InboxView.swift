@@ -10,6 +10,7 @@
 // Push (D-004) deep-links here.
 
 import SwiftUI
+import PapercupCore
 
 struct InboxView: View {
     let creds: DeviceCredentials

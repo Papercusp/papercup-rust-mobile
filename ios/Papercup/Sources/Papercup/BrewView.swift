@@ -11,6 +11,7 @@
 // fleet view is where you watch a Pot's brews make progress.
 
 import SwiftUI
+import PapercupCore
 
 struct BrewView: View {
     let creds: DeviceCredentials

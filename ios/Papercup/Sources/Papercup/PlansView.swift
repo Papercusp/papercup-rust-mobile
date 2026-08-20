@@ -5,6 +5,7 @@
 // gate. "All Pots" by default (harness=nil fans across every pot).
 
 import SwiftUI
+import PapercupCore
 
 struct PlansView: View {
     let creds: DeviceCredentials

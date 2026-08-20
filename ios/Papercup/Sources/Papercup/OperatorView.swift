@@ -16,6 +16,7 @@
 // FAB (hosted by AppRoot) feeds this same conversation by voice.
 
 import SwiftUI
+import PapercupCore
 
 struct OperatorView: View {
     let creds: DeviceCredentials

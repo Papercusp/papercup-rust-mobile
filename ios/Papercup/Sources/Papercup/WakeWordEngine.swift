@@ -21,6 +21,7 @@
 // callback fires; caller invokes `VoiceManager.start()`.
 
 import Foundation
+import PapercupCore
 import os.log
 
 #if canImport(Porcupine)

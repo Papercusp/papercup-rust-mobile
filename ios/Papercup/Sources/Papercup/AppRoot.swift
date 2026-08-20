@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
+import PapercupCore
 import os.log
 
 /// Mirrors Android's PairedShell — the Inbox-first 5-tab nav

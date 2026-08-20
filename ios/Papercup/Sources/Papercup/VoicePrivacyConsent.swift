@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import Foundation
+import PapercupCore
 
 /// Persists the user's explicit permission to send voice data to the
 /// third-party cloud voice path. Desktop-local voice never consults this

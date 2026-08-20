@@ -18,6 +18,7 @@
 // (D-010) — VoiceManager dispatches on the session-init `mode`.
 
 import AVFoundation
+import PapercupCore
 import Foundation
 
 /// Active desktop transport route ("mesh · http://10.10.0.2:3070") chosen

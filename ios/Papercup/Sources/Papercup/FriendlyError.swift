@@ -7,6 +7,7 @@
 // has it in the console.
 
 import Foundation
+import PapercupCore
 
 enum FriendlyError {
     /// A friendly, actionable one-liner for any error the UniFFI client

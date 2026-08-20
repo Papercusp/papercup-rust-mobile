@@ -15,6 +15,7 @@
 // Same endpoint Android hits with platform "fcm".
 
 import Foundation
+import PapercupCore
 import UIKit
 import os.log
 

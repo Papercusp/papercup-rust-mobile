@@ -14,6 +14,7 @@
 // its fetch when it changes — same pattern as the existing `liveTick`.
 
 import Foundation
+import PapercupCore
 import SwiftUI
 
 @MainActor

@@ -5,6 +5,7 @@
 // it — never earlier (bubble vanishes), never later (bubble duplicates).
 
 import XCTest
+import PapercupCore
 @testable import Papercup
 
 final class PendingTurnCoverageTests: XCTestCase {

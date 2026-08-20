@@ -2,6 +2,7 @@
 // AUTO-GENERATED from design-tokens/*.tokens.json. Do not edit.
 // Run: pnpm tokens (or npm run tokens)
 import SwiftUI
+import PapercupCore
 
 enum PapercupTokens {
     static let primaryButtonText = Color(.sRGB, red: 0.0118, green: 0.0902, blue: 0.0706, opacity: 1.0000)

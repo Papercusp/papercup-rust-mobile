@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import SwiftUI
+import PapercupCore
 import Foundation
 
 struct LogLine: Identifiable, Equatable {
