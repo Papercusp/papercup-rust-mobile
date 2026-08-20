@@ -7,6 +7,42 @@ plugins {
     id("com.google.firebase.crashlytics")
 }
 
+private val DEFAULT_VERSION_NAME = "0.1.0"
+private val VERSION_CODE_MINOR_MULTIPLIER = 100L
+private val VERSION_CODE_MAJOR_MULTIPLIER = 10_000L
+private val MAX_ANDROID_VERSION_CODE = 2_100_000_000L
+
+private fun androidVersionCode(versionName: String): Int {
+    // Prerelease/build metadata changes the display name, not the upgrade
+    // ordering. Keep the numeric MAJOR.MINOR.PATCH portion monotonic and
+    // leave room for two digits of minor/patch growth per major release.
+    val baseVersion = versionName.substringBefore('-').substringBefore('+')
+    val components = baseVersion.split('.')
+    require(
+        components.size == 3 && components.all { component ->
+            component.isNotEmpty() && component.all { character -> character in '0'..'9' }
+        },
+    ) {
+        "PAPERCUP_RELEASE_VERSION must be MAJOR.MINOR.PATCH (got '$versionName')"
+    }
+
+    val major = components[0].toLongOrNull()
+    val minor = components[1].toLongOrNull()
+    val patch = components[2].toLongOrNull()
+    require(major != null && minor != null && patch != null) {
+        "PAPERCUP_RELEASE_VERSION components are too large (got '$versionName')"
+    }
+
+    val versionCode =
+        major * VERSION_CODE_MAJOR_MULTIPLIER +
+            minor * VERSION_CODE_MINOR_MULTIPLIER +
+            patch
+    require(versionCode in 1..MAX_ANDROID_VERSION_CODE) {
+        "derived Android versionCode must be between 1 and $MAX_ANDROID_VERSION_CODE (got $versionCode)"
+    }
+    return versionCode.toInt()
+}
+
 android {
     namespace = "com.papercuspai.operator.mobile"
     compileSdk = 36
@@ -29,7 +65,9 @@ android {
         applicationId = "com.papercuspai.operator.mobile"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
+        val releaseVersion =
+            System.getenv("PAPERCUP_RELEASE_VERSION")?.takeIf { it.isNotBlank() } ?: DEFAULT_VERSION_NAME
+        versionCode = androidVersionCode(releaseVersion)
         // A desktop release cut passes PAPERCUP_RELEASE_VERSION (release-local.sh sets it
         // on the Android leg; tools/build-scripts/build-android.sh REQUIRES it for a
         // release build). tools/build-scripts/android-release-provenance.sh then asserts
@@ -39,7 +77,7 @@ android {
         // version is 0.0.17"), and join_leg's fatal join took the whole cut down with it.
         // Reading the env here is the missing half of that already-built plumbing; ordinary
         // dev/debug builds leave it unset and keep the repo's own 0.1.0.
-        versionName = System.getenv("PAPERCUP_RELEASE_VERSION")?.takeIf { it.isNotBlank() } ?: "0.1.0"
+        versionName = releaseVersion
         // JNA's AAR still carries obsolete armeabi/MIPS binaries. Keep the
         // published artifact to Android's four supported app ABIs; otherwise
         // those legacy payloads leak into both the APK and AAB.

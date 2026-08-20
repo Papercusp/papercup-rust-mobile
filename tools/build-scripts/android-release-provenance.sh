@@ -14,6 +14,19 @@ die() {
     exit 1
 }
 
+version_code_for() {
+    local version="$1" major minor patch version_code
+    [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].+)?$ ]] \
+        || die "release version must be MAJOR.MINOR.PATCH (got $version)"
+    major="${BASH_REMATCH[1]}"
+    minor="${BASH_REMATCH[2]}"
+    patch="${BASH_REMATCH[3]}"
+    version_code=$((10#$major * 10000 + 10#$minor * 100 + 10#$patch))
+    (( version_code > 0 && version_code <= 2100000000 )) \
+        || die "derived Android versionCode must be between 1 and 2100000000 (got $version_code)"
+    printf '%s\n' "$version_code"
+}
+
 sha256_file() {
     sha256sum "$1" | awk '{print $1}'
 }
@@ -55,8 +68,9 @@ assert_canonical_artifact() {
 
 write_manifest() {
     local version="$1" apk="${2:-$REPO_ROOT/$APK_REL}" aab="${3:-$REPO_ROOT/$AAB_REL}"
-    local commit analyzer apk_version built_at tmp
+    local commit analyzer apk_version apk_version_code expected_version_code built_at tmp
     [[ -n "$version" ]] || die "release version is required"
+    expected_version_code="$(version_code_for "$version")"
     assert_canonical_artifact "$apk" "$APK_REL"
     assert_canonical_artifact "$aab" "$AAB_REL"
     assert_clean_source
@@ -65,10 +79,15 @@ write_manifest() {
     apk_version="$("$analyzer" manifest version-name "$apk")"
     [[ "$apk_version" == "$version" ]] \
         || die "APK versionName is $apk_version, but requested release version is $version"
+    apk_version_code="$("$analyzer" manifest version-code "$apk")"
+    [[ "$apk_version_code" =~ ^[1-9][0-9]*$ ]] \
+        || die "APK versionCode must be a positive integer (got $apk_version_code)"
+    [[ "$apk_version_code" == "$expected_version_code" ]] \
+        || die "APK versionCode is $apk_version_code, but requested release version derives versionCode $expected_version_code"
     built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     mkdir -p "$(dirname "$MANIFEST")"
     tmp="${MANIFEST}.tmp.$$"
-    RELEASE_VERSION="$version" SOURCE_COMMIT="$commit" BUILT_AT="$built_at" \
+    RELEASE_VERSION="$version" RELEASE_VERSION_CODE="$expected_version_code" SOURCE_COMMIT="$commit" BUILT_AT="$built_at" \
         APK_SIZE="$(stat -c%s "$apk")" APK_SHA256="$(sha256_file "$apk")" \
         AAB_SIZE="$(stat -c%s "$aab")" AAB_SHA256="$(sha256_file "$aab")" \
         node - "$tmp" <<'NODE'
@@ -83,6 +102,7 @@ const artifact = (kind, relativePath, size, sha256) => ({
 const manifest = {
   schemaVersion: 1,
   releaseVersion: process.env.RELEASE_VERSION,
+  versionCode: Number(process.env.RELEASE_VERSION_CODE),
   sourceCommit: process.env.SOURCE_COMMIT,
   sourceDirty: false,
   builtAt: process.env.BUILT_AT,
@@ -99,12 +119,13 @@ NODE
 }
 
 verify_manifest() {
-    local version="$1" commit dirty
+    local version="$1" commit dirty expected_version_code
     [[ -f "$MANIFEST" ]] || die "Android release provenance missing: $MANIFEST"
+    expected_version_code="$(version_code_for "$version")"
     assert_clean_source
     commit="$(source_commit)"
     dirty="false"
-    EXPECTED_VERSION="$version" EXPECTED_COMMIT="$commit" EXPECTED_DIRTY="$dirty" \
+    EXPECTED_VERSION="$version" EXPECTED_VERSION_CODE="$expected_version_code" EXPECTED_COMMIT="$commit" EXPECTED_DIRTY="$dirty" \
         REPO_ROOT="$REPO_ROOT" MANIFEST="$MANIFEST" node <<'NODE'
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -132,6 +153,7 @@ try { manifest = JSON.parse(fs.readFileSync(process.env.MANIFEST, 'utf8')); }
 catch (error) { fail(`cannot parse provenance manifest: ${error.message}`); }
 if (manifest.schemaVersion !== 1) fail(`unsupported schemaVersion ${manifest.schemaVersion}`);
 if (manifest.releaseVersion !== process.env.EXPECTED_VERSION) fail('releaseVersion mismatch');
+if (manifest.versionCode !== Number(process.env.EXPECTED_VERSION_CODE) || manifest.versionCode <= 0) fail('versionCode mismatch');
 if (manifest.sourceCommit !== process.env.EXPECTED_COMMIT) fail('sourceCommit mismatch');
 if (manifest.sourceDirty !== false) fail('sourceDirty must be false');
 for (const [kind, rel] of [
