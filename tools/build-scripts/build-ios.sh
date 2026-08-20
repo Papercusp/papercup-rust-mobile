@@ -8,6 +8,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+test -f Cargo.lock
+test -f crates/papercup-bindings/uniffi.toml
+
 if [ "$(uname)" != "Darwin" ]; then
     echo "ERROR: build-ios.sh requires macOS." >&2
     exit 1
@@ -45,8 +48,11 @@ lipo -create \
 echo "==> Generating Swift bindings"
 cargo run --quiet --bin uniffi-bindgen -- generate \
     crates/papercup-bindings/src/papercup.udl \
+    --config crates/papercup-bindings/uniffi.toml \
     --language swift \
     --out-dir ios/PapercupCore
+test -f ios/PapercupCore/papercup.swift
+test -f ios/PapercupCore/papercupFFI.h
 
 # Move the modulemap into a headers/ folder so xcodebuild can find it.
 mkdir -p ios/PapercupCore/headers

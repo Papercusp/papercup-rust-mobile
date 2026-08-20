@@ -20,6 +20,7 @@
 
 # iOS / Xcode
 /ios/build/
+/ios/Papercup.xcodeproj
 /ios/PapercupCore.xcframework/
 /ios/*.xcodeproj/xcuserdata/
 /ios/*.xcworkspace/xcuserdata/

@@ -7,9 +7,9 @@
 #   2. `xcodegen` from this dir              (creates Papercup.xcodeproj)
 #   3. `open Papercup.xcodeproj`             (build + run)
 #
-# The app target compiles the generated `papercup.swift` directly and
-# links the xcframework that carries libpapercup.a + the `papercupFFI`
-# Clang module the bindings import.
+# PapercupCore is the generated Swift boundary around the Rust XCFramework.
+# The application depends on that module instead of compiling generated
+# bindings directly, so app/tests share one checked native seam.
 
 name: Papercup
 options:
@@ -42,19 +42,35 @@ settings:
     INFOPLIST_FILE: Papercup/Info.plist
 
 targets:
+  PapercupCore:
+    type: framework
+    platform: iOS
+    sources:
+      - path: PapercupCore
+        excludes:
+          - headers
+      - path: PapercupCore/papercup.swift
+    dependencies:
+      - framework: PapercupCore.xcframework
+        embed: false
+        codeSign: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.papercuspai.operator.mobile.core
+        PRODUCT_MODULE_NAME: PapercupCore
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+        GENERATE_INFOPLIST_FILE: YES
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)
+
   Papercup:
     type: application
     platform: iOS
     sources:
       - path: Papercup/Sources
       - path: Papercup/Resources
-      - path: PapercupCore/papercup.swift
-        compilerFlags:
-          - -suppress-warnings
     dependencies:
-      - framework: PapercupCore.xcframework
-        embed: false
-        codeSign: false
+      - target: PapercupCore
       - package: ElevenLabsSDK
         product: ElevenLabs
     settings:
@@ -102,6 +118,7 @@ schemes:
   Papercup:
     build:
       targets:
+        PapercupCore: all
         Papercup: all
         PapercupTests: [test]
         PapercupUITests: [test]
