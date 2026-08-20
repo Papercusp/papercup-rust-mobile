@@ -58,6 +58,7 @@ test -f ios/PapercupCore/papercupFFI.h
 mkdir -p ios/PapercupCore/headers
 mv -f ios/PapercupCore/papercupFFI.h ios/PapercupCore/headers/
 mv -f ios/PapercupCore/papercupFFI.modulemap ios/PapercupCore/headers/module.modulemap
+test -f ios/PapercupCore/headers/papercupFFI.h
 
 echo "==> Packaging xcframework"
 rm -rf ios/PapercupCore.xcframework
