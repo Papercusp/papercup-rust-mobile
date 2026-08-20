@@ -11,11 +11,51 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-APK="$REPO_ROOT/android/app/build/outputs/apk/debug/app-debug.apk"
+APK="${PAPERCUP_ANDROID_APK:-$REPO_ROOT/android/app/build/outputs/apk/debug/app-debug.apk}"
 PKG="com.papercuspai.operator.mobile"
 ACT="$PKG/.MainActivity"
 AVD_NAME="${PAPERCUP_AVD:-papercusp-test}"
 ANDROID_SDK="${ANDROID_HOME:-$HOME/Android/Sdk}"
+
+launch_emulator() {
+    local emulator="$ANDROID_SDK/emulator/emulator"
+    local -a emulator_args=(
+        -avd "$AVD_NAME"
+        -netdelay none
+        -netspeed full
+        -gpu swiftshader_indirect
+    )
+
+    # A plain `nohup … & disown` only detaches from the shell. Agent/CI command
+    # runners commonly place the shell and every descendant in one transient
+    # systemd cgroup, then stop that whole cgroup when the command returns. The
+    # emulator can therefore boot, accept the APK, and disappear immediately
+    # after this script prints a false-success verdict. A transient USER service
+    # is a sibling of the invoking command scope, so the visible emulator keeps
+    # running after this installer exits. The fallback preserves macOS and other
+    # hosts without a systemd user manager.
+    if command -v systemd-run >/dev/null 2>&1 \
+        && command -v systemctl >/dev/null 2>&1 \
+        && systemctl --user show-environment >/dev/null 2>&1; then
+        local unit_suffix unit
+        unit_suffix="$(printf '%s' "$AVD_NAME" | tr -cs 'A-Za-z0-9_.-' '-')"
+        unit="papercusp-android-emulator-${unit_suffix%.}"
+        local -a service_env=(--setenv="DISPLAY=${DISPLAY:-:0}")
+        [[ -n "${XAUTHORITY:-}" ]] && service_env+=(--setenv="XAUTHORITY=$XAUTHORITY")
+        [[ -n "${WAYLAND_DISPLAY:-}" ]] && service_env+=(--setenv="WAYLAND_DISPLAY=$WAYLAND_DISPLAY")
+
+        systemctl --user reset-failed "$unit.service" >/dev/null 2>&1 || true
+        systemd-run --user --unit="$unit" --collect --service-type=exec \
+            --property="Description=Papercup Android Emulator ($AVD_NAME)" \
+            "${service_env[@]}" \
+            "$emulator" "${emulator_args[@]}" >/dev/null
+        echo "==> Emulator service: $unit.service (logs: journalctl --user -u $unit.service)"
+    else
+        echo "==> WARNING: no systemd user manager; emulator lifetime follows the host session" >&2
+        nohup "$emulator" "${emulator_args[@]}" >/tmp/emu.log 2>&1 &
+        disown
+    fi
+}
 
 if [ ! -f "$APK" ]; then
     echo "ERROR: APK not found at $APK; run 'make build-android' first." >&2
@@ -32,12 +72,7 @@ if ! printf '%s\n' "${DEVS[@]}" | grep -q '^emulator-'; then
     if [ -x "$ANDROID_SDK/emulator/emulator" ]; then
         if "$ANDROID_SDK/emulator/emulator" -list-avds | grep -qx "$AVD_NAME"; then
             echo "==> Booting emulator $AVD_NAME (no emulator-* device detected)"
-            nohup "$ANDROID_SDK/emulator/emulator" \
-                -avd "$AVD_NAME" \
-                -netdelay none -netspeed full \
-                -gpu swiftshader_indirect \
-                >/tmp/emu.log 2>&1 &
-            disown
+            launch_emulator
             echo -n "==> Waiting for boot"
             for _ in $(seq 1 90); do
                 STATE=$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
