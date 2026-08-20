@@ -262,6 +262,38 @@ fn parse_intent(text: String) -> Intent {
     papercup_core::intent::parse(&text).into()
 }
 
+#[cfg(test)]
+mod boundary_smoke {
+    use super::*;
+
+    /// Exercise the same free-function surface that generated Kotlin and Swift
+    /// call, without needing a device or live operator endpoint.
+    #[test]
+    fn host_boundary_smoke_passes() {
+        assert!(!version().is_empty());
+
+        let qr = parse_qr_payload(
+            r#"{"server":"https://operator.example.test","pairToken":"pair-smoke","workspaceId":"workspace-smoke"}"#.into(),
+        )
+        .expect("valid QR payload crosses the UniFFI surface");
+        assert_eq!(qr.workspace_id, "workspace-smoke");
+
+        assert_eq!(
+            voice_ws_url(
+                "https://operator.example.test/api".into(),
+                3068,
+                "/voice".into(),
+            ),
+            "wss://operator.example.test:3068/voice",
+        );
+        assert!(matches!(
+            parse_intent("[PAUSE]".into()),
+            Intent::Pause { .. }
+        ));
+        assert!(parse_qr_payload("not-json".into()).is_err());
+    }
+}
+
 // ── error mapping ───────────────────────────────────────────────────────
 
 #[derive(Debug, thiserror::Error)]

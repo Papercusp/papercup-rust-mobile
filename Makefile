@@ -8,7 +8,7 @@
         bindings-kotlin bindings-swift test test-ios test-ios-ui \
         verify-ios-release test-ios-release release-ios check \
         fmt fmt-check clippy lint-android test-android-java test-android-release-provenance \
-        test-ios-host-health install-hooks clean tokens tokens-check
+        test-ios-host-health bindings-smoke install-hooks clean tokens tokens-check
 
 help:
 	@echo "Targets:"
@@ -22,6 +22,7 @@ help:
 	@echo "  make clippy             — cargo clippy --workspace --all-targets -- -D warnings"
 	@echo "  make build-rust         — cargo build the host (off-device) Rust core + cli"
 	@echo "  make test               — run all Rust tests"
+	@echo "  make bindings-smoke     — exercise the Rust surface called by UniFFI scaffolding"
 	@echo "  make test-ios           — run iOS XCTest unit suite (requires macOS + Xcode)"
 	@echo "  make test-ios-ui        — run iOS XCUITest end-to-end suite (paired flows need PAPERCUP_PAIR_PAYLOAD)"
 	@echo "  make verify-ios-release — validate iOS metadata, privacy, signing config, and release copy"
@@ -40,7 +41,7 @@ help:
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test tokens-check test-android-release-provenance test-ios-host-health
+check: fmt-check clippy test bindings-smoke tokens-check test-android-release-provenance test-ios-host-health
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -94,6 +95,9 @@ build-rust:
 
 test:
 	cargo test --workspace
+
+bindings-smoke:
+	cargo test -p papercup-bindings host_boundary_smoke_passes
 
 # Run iOS XCTest. PAPERCUP_IOS_SIM_UDID overrides the default sim;
 # unset → first available iPhone 16. Splits build + test to dodge
