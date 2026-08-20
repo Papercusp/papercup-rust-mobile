@@ -1,5 +1,5 @@
 {
-  "$doc": "Papercup mobile's conformance inputs for papercusp-mobile-base@0.1.0. Paths are repository-relative; no secret values belong here.",
+  "$doc": "Papercup mobile's conformance inputs for the exact papercusp-android-app@0.1.0 closure. Paths are repository-relative; no secret or signing values belong here.",
   "app": {
     "name": "papercup-rust-mobile",
     "root": "."
@@ -55,7 +55,13 @@
     "portableCommands": [
       {
         "id": "rust-fmt",
-        "command": ["cargo", "fmt", "--all", "--", "--check"]
+        "command": [
+          "cargo",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ]
       },
       {
         "id": "rust-clippy",
@@ -72,19 +78,275 @@
       },
       {
         "id": "rust-test",
-        "command": ["cargo", "test", "--workspace"],
+        "command": [
+          "cargo",
+          "test",
+          "--workspace"
+        ],
         "timeoutMs": 600000
       },
       {
         "id": "binding-smoke",
-        "command": ["make", "bindings-smoke"],
+        "command": [
+          "make",
+          "bindings-smoke"
+        ],
         "timeoutMs": 600000
       },
       {
         "id": "token-drift",
-        "command": ["make", "tokens-check"],
+        "command": [
+          "make",
+          "tokens-check"
+        ],
         "timeoutMs": 600000
       }
     ]
+  },
+  "androidShell": {
+    "namespace": "com.papercuspai.operator.mobile",
+    "applicationId": "com.papercuspai.operator.mobile",
+    "minSdk": 24,
+    "compileSdk": 36,
+    "targetSdk": 36,
+    "gradleVersion": "8.14.3",
+    "agpVersion": "8.13.2",
+    "kotlinVersion": "2.0.21",
+    "javaVersion": 17,
+    "ndkVersion": "27.0.12077973",
+    "abis": [
+      "arm64-v8a",
+      "armeabi-v7a",
+      "x86",
+      "x86_64"
+    ],
+    "nativeLibrary": "libpapercup.so",
+    "releaseVersionInput": "PAPERCUP_RELEASE_VERSION",
+    "signingPrefix": "PAPERCUP_RELEASE_",
+    "signingInputNames": [
+      "PAPERCUP_RELEASE_KEYSTORE",
+      "PAPERCUP_RELEASE_KEYSTORE_PASSWORD",
+      "PAPERCUP_RELEASE_KEY_ALIAS",
+      "PAPERCUP_RELEASE_KEY_PASSWORD"
+    ],
+    "debugCleartext": true,
+    "selectedCapabilities": [
+      "credentials",
+      "deep-links",
+      "push",
+      "crash-reporting",
+      "analytics",
+      "camera",
+      "microphone",
+      "local-networking"
+    ],
+    "allowedPermissions": [
+      "android.permission.INTERNET",
+      "android.permission.ACCESS_NETWORK_STATE",
+      "com.google.android.gms.permission.AD_ID",
+      "android.permission.ACCESS_ADSERVICES_AD_ID",
+      "android.permission.ACCESS_ADSERVICES_ATTRIBUTION",
+      "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE",
+      "android.permission.CAMERA",
+      "android.permission.FOREGROUND_SERVICE",
+      "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+      "android.permission.POST_NOTIFICATIONS",
+      "android.permission.RECORD_AUDIO"
+    ],
+    "paths": {
+      "settingsGradle": "android/settings.gradle.kts",
+      "projectGradle": "android/build.gradle.kts",
+      "appGradle": "android/app/build.gradle.kts",
+      "wrapperProperties": "android/gradle/wrapper/gradle-wrapper.properties",
+      "manifest": "android/app/src/main/AndroidManifest.xml",
+      "packageSourceRoot": "android/app/src/main/kotlin/com/papercuspai/operator/mobile",
+      "unitTestRoots": [
+        "android/app/src/test/kotlin"
+      ],
+      "instrumentationTestRoots": [
+        "android/app/src/androidTest/kotlin"
+      ],
+      "lintConfig": "android/app/lint.xml",
+      "buildScript": "tools/build-scripts/build-android.sh",
+      "abiVerifier": "tools/build-scripts/verify-android-uniffi-abi.sh",
+      "provenanceScript": "tools/build-scripts/android-release-provenance.sh",
+      "udl": "crates/papercup-bindings/src/papercup.udl",
+      "uniffiConfig": "crates/papercup-bindings/uniffi.toml",
+      "cargoLock": "Cargo.lock",
+      "generatedKotlin": "android/app/src/main/kotlin/uniffi/papercup/papercup.kt",
+      "releaseApk": "android/app/build/outputs/apk/release/app-release.apk",
+      "releaseAab": "android/app/build/outputs/bundle/release/app-release.aab",
+      "provenanceFile": "android/app/build/outputs/papercusp-release-provenance.json"
+    },
+    "evidenceDir": "android/app/build/template-checks/android-shell",
+    "assertions": [
+      {
+        "assertionId": "MOB-AND-001",
+        "leg": "toolchain-build",
+        "command": [
+          "bash",
+          "tools/build-scripts/build-android.sh",
+          "debug"
+        ],
+        "timeoutMs": 900000,
+        "hostConstraintPatterns": [
+          "Android SDK not found",
+          "cargo-ndk is required"
+        ]
+      },
+      {
+        "assertionId": "MOB-AND-002",
+        "leg": "binding-generation",
+        "command": [
+          "android/gradlew",
+          "-p",
+          "android",
+          ":app:generateUniFfiKotlin"
+        ],
+        "timeoutMs": 600000,
+        "hostConstraintPatterns": [
+          "SDK location not found"
+        ]
+      },
+      {
+        "assertionId": "MOB-AND-003",
+        "leg": "package-abis",
+        "command": [
+          "bash",
+          "tools/build-scripts/build-android.sh",
+          "debug"
+        ],
+        "timeoutMs": 900000,
+        "hostConstraintPatterns": [
+          "Android SDK not found"
+        ]
+      },
+      {
+        "assertionId": "MOB-AND-004",
+        "leg": "uniffi-alignment",
+        "command": [
+          "bash",
+          "tools/build-scripts/build-android.sh",
+          "debug"
+        ],
+        "timeoutMs": 900000,
+        "hostConstraintPatterns": [
+          "llvm-objdump",
+          "zipalign",
+          "Android SDK not found"
+        ]
+      },
+      {
+        "assertionId": "MOB-AND-005",
+        "leg": "lint",
+        "command": [
+          "android/gradlew",
+          "-p",
+          "android",
+          ":app:lintRelease"
+        ],
+        "timeoutMs": 600000,
+        "hostConstraintPatterns": [
+          "SDK location not found"
+        ]
+      },
+      {
+        "assertionId": "MOB-AND-005",
+        "leg": "unit",
+        "command": [
+          "android/gradlew",
+          "-p",
+          "android",
+          ":app:testDebugUnitTest"
+        ],
+        "timeoutMs": 600000,
+        "hostConstraintPatterns": [
+          "SDK location not found"
+        ]
+      },
+      {
+        "assertionId": "MOB-AND-005",
+        "leg": "instrumentation",
+        "command": [
+          "android/gradlew",
+          "-p",
+          "android",
+          ":app:connectedDebugAndroidTest"
+        ],
+        "timeoutMs": 900000,
+        "hostConstraintPatterns": [
+          "No connected devices",
+          "SDK location not found"
+        ]
+      },
+      {
+        "assertionId": "MOB-AND-005",
+        "leg": "manifest-privacy",
+        "command": [
+          "bash",
+          "tools/tests/android-privacy-permissions-test.sh"
+        ],
+        "timeoutMs": 600000,
+        "hostConstraintPatterns": [
+          "SDK location not found"
+        ]
+      },
+      {
+        "assertionId": "MOB-AND-006",
+        "leg": "release-provenance",
+        "command": [
+          "bash",
+          "tools/tests/android-release-provenance-test.sh"
+        ],
+        "timeoutMs": 900000,
+        "hostConstraintPatterns": [
+          "apkanalyzer",
+          "Android SDK not found"
+        ]
+      },
+      {
+        "assertionId": "MOB-AND-006",
+        "leg": "signing-absence",
+        "command": [
+          "android/gradlew",
+          "-p",
+          "android",
+          ":app:validateReleaseSigning"
+        ],
+        "unsetEnv": [
+          "PAPERCUP_RELEASE_KEYSTORE",
+          "PAPERCUP_RELEASE_KEYSTORE_PASSWORD",
+          "PAPERCUP_RELEASE_KEY_ALIAS",
+          "PAPERCUP_RELEASE_KEY_PASSWORD"
+        ],
+        "expectedExit": "nonzero",
+        "expectedOutputPattern": "signing|keystore|unsigned",
+        "timeoutMs": 600000,
+        "hostConstraintPatterns": [
+          "SDK location not found"
+        ]
+      }
+    ]
+  },
+  "composition": {
+    "templateYamls": [
+      "template-manifests/papercusp-android-app.yaml",
+      "template-manifests/papercusp-mobile-base.yaml",
+      "template-manifests/papercusp-android-shell.yaml"
+    ],
+    "decisionPointAnswers": {
+      "papercusp-android-app:android-app-purpose": "Papercup is the official paired-operator Android client; this record supplies the full shared-base and Android-shell closure while retaining Papercup-owned screens, services, voice, push, and pairing behavior.",
+      "papercusp-mobile-base:product-domain": "Portable paired-operator protocol, state transitions, validation, serialization, and error taxonomy live in Rust; Compose owns presentation and Android lifecycle.",
+      "papercusp-mobile-base:rust-msrv": "Rust 1.80 is the supported workspace MSRV.",
+      "papercusp-mobile-base:license-and-repository": "GPL-3.0-or-later, Papercup contributors, and the canonical papercup-rust-mobile repository metadata remain product-owned.",
+      "papercusp-mobile-base:design-token-source": "design-tokens/primitives.tokens.json is the source for deterministic Papercup Kotlin and Swift token outputs.",
+      "papercusp-mobile-base:optional-capabilities": "Credentials, deep links, push, crash reporting, analytics, camera, microphone, and local networking are selected product capabilities; media playback is not selected.",
+      "papercusp-mobile-base:runtime-configuration": "Non-secret operator endpoints are runtime inputs, device credentials use Android Keystore/iOS Keychain seams, and provider or signing secrets remain external.",
+      "papercusp-android-shell:android-identity": "Namespace and application ID are com.papercuspai.operator.mobile, package sources use com/papercuspai/operator/mobile, the launcher name is Papercup, and PAPERCUP_RELEASE_VERSION supplies release versions.",
+      "papercusp-android-shell:android-sdk-floor": "Keep minimum SDK 24 with compile and target SDK 36.",
+      "papercusp-android-shell:android-local-network": "A debug-only cleartext exception supports the local paired-operator endpoint; release defaults to cleartext false.",
+      "papercusp-android-shell:android-capabilities": "The product owns its selected network, credential, deep-link, push, analytics, camera, microphone, foreground-service, notification, and privacy-removal manifest surface.",
+      "papercusp-android-shell:android-release": "Use external PAPERCUP_RELEASE_* signing inputs, publish APK and AAB together, bind PAPERCUP_RELEASE_VERSION to atomic SHA-256 provenance, and reject publish preflight when signing is absent."
+    }
   }
 }

@@ -7,6 +7,20 @@ plugins {
     id("com.google.firebase.crashlytics")
 }
 
+val generateUniFfiKotlin by
+    tasks.registering(Exec::class) {
+        val repositoryRoot =
+            rootProject.layout.projectDirectory
+                .dir("..")
+                .asFile
+        workingDir(repositoryRoot)
+        commandLine("make", "bindings-kotlin")
+        inputs.file(repositoryRoot.resolve("crates/papercup-bindings/src/papercup.udl"))
+        inputs.file(repositoryRoot.resolve("crates/papercup-bindings/uniffi.toml"))
+        inputs.file(repositoryRoot.resolve("Cargo.lock"))
+        outputs.file(repositoryRoot.resolve("android/app/src/main/kotlin/uniffi/papercup/papercup.kt"))
+    }
+
 private val DEFAULT_VERSION_NAME = "0.1.0"
 private val VERSION_CODE_MINOR_MULTIPLIER = 100L
 private val VERSION_CODE_MAJOR_MULTIPLIER = 10_000L
@@ -65,6 +79,7 @@ android {
         applicationId = "com.papercuspai.operator.mobile"
         minSdk = 24
         targetSdk = 36
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val releaseVersion =
             System.getenv("PAPERCUP_RELEASE_VERSION")?.takeIf { it.isNotBlank() } ?: DEFAULT_VERSION_NAME
         versionCode = androidVersionCode(releaseVersion)
@@ -166,6 +181,43 @@ android {
     // build script; nothing extra to declare.
 }
 
+val releaseSigningInputNames =
+    listOf(
+        "PAPERCUP_RELEASE_KEYSTORE",
+        "PAPERCUP_RELEASE_KEYSTORE_PASSWORD",
+        "PAPERCUP_RELEASE_KEY_ALIAS",
+        "PAPERCUP_RELEASE_KEY_PASSWORD",
+    )
+
+val validateReleaseSigning by
+    tasks.registering {
+        group = "verification"
+        description = "Fail unless every external Android release-signing input is configured."
+        doLast {
+            val values =
+                releaseSigningInputNames.associateWith { name ->
+                    providers.gradleProperty(name).orNull
+                        ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+                }
+            val missing = values.filterValues { it == null }.keys
+            require(missing.isEmpty()) {
+                "Android release signing preflight failed; missing external inputs: ${missing.joinToString(", ")}"
+            }
+            val keystore = file(values.getValue("PAPERCUP_RELEASE_KEYSTORE")!!)
+            require(keystore.isFile) {
+                "Android release signing preflight failed; keystore does not exist: $keystore"
+            }
+        }
+    }
+
+tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+    dependsOn(validateReleaseSigning)
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(generateUniFfiKotlin)
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
@@ -233,6 +285,10 @@ dependencies {
     // WI-4967/WI-4966: JVM unit tests (src/test) — UX-contract tests pinning
     // voice failure copy (mic-denial + transport-failure messages).
     testImplementation("junit:junit:4.13.2")
+
+    androidTestImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
 
     debugImplementation(composeBom)
     debugImplementation("androidx.compose.ui:ui-tooling")

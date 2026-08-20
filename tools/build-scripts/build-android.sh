@@ -6,6 +6,17 @@
 # public-release APK + AAB (`build-android.sh release`).
 set -euo pipefail
 
+resolve_android_sdk() {
+    local sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+    if [ -z "$sdk_root" ] || [ ! -d "$sdk_root" ]; then
+        echo "ERROR: Android SDK not found; set ANDROID_SDK_ROOT or ANDROID_HOME" >&2
+        return 1
+    fi
+    ANDROID_SDK_ROOT="$sdk_root"
+    ANDROID_HOME="$sdk_root"
+    export ANDROID_SDK_ROOT ANDROID_HOME
+}
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
@@ -33,14 +44,17 @@ if [ "$BUILD_MODE" = "release" ]; then
     rm -f "$RELEASE_APK" "$RELEASE_AAB" "$RELEASE_PROVENANCE"
 fi
 
-# NDK path. Prefer ANDROID_NDK_HOME, fall back to the version we know
-# is on this dev machine.
-: "${ANDROID_NDK_HOME:=$HOME/Android/Sdk/ndk/27.0.12077973}"
+resolve_android_sdk
+: "${ANDROID_NDK_HOME:=$ANDROID_SDK_ROOT/ndk/27.0.12077973}"
 export ANDROID_NDK_HOME
 
 if [ ! -d "$ANDROID_NDK_HOME" ]; then
     echo "ERROR: ANDROID_NDK_HOME not found at $ANDROID_NDK_HOME" >&2
     echo "Set ANDROID_NDK_HOME to your NDK install (Android Studio: Settings → SDK → SDK Tools → NDK)." >&2
+    exit 1
+fi
+if ! command -v cargo-ndk >/dev/null 2>&1 && ! cargo ndk --version >/dev/null 2>&1; then
+    echo "ERROR: cargo-ndk is required (cargo install cargo-ndk)" >&2
     exit 1
 fi
 
@@ -100,14 +114,15 @@ verify_packaged_abis() {
 
 verify_16kb_alignment() {
     local apk="$1"
-    local native_root="$REPO_ROOT/android/app/build/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib"
-    local sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+    local variant="${2:-release}"
+    local variant_title="${variant^}"
+    local native_root="$REPO_ROOT/android/app/build/intermediates/merged_native_libs/$variant/merge${variant_title}NativeLibs/out/lib"
     local objdump zipalign power so
     local checked=0
 
     objdump="$(find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" \
         -path '*/bin/llvm-objdump' -type f -print -quit)"
-    zipalign="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 \
+    zipalign="$(find "$ANDROID_SDK_ROOT/build-tools" -mindepth 2 -maxdepth 2 \
         -name zipalign -type f -print | sort -V | tail -n 1)"
 
     if [ -z "$objdump" ] || [ -z "$zipalign" ]; then
@@ -156,6 +171,9 @@ if [ -f android/gradlew ]; then
         verify_packaged_abis \
             "$REPO_ROOT/android/app/build/outputs/apk/debug/app-debug.apk" \
             'lib/'
+        verify_16kb_alignment \
+            "$REPO_ROOT/android/app/build/outputs/apk/debug/app-debug.apk" \
+            debug
         echo "==> Debug APK: $REPO_ROOT/android/app/build/outputs/apk/debug/app-debug.apk"
     fi
 else
