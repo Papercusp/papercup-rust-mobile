@@ -1,6 +1,6 @@
 # Mobile design tokens
 
-Source of truth for color/dimension/typography tokens consumed by Android (Compose) and iOS (SwiftUI). DTCG-formatted (W3C Design Tokens Community Group draft), built with [Style Dictionary v4](https://styledictionary.com/).
+Source of truth for color/dimension/typography tokens consumed by Android (Compose) and iOS (SwiftUI). DTCG-formatted (W3C Design Tokens Community Group draft), built with [Style Dictionary v5](https://styledictionary.com/).
 
 ## Files
 
@@ -11,7 +11,7 @@ Source of truth for color/dimension/typography tokens consumed by Android (Compo
 | `mobile.semantic.tokens.json` | Mobile-specific semantics — `accent`, `surface`, `text-muted`, etc. References primitives via `{color.x.y}` aliases | Yes |
 | `mobile.component.tokens.json` | Component-specific tokens — `primary-button-grad-top`, etc. | Yes |
 | `mirror.mjs` | Pulls `primitives.tokens.json` from `../papercup/design-tokens/`; fails on hash drift. Runs before SD codegen | Rarely |
-| `style-dictionary.config.mjs` | SD v4 build config with custom Compose + SwiftUI transforms | Rarely |
+| `style-dictionary.config.mjs` | SD v5 build config with custom Compose + SwiftUI transforms | Rarely |
 
 ## Generated outputs (DO NOT EDIT)
 
@@ -62,4 +62,4 @@ The brand palette is **canonical in `papercup/design-tokens/primitives.tokens.js
 
 ## Why 8-digit hex for alpha?
 
-DTCG colors carry alpha baked into the value (no separate `alpha` field). Style Dictionary v4 handles 8-digit hex (`#RRGGBBAA`) across all output formats correctly. The `$description` line carries the human-readable "{primitive} @ 0.X" so future-you remembers what generated the value.
+DTCG colors carry alpha baked into the value (no separate `alpha` field). Style Dictionary handles 8-digit hex (`#RRGGBBAA`) across all output formats correctly. The `$description` line carries the human-readable "{primitive} @ 0.X" so future-you remembers what generated the value.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Style Dictionary v4 config for papercup-rust-mobile.
+// Style Dictionary v5 config for papercup-rust-mobile.
 // Emits Compose Kotlin + SwiftUI Swift from DTCG-format token files.
 //
 // Inputs:  primitives.tokens.json + mobile.semantic.tokens.json + mobile.component.tokens.json
