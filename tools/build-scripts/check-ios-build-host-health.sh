@@ -4,18 +4,12 @@
 # workers are already saturating the display stack.
 set -euo pipefail
 
-# Named remote execution lane used by the template contract: avis-imac.
+# This guard measures macOS display-stack pressure; it is also called by
+# cross-platform bindgen and pre-push checks. The actual iOS build entrypoints
+# enforce their macOS/Xcode requirements separately.
 if [ "$(uname -s)" != "Darwin" ]; then
-    echo "ERROR: macOS is required (delegate to named host avis-imac)." >&2
-    exit 2
+    exit 0
 fi
-command -v xcodebuild >/dev/null || { echo "ERROR: Xcode is required" >&2; exit 2; }
-command -v xcodegen >/dev/null || { echo "ERROR: xcodegen is required" >&2; exit 2; }
-command -v swiftformat >/dev/null || { echo "ERROR: swiftformat is required" >&2; exit 2; }
-xcrun simctl list devices available | grep -q 'iPhone' || {
-    echo "ERROR: simulator is unavailable" >&2
-    exit 2
-}
 
 samples="${PAPERCUP_IOS_HOST_HEALTH_SAMPLES:-3}"
 interval="${PAPERCUP_IOS_HOST_HEALTH_INTERVAL_SEC:-1}"
