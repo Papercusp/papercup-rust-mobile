@@ -5,9 +5,11 @@ set -euo pipefail
 
 REPO_ROOT="${PAPERCUP_MOBILE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 MANIFEST_REL="android/app/build/outputs/papercusp-release-provenance.json"
+RECORD_REL="android/app/build/outputs/RELEASE-CANDIDATE.md"
 APK_REL="android/app/build/outputs/apk/release/app-release.apk"
 AAB_REL="android/app/build/outputs/bundle/release/app-release.aab"
 MANIFEST="$REPO_ROOT/$MANIFEST_REL"
+RECORD="$REPO_ROOT/$RECORD_REL"
 
 die() {
     echo "ERROR: $*" >&2
@@ -115,7 +117,65 @@ fs.writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 })
 NODE
     mv -f "$tmp" "$MANIFEST"
     verify_manifest "$version"
+    render_record
     echo "==> Android release provenance: $MANIFEST"
+    echo "==> Android release candidate record: $RECORD"
+}
+
+# Render the human-readable candidate record from the manifest, into the
+# gitignored build-output tree. The record is DERIVED, never hand-maintained,
+# and never tracked: refreshing it cannot dirty the source tree or move HEAD,
+# so the evidence surface can no longer invalidate the provenance it describes.
+render_record() {
+    local tmp
+    [[ -f "$MANIFEST" ]] \
+        || die "cannot render release record before provenance manifest exists: $MANIFEST"
+    mkdir -p "$(dirname "$RECORD")"
+    tmp="${RECORD}.tmp.$$"
+    MANIFEST="$MANIFEST" RECORD_REL="$RECORD_REL" MANIFEST_REL="$MANIFEST_REL" \
+        node - "$tmp" <<'NODE'
+const fs = require('node:fs');
+const out = process.argv[2];
+let manifest;
+try { manifest = JSON.parse(fs.readFileSync(process.env.MANIFEST, 'utf8')); }
+catch (error) { throw new Error(`cannot parse provenance manifest: ${error.message}`); }
+const bytes = (value) => Number(value).toLocaleString('en-US');
+const lines = [
+  '# Android release candidate (generated — do not edit, do not commit)',
+  '',
+  `Generated from \`${process.env.MANIFEST_REL}\` by`,
+  '`tools/build-scripts/android-release-provenance.sh`. This file is build',
+  'output and is deliberately untracked: refreshing it can never dirty the',
+  'source tree or move HEAD, so it cannot invalidate the provenance it',
+  'describes. The JSON manifest remains authoritative for upload.',
+  '',
+  '| Field | Value |',
+  '|---|---|',
+  `| Release version | \`${manifest.releaseVersion}\` (\`versionCode\` ${manifest.versionCode}) |`,
+  `| Source commit | \`${manifest.sourceCommit}\` |`,
+  `| Source dirty | ${manifest.sourceDirty} |`,
+  `| Built at | ${manifest.builtAt} |`,
+];
+for (const kind of ['apk', 'aab']) {
+  const artifact = manifest.artifacts?.[kind];
+  if (!artifact) throw new Error(`manifest is missing the ${kind} artifact`);
+  const label = kind.toUpperCase();
+  lines.push(`| ${label} | \`${artifact.path}\` |`);
+  lines.push(`| ${label} size | ${bytes(artifact.size)} bytes |`);
+  lines.push(`| ${label} SHA-256 | \`${artifact.sha256}\` |`);
+}
+lines.push(
+  '',
+  'Re-verify these exact artifacts against the manifest with:',
+  '',
+  '```sh',
+  `tools/build-scripts/android-release-provenance.sh verify ${manifest.releaseVersion}`,
+  '```',
+  '',
+);
+fs.writeFileSync(out, lines.join('\n'), { mode: 0o600 });
+NODE
+    mv -f "$tmp" "$RECORD"
 }
 
 verify_manifest() {
@@ -180,11 +240,20 @@ case "${1:-}" in
         verify_manifest "$2"
         echo "==> Verified Android release provenance for $2"
         ;;
+    render)
+        [[ $# -eq 1 ]] || die "usage: $0 render"
+        render_record
+        echo "==> Android release candidate record: $RECORD"
+        ;;
     path)
         [[ $# -eq 1 ]] || die "usage: $0 path"
         printf '%s\n' "$MANIFEST"
         ;;
+    record)
+        [[ $# -eq 1 ]] || die "usage: $0 record"
+        printf '%s\n' "$RECORD"
+        ;;
     *)
-        die "usage: $0 {write <version> [apk] [aab]|verify <version>|path}"
+        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record}"
         ;;
 esac

@@ -64,6 +64,47 @@ if (manifest.sourceCommit !== commit || manifest.sourceDirty !== false) process.
 if (manifest.artifacts.apk.sha256 !== hash(apk) || manifest.artifacts.aab.sha256 !== hash(aab)) process.exit(1);
 NODE
 
+# The candidate record must be GENERATED into gitignored build output, and
+# generating it must not disturb the clean tree / HEAD binding that provenance
+# depends on. A tracked record cannot satisfy both at once, which is the defect
+# this guards: refreshing it dirtied the tree (verify fails at assert_clean_source)
+# and committing it moved HEAD (verify fails on sourceCommit mismatch).
+RECORD="$TMP/android/app/build/outputs/RELEASE-CANDIDATE.md"
+[[ -f "$RECORD" ]] || fail 'release write did not generate the candidate record'
+[[ "$(run_helper record)" == "$RECORD" ]] || fail 'record subcommand printed the wrong path'
+
+APK_SHA="$(sha256sum "$APK" | awk '{print $1}')"
+AAB_SHA="$(sha256sum "$AAB" | awk '{print $1}')"
+grep -Fq "$APK_SHA" "$RECORD" || fail 'generated record does not carry the APK SHA-256'
+grep -Fq "$AAB_SHA" "$RECORD" || fail 'generated record does not carry the AAB SHA-256'
+grep -Fq '0.0.17' "$RECORD" || fail 'generated record does not carry the release version'
+
+RENDER_DIRT="$(git -C "$TMP" status --porcelain --untracked-files=normal)"
+[[ -z "$RENDER_DIRT" ]] \
+    || fail "generating the candidate record dirtied the source tree: $RENDER_DIRT"
+run_helper verify 0.0.17 >/dev/null \
+    || fail 'provenance stopped verifying once the candidate record was generated'
+
+run_helper render >/dev/null || fail 'standalone render failed'
+run_helper verify 0.0.17 >/dev/null || fail 'provenance stopped verifying after a re-render'
+
+# Recurrence guard: the TRACKED record must never regain per-build artifact
+# identity. If it does, refreshing it after a build becomes mandatory again and
+# the clean-tree/HEAD-binding rule above becomes unsatisfiable.
+TRACKED_RECORD="${PAPERCUP_TRACKED_RECORD:-$ROOT/store/RELEASE-CANDIDATE.md}"
+[[ -f "$TRACKED_RECORD" ]] || fail "tracked candidate record missing: $TRACKED_RECORD"
+grep -Fq 'android/app/build/outputs/RELEASE-CANDIDATE.md' "$TRACKED_RECORD" \
+    || fail 'tracked candidate record no longer points at the generated record'
+while IFS= read -r pattern; do
+    [[ -n "$pattern" ]] || continue
+    if grep -Eiq "$pattern" "$TRACKED_RECORD"; then
+        fail "tracked candidate record reintroduced per-build state (/$pattern/): it belongs in the generated record, which is untracked"
+    fi
+done <<'PATTERNS'
+^\|[[:space:]]*(APK|AAB)[[:space:]]+(SHA-256|size)[[:space:]]*\|
+replaces the hashes
+PATTERNS
+
 printf 'tamper' >>"$APK"
 if run_helper verify 0.0.17 >/dev/null 2>&1; then
     echo "FAIL: tampered APK passed provenance verification" >&2
@@ -88,4 +129,4 @@ if run_helper write 0.0.17 "$APK" "$AAB" >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "✓ Android release provenance producer rejects version, source, and hash drift"
+echo "✓ Android release provenance producer rejects version, source, and hash drift, and generates the candidate record without invalidating provenance"
