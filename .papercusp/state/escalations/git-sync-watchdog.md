@@ -1,9 +1,9 @@
 ---
 authority: null
 body_embedding_mode: "gemma"
-body_tsv: ""
-escalation: null
-mtime_ms: 1787893843560
+body_tsv: "'-08':22A '-30':23A '0':29A '10':25A '1788075102858':34A '2026':21A '3':53A '42.286':26A 'advanc':97A 'assum':149A 'blip':60A 'bridg':146A 'cancel':68A 'cannot':139A 'close':67A 'code':104A 'code-strand':103A 'commit':111A 'commitstal':12A 'compar':152A 'consecut':54A,86A 'current':161A 'detail':37A 'due':70A 'emit':32A 'error':118A 'errorstal':16A 'fail':64A,66A,93A,145A 'fail-clos':65A 'fals':13A,15A,19A,36A 'fault':42A,51A,84A 'firestal':14A 'first':129A 'fix':131A 'git':3A,39A,46A,78A,126A 'git-sync':38A,45A,77A,125A 'git-sync-watchdog':2A 'har':6A 'head':95A,155A 'headunchangedhr':28A 'kind':1A 'lastfiredat':20A 'laststatus':30A 'leg':90A,133A 'live':61A 'lock':62A 'matter':76A 'merg':140A 'metadata.last':117A 'mobil':11A,124A 'move':115A 'name':135A 'noth':162A 'one':89A 'origin':157A,159A 'papercup':9A,122A 'papercup-rust-mobil':8A,121A 'persist':41A,57A 'persistentreap':18A 'push':143A 'read':63A,116A 'record':49A,81A 'reject':142A 'reliabl':92A 'rescu':110A 'rescue-commit':109A 'routin':128A 'rust':10A,123A 'skip':31A 'slug':7A 'stall':106A 'statement':69A,72A 'strand':35A,105A,151A,164A 'streak':43A 'submodul':137A 'sweep':56A,87A 'sync':4A,40A,47A,79A,127A 't07':24A 'timeout':73A 'tree':154A 'true':17A 'verifi':147A 'watchdog':5A,44A,55A 'wrong':114A 'z':27A"
+escalation: "{\"kind\":\"git-sync-watchdog\",\"harness_slug\":\"papercup-rust-mobile\",\"commitStale\":false,\"fireStale\":false,\"errorStall\":true,\"persistentReap\":false,\"lastFiredAt\":\"2026-08-30T07:10:42.286Z\",\"headUnchangedHrs\":0,\"lastStatus\":\"skipped\",\"emitted_at\":1788075102858,\"stranding\":false,\"detail\":\"git-sync persistent fault streak (watchdog): git-sync has recorded a FAULT on 3 consecutive watchdog sweeps (persistent, not a blip): \\\"live lock read failed (fail-closed): canceling statement due to statement timeout\\\". Why it matters: git-sync has recorded the SAME fault on consecutive sweeps, so one leg is reliably failing — but HEAD is advancing, so this is NOT the code-stranding stall and a rescue-commit is the WRONG move. Read metadata.last_error on the papercup-rust-mobile git-sync routine FIRST and fix the leg it names (a submodule that cannot merge, a rejected push, a failing bridge). Verify before assuming a strand: compare the tree HEAD against origin/<branch> — if origin is current, nothing is stranded.\"}"
+mtime_ms: 1788075102858
 phase: "git-sync-watchdog"
 risk_tier: null
 supervisor_notes: null
