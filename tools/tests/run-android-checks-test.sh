@@ -102,3 +102,45 @@ if TEST_EMULATOR_FAIL=1 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" 
     exit 1
 fi
 echo 'Android emulator preflight guards: working executable accepted; missing library and failed executable rejected'
+
+# Use the real ELF loader to distinguish missing host dependencies from SDK
+# libraries that the emulator launcher adds to its search path. No RPATH is
+# linked into this fixture, so a bare ldd must report the bundled libraries missing.
+if [[ "$(uname -s)" == Linux ]]; then
+    real_sdk="$TMP_ROOT/real sdk"
+    core_lib="$real_sdk/emulator/lib64"
+    qt_lib="$core_lib/qt/lib"
+    extra_lib="$TMP_ROOT/inherited libs"
+    mkdir -p "$core_lib" "$qt_lib" "$extra_lib" "$real_sdk/emulator/qemu/linux-x86_64"
+    printf 'int android_guard_core(void) { return 1; }\n' | cc -x c -fPIC -shared - -o "$core_lib/libandroid_guard_core.so"
+    printf 'int android_guard_qt(void) { return 2; }\n' | cc -x c -fPIC -shared - -o "$qt_lib/libandroid_guard_qt.so"
+    printf 'int android_guard_inherited(void) { return 3; }\n' | cc -x c -fPIC -shared - -o "$extra_lib/libandroid_guard_inherited.so"
+    real_qemu="$real_sdk/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+    cc -x c - -L"$core_lib" -L"$qt_lib" -L"$extra_lib" \
+        -landroid_guard_core -landroid_guard_qt -landroid_guard_inherited -o "$real_qemu" <<'C'
+int android_guard_core(void);
+int android_guard_qt(void);
+int android_guard_inherited(void);
+int main(void) {
+    return android_guard_core() + android_guard_qt() + android_guard_inherited() == 6 ? 0 : 1;
+}
+C
+    cp "$TMP_ROOT/sdk/emulator/emulator" "$real_sdk/emulator/emulator"
+    ldd "$real_qemu" > "$TMP_ROOT/bare-loader.txt"
+    grep -Fq 'libandroid_guard_core.so => not found' "$TMP_ROOT/bare-loader.txt"
+    grep -Fq 'libandroid_guard_qt.so => not found' "$TMP_ROOT/bare-loader.txt"
+    LD_LIBRARY_PATH="$extra_lib" ANDROID_HOME="$real_sdk" \
+        bash "$runner" verify-emulator "$TMP_ROOT/real-loader-proof"
+    if grep -Fq 'not found' "$TMP_ROOT/real-loader-proof/emulator-libraries.txt"; then
+        echo 'FAIL: bundled or inherited emulator library was rejected' >&2
+        exit 1
+    fi
+    rm "$core_lib/libandroid_guard_core.so"
+    if LD_LIBRARY_PATH="$extra_lib" ANDROID_HOME="$real_sdk" \
+        bash "$runner" verify-emulator "$TMP_ROOT/real-missing-library-proof" > "$TMP_ROOT/output" 2>&1; then
+        echo 'FAIL: a genuinely missing ELF dependency was accepted' >&2
+        exit 1
+    fi
+    grep -Fq 'libandroid_guard_core.so => not found' "$TMP_ROOT/real-missing-library-proof/emulator-libraries.txt"
+    echo 'Android emulator real-loader guards: bundled and inherited libraries accepted; missing dependency rejected'
+fi

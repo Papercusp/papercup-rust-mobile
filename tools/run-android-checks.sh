@@ -45,7 +45,11 @@ if [[ "$mode" == verify-emulator ]]; then
         echo 'Android emulator executable is missing.' >&2
         exit 1
     }
-    ldd "$qemu" > "$attempt_dir/emulator-libraries.txt" 2>&1 || {
+    # The SDK launcher adds bundled core and Qt libraries before execing QEMU.
+    # Match that environment for ldd; probing the engine directly otherwise
+    # misclassifies a complete SDK as missing its own shared libraries.
+    LD_LIBRARY_PATH="$ANDROID_HOME/emulator/lib64:$ANDROID_HOME/emulator/lib64/qt/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+        ldd "$qemu" > "$attempt_dir/emulator-libraries.txt" 2>&1 || {
         cat "$attempt_dir/emulator-libraries.txt" >&2
         exit 1
     }

@@ -37,6 +37,36 @@ assert 'if-no-files-found: error' in android, 'native proof is required'
 print('Android CI reachability contract: passed')
 PY
 
+python3 - "${2:-$ROOT/tools/run-android-checks.sh}" <<'PY'
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+assert 'set -euo pipefail' in text, 'failed Android checks must stop verification'
+host = text.split('if [[ "$mode" != connected ]]; then', 1)[1].split('\nfi\n', 1)[0]
+connected = text.split('if [[ "$mode" != host ]]; then', 1)[1].split('\nfi\n', 1)[0]
+for phase in [
+    'cargo fmt --all -- --check',
+    'cargo clippy --workspace --all-targets -- -D warnings',
+    'cargo test --workspace --all-targets',
+    'make bindings-smoke test-android-java test-android-launch-lifecycle',
+    'test-android-release-provenance test-android-runner test-android-ci',
+    'make bindings-kotlin',
+    'bash tools/build-scripts/build-android.sh debug',
+    ':app:testDebugUnitTest :app:testReleaseUnitTest',
+    ':app:lintRelease --rerun-tasks',
+    'bash tools/tests/android-privacy-permissions-test.sh',
+    'verify_results android/app/build host',
+]:
+    assert phase in host, f'Android host runner omits required phase: {phase}'
+for phase in [
+    'bash tools/build-scripts/install-and-launch.sh',
+    ':app:connectedDebugAndroidTest --rerun-tasks',
+    'verify_results android/app/build connected',
+]:
+    assert phase in connected, f'Android native runner omits required phase: {phase}'
+print('Android CI required host/native phase contract: passed')
+PY
+
 if [[ $# == 0 ]]; then
     TMP_ROOT="$(mktemp -d)"
     trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -58,4 +88,39 @@ PY
         fi
     done
     echo 'Android CI bootstrap/storage/emulator/evidence mutation controls: 6 rejected'
+
+    # A workflow invoking "host" is insufficient if the owned runner stops
+    # executing one of its required phases. Keep each omission reproducible.
+    python3 - "$ROOT/tools/run-android-checks.sh" "$TMP_ROOT" <<'PY'
+import sys
+from pathlib import Path
+text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
+phases = [
+    'cargo fmt --all -- --check',
+    'cargo clippy --workspace --all-targets -- -D warnings',
+    'cargo test --workspace --all-targets',
+    'make bindings-smoke test-android-java test-android-launch-lifecycle',
+    'test-android-release-provenance test-android-runner test-android-ci',
+    'make bindings-kotlin',
+    'bash tools/build-scripts/build-android.sh debug',
+    ':app:testDebugUnitTest :app:testReleaseUnitTest',
+    ':app:lintRelease --rerun-tasks',
+    'bash tools/tests/android-privacy-permissions-test.sh',
+    'verify_results android/app/build host',
+    'bash tools/build-scripts/install-and-launch.sh',
+    ':app:connectedDebugAndroidTest --rerun-tasks',
+    'verify_results android/app/build connected',
+    'set -euo pipefail',
+]
+for index, phase in enumerate(phases):
+    assert phase in text, f'positive runner phase missing: {phase}'
+    (out / f'runner-{index}.sh').write_text(text.replace(phase, ': omitted-phase'))
+PY
+    for fixture in "$TMP_ROOT"/runner-*.sh; do
+        if bash "$0" "$ROOT/.github/workflows/ci.yml" "$fixture" > "$TMP_ROOT/output" 2>&1; then
+            echo "FAIL: omitted Android runner phase accepted: $fixture" >&2
+            exit 1
+        fi
+    done
+    echo 'Android CI runner phase mutation controls: 15 rejected'
 fi
