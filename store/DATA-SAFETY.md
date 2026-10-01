@@ -1,10 +1,29 @@
 # Papercusp Android — Google Play data-safety answers
 
-_Source-reconciled August 11, 2026 against the release manifest, `VoiceManager`,
+_Source draft reconciled October 1, 2026 against the Android manifest,
+`VoicePrivacyConsent`, `PrivacyPolicyScreen`, `VoiceManager`,
 `DesktopVoiceSession`, `PushService`, `Credentials`, and Gradle dependencies._
 
-Use this as the exact worksheet for **Play Console → App content → Data safety**.
-Re-run the verification checklist against the uploaded AAB before submitting.
+Use this draft worksheet for **Play Console → App content → Data safety**.
+The answers below describe the intended release behavior. They are not evidence
+that a signed candidate was tested, uploaded, or accepted by Google Play.
+Re-run the verification checklist against the exact candidate before submitting
+and retain the submitted Console answers with its APK/AAB hashes.
+
+## Source reconciliation
+
+| Declaration | Current source basis | Required candidate evidence |
+|---|---|---|
+| Cloud voice is optional | `VoicePrivacyConsent.kt` defaults consent to false, supports revocation, and names ElevenLabs, audio, transcripts, replies and provider processing. `VoicePrivacyConsentTest.kt` checks the consent boundary and disclosure. | Verify consent blocks capture in the signed app, revocation prompts again, and desktop-local voice follows its declared route. |
+| Push and crash diagnostics remain included | `app/build.gradle.kts` includes Firebase Messaging and Crashlytics; `PrivacyPolicyScreen.kt` and the public policy disclose both. | Verify actual push delivery and crash behavior, including which identifiers and failure context leave the device. |
+| Analytics and advertising identifiers are disabled | The source manifest disables Firebase Analytics, ad-ID and SSAID collection and removes inherited advertising, attribution and install-referrer permissions. `android-privacy-permissions-test.sh` checks the merged release manifest. | Inspect the exact APK/AAB merged manifest and retain the executed privacy-check result. |
+| Android release connections require HTTPS | Release configuration disables cleartext; the release pairing boundary rejects non-HTTPS endpoints. | Exercise rejected HTTP and accepted production HTTPS pairing on the exact signed candidate. |
+| Public privacy and deletion contacts exist | The public privacy and support pages returned HTTP 200 with their privacy/deletion content during the October 1 review. The public policy includes the same shipped processors as the in-app policy. | Recheck both URLs immediately before submission and exercise the support/deletion process. |
+
+Provider contracts, configured retention, the service-provider exception used
+below, and the actual Play form still require submission-time review. Source
+checks do not establish those external facts or replace the physical-phone and
+exact-candidate acceptance matrix.
 
 ## Overview answers
 
