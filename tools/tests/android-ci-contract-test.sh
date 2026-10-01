@@ -40,6 +40,9 @@ save = android.split('uses: actions/cache/save@v4', 1)[0].rsplit('- name:', 1)[1
 assert "if: success() && steps.android-proof.outputs.cache-hit != 'true'" in save
 assert 'restore-keys:' not in android, 'partial-key proof must never skip native verification'
 assert 'if-no-files-found: error' in android, 'native proof is required'
+for apk in ['android/app/build/outputs/apk/debug/app-debug.apk', 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk']:
+    assert f'            {apk}\n' in android, f'tested APK bytes must survive native failure: {apk}'
+    assert f'          cp {apk} android-ci-proof/apks/\n' in android, f'cached native proof must retain tested APK bytes: {apk}'
 print('Android CI reachability contract: passed')
 PY
 
@@ -92,6 +95,9 @@ text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 (out / 'missing-avd-space.yml').write_text(text.replace('          bash tools/run-android-checks.sh verify-avd-space 6144M\n', ''))
 (out / 'missing-avd-launch-space.yml').write_text(text.replace('          pre-emulator-launch-script: bash tools/run-android-checks.sh verify-avd-space 6144M\n', ''))
 (out / 'missing-after-host-cleanup.yml').write_text(text.replace(' prepare-ci android-ci-attempt after-host', ' prepare-ci'))
+for name, apk in [('app', 'android/app/build/outputs/apk/debug/app-debug.apk'), ('instrumentation', 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]:
+    (out / f'missing-{name}-apk.yml').write_text(text.replace(f'            {apk}\n', ''))
+    (out / f'missing-cached-{name}-apk.yml').write_text(text.replace(f'          cp {apk} android-ci-proof/apks/\n', ''))
 PY
     for fixture in "$TMP_ROOT"/*.yml; do
         if bash "$0" "$fixture" > "$TMP_ROOT/output" 2>&1; then
@@ -99,7 +105,7 @@ PY
             exit 1
         fi
     done
-    echo 'Android CI bootstrap/storage/emulator/evidence mutation controls: 12 rejected'
+    echo 'Android CI bootstrap/storage/emulator/evidence mutation controls: 16 rejected'
 
     # A workflow invoking "host" is insufficient if the owned runner stops
     # executing one of its required phases. Keep each omission reproducible.

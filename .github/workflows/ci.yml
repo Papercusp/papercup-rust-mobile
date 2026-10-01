@@ -203,9 +203,11 @@ jobs:
       - name: Bind successful proof to tested source and tools
         if: steps.android-proof.outputs.cache-hit != 'true'
         run: |
-          mkdir -p android-ci-proof
+          mkdir -p android-ci-proof/apks
           git rev-parse HEAD > android-ci-proof/source-sha.txt
           sha256sum android/app/build/outputs/apk/debug/app-debug.apk > android-ci-proof/apk-sha256.txt
+          cp android/app/build/outputs/apk/debug/app-debug.apk android-ci-proof/apks/
+          cp android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk android-ci-proof/apks/
           java -version 2> android-ci-proof/java-version.txt
           rustc -Vv > android-ci-proof/rust-version.txt
           "$ANDROID_HOME/emulator/emulator" -version > android-ci-proof/emulator-version.txt
@@ -233,6 +235,8 @@ jobs:
             android/app/build/reports
             android/app/build/test-results
             android/app/build/outputs/androidTest-results
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 
   ios:
     name: iPhone release gate (iOS 26 SDK)
