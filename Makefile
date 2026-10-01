@@ -7,7 +7,7 @@
 .PHONY: help build-rust build-android build-ios install-android \
         bindings-kotlin bindings-swift test test-ios test-ios-ui \
         verify-ios-release test-ios-release release-ios check \
-        fmt fmt-check clippy lint-android test-android-java test-android-launch-lifecycle test-android-release-provenance \
+        fmt fmt-check clippy lint-android test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing \
         test-ios-host-health test-ios-template-runner bindings-smoke install-hooks clean tokens tokens-check
 
 help:
@@ -18,6 +18,7 @@ help:
 	@echo "  make test-android-java  — test the dynamic Android Java resolver"
 	@echo "  make test-android-launch-lifecycle — test persistent emulator service launch"
 	@echo "  make test-android-release-provenance — test Android release source/version/hash binding"
+	@echo "  make test-android-signing — test effective release-signing inputs with real Gradle"
 	@echo "  make fmt                — cargo fmt --all"
 	@echo "  make fmt-check          — cargo fmt --all -- --check (fails on diff)"
 	@echo "  make clippy             — cargo clippy --workspace --all-targets -- -D warnings"
@@ -43,7 +44,7 @@ help:
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-runner test-android-ci test-ios-host-health test-ios-template-runner
+check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-runner test-android-ci test-ios-host-health test-ios-template-runner
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -94,6 +95,9 @@ test-android-launch-lifecycle:
 
 test-android-release-provenance:
 	./tools/tests/android-release-provenance-test.sh
+
+test-android-signing:
+	bash tools/tests/android-release-signing-test.sh
 
 # The same Android gate runs locally and in CI. Host mode needs no device;
 # full mode also requires a booted API 36 device with 16 KB pages.

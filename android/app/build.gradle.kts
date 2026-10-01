@@ -26,6 +26,16 @@ private val VERSION_CODE_MINOR_MULTIPLIER = 100L
 private val VERSION_CODE_MAJOR_MULTIPLIER = 10_000L
 private val MAX_ANDROID_VERSION_CODE = 2_100_000_000L
 
+fun releaseSigningInput(name: String): String? =
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+        ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+
+// Resolve once so preflight validates exactly what Android signing consumes.
+val releaseKeystorePath = releaseSigningInput("PAPERCUP_RELEASE_KEYSTORE")
+val releaseStorePassword = releaseSigningInput("PAPERCUP_RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias = releaseSigningInput("PAPERCUP_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = releaseSigningInput("PAPERCUP_RELEASE_KEY_PASSWORD") ?: releaseStorePassword
+
 private fun androidVersionCode(versionName: String): Int {
     // Prerelease/build metadata changes the display name, not the upgrade
     // ordering. Keep the numeric MAJOR.MINOR.PATCH portion monotonic and
@@ -132,21 +142,16 @@ android {
     //   ~/.papercusp/secrets/papercup-android-release.keystore
     //   ~/.gradle/gradle.properties → PAPERCUP_RELEASE_KEYSTORE{,_PASSWORD},
     //   PAPERCUP_RELEASE_KEY_ALIAS (see docs/BUILD.md § secrets).
-    // When absent (CI, fresh clone) release assembly still succeeds and
-    // produces an unsigned artifact — signing never breaks a build.
-    val releaseKeystorePath = providers.gradleProperty("PAPERCUP_RELEASE_KEYSTORE").orNull
-        ?: System.getenv("PAPERCUP_RELEASE_KEYSTORE")
-    val hasReleaseKeystore = releaseKeystorePath != null && file(releaseKeystorePath).exists()
+    // Debug/host checks need no signing inputs. Release assembly and bundle
+    // entry points require validateReleaseSigning below.
+    val hasReleaseKeystore = releaseKeystorePath != null && file(releaseKeystorePath).isFile
     signingConfigs {
         if (hasReleaseKeystore) {
             create("release") {
                 storeFile = file(releaseKeystorePath!!)
-                storePassword = providers.gradleProperty("PAPERCUP_RELEASE_KEYSTORE_PASSWORD").orNull
-                    ?: System.getenv("PAPERCUP_RELEASE_KEYSTORE_PASSWORD")
-                keyAlias = providers.gradleProperty("PAPERCUP_RELEASE_KEY_ALIAS").orNull
-                    ?: System.getenv("PAPERCUP_RELEASE_KEY_ALIAS") ?: "papercup"
-                keyPassword = providers.gradleProperty("PAPERCUP_RELEASE_KEY_PASSWORD").orNull
-                    ?: System.getenv("PAPERCUP_RELEASE_KEY_PASSWORD") ?: storePassword
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias ?: "papercup"
+                keyPassword = releaseKeyPassword
             }
         }
     }
@@ -181,24 +186,18 @@ android {
     // build script; nothing extra to declare.
 }
 
-val releaseSigningInputNames =
-    listOf(
-        "PAPERCUP_RELEASE_KEYSTORE",
-        "PAPERCUP_RELEASE_KEYSTORE_PASSWORD",
-        "PAPERCUP_RELEASE_KEY_ALIAS",
-        "PAPERCUP_RELEASE_KEY_PASSWORD",
-    )
-
 val validateReleaseSigning by
     tasks.registering {
         group = "verification"
-        description = "Fail unless every external Android release-signing input is configured."
+        description = "Require the effective Android release-signing inputs and keystore."
         doLast {
             val values =
-                releaseSigningInputNames.associateWith { name ->
-                    providers.gradleProperty(name).orNull
-                        ?: System.getenv(name)?.takeIf { it.isNotBlank() }
-                }
+                mapOf(
+                    "PAPERCUP_RELEASE_KEYSTORE" to releaseKeystorePath,
+                    "PAPERCUP_RELEASE_KEYSTORE_PASSWORD" to releaseStorePassword,
+                    "PAPERCUP_RELEASE_KEY_ALIAS" to releaseKeyAlias,
+                    "PAPERCUP_RELEASE_KEY_PASSWORD" to releaseKeyPassword,
+                )
             val missing = values.filterValues { it == null }.keys
             require(missing.isEmpty()) {
                 "Android release signing preflight failed; missing external inputs: ${missing.joinToString(", ")}"

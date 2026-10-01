@@ -142,7 +142,7 @@ if [[ "$mode" != connected ]]; then
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace --all-targets
     make bindings-smoke test-android-java test-android-launch-lifecycle \
-        test-android-release-provenance test-android-runner test-android-ci
+        test-android-release-provenance test-android-signing test-android-runner test-android-ci
     # build-android.sh verifies all four packaged ABIs, UniFFI checksums and
     # 16 KB ELF/ZIP alignment; it deliberately does not launch a device.
     make bindings-kotlin

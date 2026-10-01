@@ -57,7 +57,7 @@ truth; native projects consume generated bindings + the cross-compiled core.
 | Apple signing identity + provisioning profile | `~/Library/MobileDevice/Provisioning Profiles/` | Phase 10 store submission. |
 | Sentry DSN | iOS `Info.plist:SENTRY_DSN` | No-op without DSN. |
 | FCM service-account JSON | server-side, `~/.papercusp/fcm-service-account.json` | Backend agent territory. |
-| Android release keystore | `~/.papercusp/secrets/papercup-android-release.keystore`; credentials in `~/.gradle/gradle.properties` (`PAPERCUP_RELEASE_KEYSTORE`, `PAPERCUP_RELEASE_KEYSTORE_PASSWORD`, `PAPERCUP_RELEASE_KEY_ALIAS`, optional `PAPERCUP_RELEASE_KEY_PASSWORD`) | Release APK/AAB signing (`signingConfigs` in `app/build.gradle.kts`). Absent ⇒ build still succeeds, artifact is unsigned. Generated 2026-07-16, RSA-4096, cert SHA-256 `efeb65c4…912b93`. ⚠ Back this keystore up — losing it means new installs can't update existing ones outside Play App Signing. |
+| Android release keystore | `~/.papercusp/secrets/papercup-android-release.keystore`; credentials in `~/.gradle/gradle.properties` (`PAPERCUP_RELEASE_KEYSTORE`, `PAPERCUP_RELEASE_KEYSTORE_PASSWORD`, `PAPERCUP_RELEASE_KEY_ALIAS`, optional `PAPERCUP_RELEASE_KEY_PASSWORD`) | Release APK/AAB signing (`signingConfigs` in `app/build.gradle.kts`). An absent or blank key password uses the keystore password. Release assembly/bundling rejects missing required inputs or a missing keystore; debug/host checks do not require signing. Generated 2026-07-16, RSA-4096, cert SHA-256 `efeb65c4…912b93`. ⚠ Back this keystore up — losing it means new installs can't update existing ones outside Play App Signing. |
 
 Templates exist at `android/app/secrets-template/google-services.json.example`.
 
