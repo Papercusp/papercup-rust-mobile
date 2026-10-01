@@ -712,6 +712,26 @@ pub struct AttentionFeed {
     pub work_item_count: i64,
 }
 
+pub struct FleetActivitySummary {
+    pub agents: u64,
+    pub available_agents: u64,
+    pub fleets: Vec<FleetActivityRow>,
+    pub pots: Vec<PotActivityRow>,
+}
+
+pub struct FleetActivityRow {
+    pub slug: String,
+    pub members: u64,
+    pub available_agents: u64,
+    pub leader: Option<String>,
+}
+
+pub struct PotActivityRow {
+    pub slug: String,
+    pub agents: u64,
+    pub available_agents: u64,
+}
+
 pub struct AttentionSystemAlert {
     pub id: String,
     pub kind: String,
@@ -1485,6 +1505,40 @@ impl OperatorClient {
             detail: "tokio join".into(),
         })??;
         Ok(())
+    }
+
+    /// Current fleet/pot presence from the existing monitoring route.
+    pub async fn fleet_activity(&self) -> Result<Option<FleetActivitySummary>, ApiError> {
+        let core = self.inner.clone();
+        let snapshot = rt()
+            .spawn(async move { core.monitoring().await })
+            .await
+            .map_err(|_| ApiError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(snapshot.fleets.map(|activity| FleetActivitySummary {
+            agents: activity.agents,
+            available_agents: activity.live,
+            fleets: activity
+                .fleets
+                .into_iter()
+                .map(|fleet| FleetActivityRow {
+                    slug: fleet.fleet_slug,
+                    members: fleet.members,
+                    available_agents: fleet.live,
+                    leader: fleet.leader,
+                })
+                .collect(),
+            pots: activity
+                .pots
+                .into_iter()
+                .map(|pot| PotActivityRow {
+                    slug: pot.pot_slug,
+                    agents: pot.agents,
+                    available_agents: pot.live,
+                })
+                .collect(),
+        }))
     }
 
     /// `GET /api/device/attention` — the Inbox attention feed (D-002).

@@ -882,6 +882,47 @@ async fn attention_preserves_system_alerts_when_other_layers_are_empty() {
 }
 
 #[tokio::test]
+async fn monitoring_decodes_current_fleets_and_pots() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/monitoring"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "fleets": {
+                "agents": 3, "live": 2,
+                "fleets": [{"fleetSlug": "release", "members": 2, "live": 1, "leader": "leader"}],
+                "pots": [{"potSlug": "papercusp", "agents": 3, "live": 2}]
+            },
+            "releaseGate": null, "pool": null, "connection": null,
+            "alerts": [], "generatedAtMs": 1_700_000_000_000i64
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let snapshot = client.monitoring().await.unwrap();
+    assert_eq!(snapshot.generated_at_ms, 1_700_000_000_000);
+    let activity = snapshot.fleets.unwrap();
+    assert_eq!(activity.agents, 3);
+    assert_eq!(activity.live, 2);
+    assert_eq!(activity.fleets[0].fleet_slug, "release");
+    assert_eq!(activity.fleets[0].leader.as_deref(), Some("leader"));
+    assert_eq!(activity.pots[0].pot_slug, "papercusp");
+}
+
+#[tokio::test]
+async fn monitoring_unavailable_tile_stays_unknown() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/monitoring"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "fleets": null, "generatedAtMs": 1_700_000_000_000i64
+        })))
+        .mount(&server)
+        .await;
+    assert!(client.monitoring().await.unwrap().fleets.is_none());
+}
+
+#[tokio::test]
 async fn plans_list_sends_filters_and_decodes_summaries() {
     let (client, server) = paired_client().await;
     Mock::given(method("GET"))

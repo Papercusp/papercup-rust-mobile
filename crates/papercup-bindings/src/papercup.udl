@@ -348,6 +348,26 @@ dictionary AttentionSystemAlert {
     string body;
 };
 
+dictionary FleetActivitySummary {
+    u64 agents;
+    u64 available_agents;
+    sequence<FleetActivityRow> fleets;
+    sequence<PotActivityRow> pots;
+};
+
+dictionary FleetActivityRow {
+    string slug;
+    u64 members;
+    u64 available_agents;
+    string? leader;
+};
+
+dictionary PotActivityRow {
+    string slug;
+    u64 agents;
+    u64 available_agents;
+};
+
 dictionary AttentionWorkItem {
     string id;
     string kind;
@@ -526,6 +546,9 @@ interface OperatorClient {
     /// canonical attention groups + the work_items-native actionable layer.
     [Throws=ApiError, Async]
     AttentionFeed attention();
+
+    [Async, Throws=ApiError]
+    FleetActivitySummary? fleet_activity();
 
     /// `GET /api/device/plans` — plan summaries. harness=null → All Pots.
     [Throws=ApiError, Async]

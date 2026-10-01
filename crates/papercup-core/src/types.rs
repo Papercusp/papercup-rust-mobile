@@ -142,6 +142,40 @@ pub struct RunningResp {
     pub harnesses: Vec<RunningHarnessPhase>,
 }
 
+// Current presence-based activity from the existing device monitoring route.
+// `live` means available presence, not that an agent is currently executing.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitoringSnapshot {
+    pub fleets: Option<FleetActivitySummary>,
+    pub generated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FleetActivitySummary {
+    pub agents: u64,
+    pub live: u64,
+    pub fleets: Vec<FleetActivityRow>,
+    pub pots: Vec<PotActivityRow>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FleetActivityRow {
+    pub fleet_slug: String,
+    pub members: u64,
+    pub live: u64,
+    pub leader: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PotActivityRow {
+    pub pot_slug: String,
+    pub agents: u64,
+    pub live: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunningScan {
     pub id: i64,
