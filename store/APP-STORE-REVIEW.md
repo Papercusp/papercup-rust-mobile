@@ -88,3 +88,39 @@ make release-ios ACTION=validate
 
 Upload only after the archive, metadata, screenshots, reviewer access, and
 licensing clearance have all passed their release checks.
+
+## Android / Google Play reviewer preparation
+
+Use the shared pairing and privacy guidance above for Android, with these
+platform-specific requirements. This section is a draft; reviewer access has
+not been provisioned or verified, and no Google Play submission is recorded.
+
+- Bind the final instructions and screenshots to the signed APK/AAB recorded
+  in `android/app/build/outputs/papercusp-release-provenance.json`, including
+  package, version code, source commit, artifact hashes and signing identity.
+- Provide a sanitized, HTTPS-reachable paired operator for the review window.
+  From desktop Settings → Remote access → Pair a phone, generate the pairing
+  payload. In Android, use **Scan QR** or the paste-payload action. Verify the
+  complete path from a clean install, including paste when camera access is
+  denied; the on-screen desktop guidance must agree with the supplied notes.
+- Supply working access through Play Console's app-access surface. Production
+  pair tokens expire and are single-use, so an old payload in static notes is
+  insufficient. Recheck the approved reviewer access path throughout the review
+  window and retain its counterpart version and sanitized journey evidence.
+- Verify inbox, chat, plans, fleet/pot availability, approvals and notifications
+  on that environment. Exercise both voice routes: desktop-local voice and
+  separately consented cloud voice, followed by consent revocation in Settings.
+  Record permission denial and offline recovery behavior without promising
+  that every feature works when its required permission is denied.
+- Use the final `store/DATA-SAFETY.md` answers only after the provider-account
+  and exact-candidate checks pass. Include Firebase Messaging/Crashlytics,
+  optional ElevenLabs processing, the merged permissions, and publicly
+  reachable privacy/support/deletion guidance.
+- Capture the candidate's Android phone screenshots and 1024 × 500 feature
+  graphic specified in `store/LISTING.md`. Document distribution rights and
+  required third-party notices; record the corresponding source location and
+  license obligations for the shipped GPL-3.0-or-later build.
+
+Candidate bytes, reviewer access, provider settings, final disclosures, assets
+and licensing evidence remain acceptance requirements. A launcher smoke test
+does not verify this reviewer journey or the physical-phone/Play-install matrix.

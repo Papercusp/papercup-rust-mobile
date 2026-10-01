@@ -139,7 +139,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
         when (mode) {
             PairMode.Choose -> {
                 Text(
-                    "On your desktop: Settings → Mobile Access → \"Pair new device\" → scan the QR code shown.",
+                    "On your desktop: Settings → Remote access → Pair a phone, then scan the QR code shown.",
                     modifier = Modifier.widthIn(max = 320.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = PapercupColors.TextMuted,
