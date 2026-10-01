@@ -257,6 +257,9 @@ impl OperatorClient {
             let body = body.clone();
             async move {
                 let mut req = self.http.request(method, &url).bearer_auth(&token);
+                if path == "/api/device/operator/converse" {
+                    req = req.timeout(std::time::Duration::from_secs(90));
+                }
                 if let (BodyKind::Json, Some(b)) = (body_kind, body) {
                     req = req.json(&b);
                 }
@@ -533,28 +536,19 @@ impl OperatorClient {
         mut on_delta: impl FnMut(&str),
     ) -> Result<(), ApiError> {
         use futures_util::StreamExt;
-        let token = match &self.device_token {
-            Some(t) => t.clone(),
-            None => return Err(ApiError::Unauthorized),
-        };
         let body = serde_json::to_value(ConverseBody {
             text: text.to_string(),
             modality: "text".to_string(),
             trigger: "user_message".to_string(),
         })
         .expect("ConverseBody serialises");
-        let url = format!("{}/api/device/operator/converse", self.base_url());
         let resp = self
-            .http
-            .post(&url)
-            .bearer_auth(&token)
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(90))
-            .send()
+            .request(
+                reqwest::Method::POST,
+                "/api/device/operator/converse",
+                Some(body),
+            )
             .await?;
-        if !resp.status().is_success() {
-            return Err(into_api_error(resp).await);
-        }
         // Incrementally parse the SSE frames. `delta` events carry
         // `{"text": "..."}` fragments; an `error` event carries
         // `{"message": "..."}` and fails the send.

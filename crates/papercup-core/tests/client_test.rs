@@ -1310,3 +1310,72 @@ async fn operator_converse_accepts_crlf_frames_and_preserves_unicode() {
         .unwrap();
     assert_eq!(text, "héllo 🌍");
 }
+
+#[tokio::test]
+async fn operator_converse_uses_fallback_before_stream_starts() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/device/operator/converse"))
+        .and(bearer_token(TOKEN))
+        .and(body_json(json!({"text":"hello", "modality":"text", "trigger":"user_message"})))
+        .respond_with(ResponseTemplate::new(200)
+            .insert_header("content-type", "text/event-stream")
+            .set_body_string("event: delta\ndata: {\"text\":\"fallback reply\"}\n\nevent: done\ndata: {}\n\n"))
+        .expect(1)
+        .mount(&server).await;
+    let client =
+        OperatorClient::new_with_fallback("http://0.0.0.0:1", server.uri(), Some(TOKEN.into()));
+    let mut text = String::new();
+    client
+        .operator_converse_stream("hello", |delta| text.push_str(delta))
+        .await
+        .unwrap();
+    assert_eq!(text, "fallback reply");
+    assert_eq!(client.base_url(), server.uri());
+    server.verify().await;
+}
+
+#[tokio::test]
+async fn operator_converse_does_not_retry_rejected_or_started_streams() {
+    for (status, response) in [
+        (403, "{}"),
+        (
+            200,
+            "event: delta\ndata: {\"text\":\"partial\"}\n\nevent: delta\ndata: invalid\n\n",
+        ),
+    ] {
+        let primary = MockServer::start().await;
+        let fallback = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/device/operator/converse"))
+            .respond_with(
+                ResponseTemplate::new(status)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(response),
+            )
+            .expect(1)
+            .mount(&primary)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&fallback)
+            .await;
+        let client =
+            OperatorClient::new_with_fallback(primary.uri(), fallback.uri(), Some(TOKEN.into()));
+        let mut text = String::new();
+        let result = client
+            .operator_converse_stream("hello", |delta| text.push_str(delta))
+            .await;
+        if status == 403 {
+            assert!(matches!(result, Err(ApiError::Unauthorized)));
+            assert!(text.is_empty());
+        } else {
+            assert!(matches!(result, Err(ApiError::Decode(_))));
+            assert_eq!(text, "partial");
+        }
+        assert_eq!(client.base_url(), primary.uri());
+        primary.verify().await;
+        fallback.verify().await;
+    }
+}
