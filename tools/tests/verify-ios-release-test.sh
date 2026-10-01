@@ -72,6 +72,21 @@ printf '\nTODO: replace this before release\n' >> "$TMP_ROOT/fixture/store/LISTI
 expect_failure "placeholder marker"
 
 copy_fixture
+printf '\nContact <pending@example.com>\n' >> "$TMP_ROOT/fixture/store/LISTING.md"
+expect_failure "placeholder marker"
+
+copy_fixture
+cat >> "$TMP_ROOT/fixture/.github/workflows/ci.yml" <<'YAML_FIXTURE'
+      - name: Harmless heredoc followed by an email and redirection
+        run: |
+          cat <<'SCRIPT'
+          portable content
+          SCRIPT
+          echo 'fixture@local' >> output.txt
+YAML_FIXTURE
+PAPERCUP_IOS_RELEASE_ROOT="$TMP_ROOT/fixture" "$VERIFY"
+
+copy_fixture
 sed -i.bak 's/MARKETING_VERSION: "1.0.0"/MARKETING_VERSION: "0.1.0"/' \
     "$TMP_ROOT/fixture/ios/project.yml"
 expect_failure "marketing version 1.0.0"

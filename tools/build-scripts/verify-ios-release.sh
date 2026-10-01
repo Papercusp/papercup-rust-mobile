@@ -150,7 +150,9 @@ require("https://papercusp.com/mobile/privacy" in all_release_text,
         "release materials must contain the final public privacy URL")
 require("https://papercusp.com/mobile/support" in all_release_text,
         "release materials must contain the final public support URL")
-markers = re.compile(r"\b(TODO|TBD|CHANGEME|YOUR_TEAM_ID|DRAFT)\b|<[^>]+@[^>]+>", re.IGNORECASE)
+# An angle-bracket email placeholder is one token on one line. Shell
+# heredocs must not consume later Actions references and redirections.
+markers = re.compile(r"\b(TODO|TBD|CHANGEME|YOUR_TEAM_ID|DRAFT)\b|<[^\r\n<>]+@[^\r\n<>]+>", re.IGNORECASE)
 marker = markers.search(all_release_text)
 require(marker is None, f"release materials contain placeholder marker: {marker.group(0) if marker else ''}")
 
