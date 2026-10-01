@@ -23,20 +23,6 @@ import org.json.JSONObject
 import uniffi.papercup.AttentionFeed
 import uniffi.papercup.AttentionWorkItem
 
-/**
- * A single flattened attention row, parsed defensively from
- * [AttentionFeed.groupsJson]. Each group in that JSON carries an `items`
- * array; we flatten every group's items into this list.
- */
-private data class AttentionRow(
-    val title: String,
-    val body: String,
-    val status: String,
-    val importance: String,
-    val harnessSlug: String?,
-    val needsHuman: Boolean,
-)
-
 private fun parseAttentionRows(json: String?): List<AttentionRow> {
     if (json.isNullOrBlank()) return emptyList()
     return try {
@@ -106,14 +92,12 @@ fun InboxScreen(
 
     val attentionRows = remember(feed) { parseAttentionRows(feed?.groupsJson) }
     val workItems: List<AttentionWorkItem> = feed?.workItems ?: emptyList()
+    val systemRows = remember(feed) { feed?.systemAlerts?.map(::systemAlertRow) ?: emptyList() }
+    val presentation = remember(feed, attentionRows) { inboxPresentation(feed, attentionRows.size) }
 
     val subtitle = when {
         loading && feed == null -> "Loading…"
-        else -> {
-            val needs = attentionRows.size
-            val work = workItems.size
-            "$needs needs you · $work work items"
-        }
+        else -> presentation.subtitle
     }
 
     Scaffold(
@@ -130,10 +114,12 @@ fun InboxScreen(
             when {
                 loading && feed == null -> LoadingState()
                 error != null -> ErrorState(error!!)
-                attentionRows.isEmpty() && workItems.isEmpty() -> EmptyState()
+                presentation.contentUnavailable -> ErrorState("Some inbox items could not be displayed. Refresh to try again.")
+                presentation.isEmpty -> EmptyState()
                 else -> InboxList(
                     attentionRows = attentionRows,
                     workItems = workItems,
+                    systemRows = systemRows,
                     onSelectHarness = onSelectHarness,
                 )
             }
@@ -207,6 +193,7 @@ private fun EmptyState() {
 private fun InboxList(
     attentionRows: List<AttentionRow>,
     workItems: List<AttentionWorkItem>,
+    systemRows: List<AttentionRow>,
     onSelectHarness: (String) -> Unit,
 ) {
     LazyColumn(
@@ -214,6 +201,12 @@ private fun InboxList(
         contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (systemRows.isNotEmpty()) {
+            item { SectionLabel("System alerts") }
+            items(systemRows) { row ->
+                AttentionCard(row = row, onSelectHarness = onSelectHarness)
+            }
+        }
         if (attentionRows.isNotEmpty()) {
             item { SectionLabel("Needs you") }
             items(attentionRows) { row ->

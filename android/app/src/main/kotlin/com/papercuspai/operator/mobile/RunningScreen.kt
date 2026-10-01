@@ -3,54 +3,24 @@ package com.papercuspai.operator.mobile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.papercuspai.operator.mobile.theme.PapercupCard
 import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
-import com.papercuspai.operator.mobile.theme.PapercupPanel
 import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
-import com.papercuspai.operator.mobile.theme.PapercupStatusChip
-import kotlinx.coroutines.launch
-import java.util.Locale
-import uniffi.papercup.ApiException
-import uniffi.papercup.Running
-import uniffi.papercup.RunningScan
-import uniffi.papercup.RunningSnapshot
+import kotlinx.coroutines.CancellationException
+import uniffi.papercup.FleetActivitySummary
+
 private sealed interface RunningState {
     data object Loading : RunningState
-    data class Ready(val snapshot: RunningSnapshot) : RunningState
+    data class Ready(val activity: FleetActivitySummary?) : RunningState
     data class Failed(val message: String) : RunningState
 }
 
@@ -61,247 +31,79 @@ fun RunningScreen(
     onSelectHarness: (String) -> Unit,
 ) {
     var state by remember { mutableStateOf<RunningState>(RunningState.Loading) }
-    val nowMs = remember(liveTick) { System.currentTimeMillis() }
-
     LaunchedEffect(creds.deviceToken, liveTick) {
         state = RunningState.Loading
         state = try {
-            RunningState.Ready(creds.client().runningSnapshot())
-        } catch (e: ApiException) {
-            RunningState.Failed(HumanError.describe(e, "Loading running work"))
-        } catch (t: Throwable) {
-            RunningState.Failed(HumanError.describe(t, "Loading running work"))
+            RunningState.Ready(creds.client().fleetActivity())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            RunningState.Failed(HumanError.describe(error, "Loading fleet activity"))
         }
     }
 
     Scaffold(
-        topBar = {
-            PapercupScreenHeader(
-                title = "Now running",
-                subtitle = if (state is RunningState.Loading) "Loading…" else null,
-            )
-        },
+        topBar = { PapercupScreenHeader(title = "Fleet activity") },
         containerColor = PapercupColors.Ink,
     ) { padding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(PapercupColors.ScreenGradient)
-                .padding(padding)
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().background(PapercupColors.ScreenGradient)
+                .padding(padding).padding(horizontal = 16.dp),
             contentPadding = PaddingValues(top = 12.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                SectionLabel("Operator")
-                val scan = (state as? RunningState.Ready)?.snapshot?.scan
-                if (scan == null) {
-                    PapercupPanel(contentPadding = PaddingValues(16.dp)) {
-                        PapercupMetaText("No active scan.")
-                    }
-                } else {
-                    RunningScanCard(creds = creds, scan = scan, nowMs = nowMs)
-                }
-            }
-
-            when (val s = state) {
+            when (val current = state) {
                 RunningState.Loading -> item {
-                    Box(Modifier.fillMaxWidth().padding(top = 16.dp), contentAlignment = Alignment.Center) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(strokeWidth = 2.dp)
-                            Spacer(Modifier.width(12.dp))
-                            Text("Loading…", style = MaterialTheme.typography.bodySmall)
-                        }
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
                 }
                 is RunningState.Failed -> item {
                     PapercupCard(accent = PapercupColors.ErrorSoft) {
-                        Text(
-                            s.message,
-                            color = PapercupColors.Error,
-                            fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                        Text(current.message, color = PapercupColors.Error)
                     }
                 }
                 is RunningState.Ready -> {
-                    val harnesses = s.snapshot.harnesses
-                    item { SectionLabel("Harnesses (${harnesses.size})") }
-                    if (harnesses.isEmpty()) {
-                        item {
-                            PapercupPanel(contentPadding = PaddingValues(16.dp)) {
-                                PapercupMetaText("No harnesses currently running.")
+                    val activity = current.activity
+                    item {
+                        PapercupCard {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(fleetAvailabilityText(activity), style = MaterialTheme.typography.titleMedium)
+                                if (activity != null) {
+                                    PapercupMetaText("Availability means recently connected; agents may be idle.")
+                                }
                             }
                         }
-                    } else {
-                        items(harnesses) { running ->
-                            RunningHarnessRow(running, nowMs = nowMs, onClick = { onSelectHarness(running.harnessSlug) })
+                    }
+                    if (activity != null) {
+                        item { Text("Fleets", style = MaterialTheme.typography.titleMedium) }
+                        if (activity.fleets.isEmpty()) {
+                            item { PapercupMetaText("No fleet presence reported.") }
+                        }
+                        items(activity.fleets, key = { it.slug }) { fleet ->
+                            PapercupCard {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(fleet.slug, style = MaterialTheme.typography.titleMedium)
+                                    PapercupMetaText("${fleet.availableAgents} available · ${fleet.members} members")
+                                    fleet.leader?.let { PapercupMetaText("Leader: $it") }
+                                }
+                            }
+                        }
+                        item { Text("Pots", style = MaterialTheme.typography.titleMedium) }
+                        if (activity.pots.isEmpty()) {
+                            item { PapercupMetaText("No pot presence reported.") }
+                        }
+                        items(activity.pots, key = { it.slug }) { pot ->
+                            PapercupCard(modifier = Modifier.clickable { onSelectHarness(pot.slug) }) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(pot.slug, style = MaterialTheme.typography.titleMedium)
+                                    PapercupMetaText("${pot.availableAgents} available · ${pot.agents} agents")
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text.uppercase(),
-        modifier = Modifier.padding(bottom = 8.dp),
-        style = MaterialTheme.typography.labelSmall,
-        color = PapercupColors.TextFaint,
-    )
-}
-
-@Composable
-private fun RunningScanCard(creds: DeviceCredentials, scan: RunningScan, nowMs: Long) {
-    val scope = rememberCoroutineScope()
-    var busy by remember { mutableStateOf(false) }
-    var paused by remember { mutableStateOf(false) }
-    var pauseError by remember { mutableStateOf<String?>(null) }
-
-    PapercupPanel(contentPadding = PaddingValues(16.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PapercupStatusChip(
-                    text = "scanning",
-                    containerColor = PapercupColors.AccentSoft,
-                    contentColor = PapercupColors.AccentStrong,
-                )
-                PapercupStatusChip(
-                    text = relativeTime(scan.startedAt, nowMs),
-                    containerColor = PapercupColors.WarningSoft,
-                    contentColor = PapercupColors.Warning,
-                )
-            }
-            Text(
-                text = scan.requestText ?: "(no request text)",
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium,
-                color = PapercupColors.Text,
-            )
-            PapercupMetaText(formatCost(scan.costUsd))
-            if (paused) {
-                PapercupMetaText("Paused — current scan will finish, no new dispatches.")
-            } else {
-                PapercupStatusChip(
-                    text = if (busy) "Pausing…" else "Pause operator",
-                    modifier = Modifier.fillMaxWidth(),
-                    containerColor = PapercupColors.WarningSoft,
-                    contentColor = PapercupColors.Warning,
-                    onClick = {
-                        if (busy) return@PapercupStatusChip
-                        busy = true
-                        pauseError = null
-                        scope.launch {
-                            try {
-                                creds.client().pauseSet(true)
-                                paused = true
-                            } catch (t: Throwable) {
-                                pauseError = HumanError.describe(t, "Pausing the operator")
-                            } finally {
-                                busy = false
-                            }
-                        }
-                    },
-                )
-            }
-            pauseError?.let { message ->
-                Text(
-                    text = message,
-                    color = PapercupColors.Error,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RunningHarnessRow(running: Running, nowMs: Long, onClick: () -> Unit) {
-    val total = running.totalFeatures
-    val passedPct = if (total > 0) running.passedCount.toFloat() / total.toFloat() else 0f
-
-    PapercupPanel(
-        modifier = Modifier.clickable(onClick = onClick),
-        contentPadding = PaddingValues(12.dp),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(running.harnessSlug, style = MaterialTheme.typography.titleSmall)
-                PapercupMetaText(running.phase.uppercase())
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(running.status, color = PapercupColors.AccentStrong, style = MaterialTheme.typography.labelSmall)
-                PapercupMetaText("iter ${running.iteration}")
-                PapercupMetaText("${running.passedCount}/$total done")
-                if (running.blockedCount > 0) {
-                    PapercupMetaText("${running.blockedCount} blocked")
-                }
-                Spacer(Modifier.weight(1f))
-                running.lastActiveTs?.let { lastActiveTs ->
-                    PapercupMetaText(relativeTime(lastActiveTs, nowMs))
-                }
-            }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(PapercupColors.InkRaised),
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(passedPct)
-                        .height(6.dp)
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(PapercupColors.Teal, PapercupColors.Accent, PapercupColors.Gold),
-                            ),
-                        ),
-                )
-            }
-            if (running.activeRoles.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    running.activeRoles.forEach { role ->
-                        PapercupStatusChip(
-                            text = role,
-                            containerColor = Color(0x1F94A3B8),
-                            contentColor = PapercupColors.TextMuted,
-                            borderColor = PapercupColors.StrokeSoft,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun formatCost(costUsd: Double): String =
-    "$" + String.format(Locale.US, "%.4f", costUsd)
-
-private fun relativeTime(timestamp: Long, nowMs: Long): String {
-    val timestampMs = if (timestamp < 10_000_000_000L) timestamp * 1_000L else timestamp
-    val seconds = ((nowMs - timestampMs) / 1_000L).coerceAtLeast(0L)
-    return when {
-        seconds < 60L -> "${seconds}s"
-        seconds < 3_600L -> "${seconds / 60L}m"
-        seconds < 86_400L -> "${seconds / 3_600L}h"
-        else -> "${seconds / 86_400L}d"
     }
 }

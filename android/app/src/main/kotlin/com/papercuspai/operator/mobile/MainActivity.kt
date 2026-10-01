@@ -1187,7 +1187,7 @@ fun HarnessListScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 PauseButton(creds = creds, liveTick = liveTick)
                                 PapercupStatusChip(
-                                    text = "runs ▸",
+                                    text = "fleet activity ▸",
                                     containerColor = PapercupColors.AccentSoft,
                                     contentColor = PapercupColors.AccentStrong,
                                     onClick = onOpenRunning,
