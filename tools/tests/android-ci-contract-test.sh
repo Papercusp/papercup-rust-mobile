@@ -14,6 +14,11 @@ assert 'make check-android-host' in android
 assert 'secrets.PAPERCUP_ANDROID_GOOGLE_SERVICES_JSON' in android, 'existing Firebase app configuration is not injected'
 assert 'bash tools/run-android-checks.sh connected' in android
 assert 'api-level: 36' in android and 'target: google_apis_ps16k' in android
+assert android.count('bash tools/run-android-checks.sh prepare-ci') == 2, 'CI must bound the working set before SDK setup and before native execution'
+image = "'system-images;android-36;google_apis_ps16k;x86_64'"
+assert image in android and android.index(image) < android.index('make check-android-host'), 'system-image precondition must run before the expensive build'
+assert 'ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973' in android, 'runner default NDK must not override the pinned toolchain'
+assert 'android-ci-attempt/apk-sha256.txt' in android, 'failed native attempts must identify the tested APK'
 sdk_setup = android.split('uses: android-actions/setup-android@v3', 1)[1].split('\n      -', 1)[0]
 assert '          packages: platform-tools\n' in sdk_setup, 'SDK bootstrap must not request the retired tools package'
 assert '          mkdir -p android-ci-attempt\n' in android, 'bootstrap failures need source-bound attempt evidence'
@@ -37,12 +42,14 @@ from pathlib import Path
 text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 (out / 'retired-sdk.yml').write_text(text.replace('          packages: platform-tools\n', '          packages: tools platform-tools\n'))
 (out / 'missing-early-evidence.yml').write_text(text.replace('          mkdir -p android-ci-attempt\n', ''))
+(out / 'missing-working-set.yml').write_text(text.replace('          bash tools/run-android-checks.sh prepare-ci\n', ''))
+(out / 'late-image.yml').write_text(text.replace(" 'system-images;android-36;google_apis_ps16k;x86_64'", ''))
 PY
-    for fixture in "$TMP_ROOT/retired-sdk.yml" "$TMP_ROOT/missing-early-evidence.yml"; do
+    for fixture in "$TMP_ROOT"/*.yml; do
         if bash "$0" "$fixture" > "$TMP_ROOT/output" 2>&1; then
             echo "FAIL: CI regression accepted: $fixture" >&2
             exit 1
         fi
     done
-    echo 'Android CI bootstrap/evidence mutation controls: 2 rejected'
+    echo 'Android CI bootstrap/storage/evidence mutation controls: 4 rejected'
 fi

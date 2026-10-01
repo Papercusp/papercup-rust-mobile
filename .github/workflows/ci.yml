@@ -150,7 +150,9 @@ jobs:
       - name: Install pinned Android build tools
         if: steps.android-proof.outputs.cache-hit != 'true'
         run: |
-          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
+          bash tools/run-android-checks.sh prepare-ci
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973' 'system-images;android-36;google_apis_ps16k;x86_64'
           cargo install cargo-ndk --locked --version 4.1.2
 
       - name: Run Rust, bindings, ABI, alignment, unit, lint and privacy checks
@@ -164,6 +166,13 @@ jobs:
           }
           printf '%s' "$PAPERCUP_ANDROID_GOOGLE_SERVICES_JSON" > android/app/google-services.json
           make check-android-host
+
+      - name: Prepare verified artifacts and native runtime working set
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        run: |
+          sha256sum android/app/build/outputs/apk/debug/app-debug.apk > android-ci-attempt/apk-sha256.txt
+          bash tools/run-android-checks.sh prepare-ci
+          "$ANDROID_HOME/emulator/emulator" -version > android-ci-attempt/emulator-version.txt
 
       - name: Enable KVM for the native test runtime
         if: steps.android-proof.outputs.cache-hit != 'true'
