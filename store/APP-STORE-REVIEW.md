@@ -103,10 +103,15 @@ not been provisioned or verified, and no Google Play submission is recorded.
   payload. In Android, use **Scan QR** or the paste-payload action. Verify the
   complete path from a clean install, including paste when camera access is
   denied; the on-screen desktop guidance must agree with the supplied notes.
-- Supply working access through Play Console's app-access surface. Production
+- Supply working access through Play Console's app-access surface. Google's
+  [review-access requirements](https://support.google.com/googleplay/android-developer/answer/15748846)
+  require reusable access that stays available across locations, with English
+  instructions and a static URL for QR/barcode access resources. Production
   pair tokens expire and are single-use, so an old payload in static notes is
-  insufficient. Recheck the approved reviewer access path throughout the review
-  window and retain its counterpart version and sanitized journey evidence.
+  insufficient. Exercise the reviewer path repeatedly from separate clean
+  installs without relying on expired or already-redeemed tokens. Recheck the
+  approved path throughout the review window and retain its counterpart version
+  and sanitized journey evidence.
 - Verify inbox, chat, plans, fleet/pot availability, approvals and notifications
   on that environment. Exercise both voice routes: desktop-local voice and
   separately consented cloud voice, followed by consent revocation in Settings.
