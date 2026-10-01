@@ -38,18 +38,27 @@ exact-candidate acceptance matrix.
 
 ## Data types
 
-Google's "shared" column is **No** below because Firebase, ElevenLabs, and their
-subprocessors act as service providers for app functionality rather than using
-the transfer for an independent third-party purpose. Re-evaluate if contracts or
-provider use change.
+The **Shared** answers below are provisional. Google's service-provider
+exception requires processing on the developer's behalf and instructions; an
+SDK name or consent prompt alone does not establish that exception. Verify each
+processor's applicable contract and actual account settings before entering
+**No** in Play Console. If no exception is established, disclose the transfer
+as shared. A qualifying user-initiated action or prominent disclosure and
+consent is a separate exception and needs its own evidence from the candidate.
+
+In particular, ElevenLabs documents model-improvement use with an account
+opt-out for future submissions. The configured account's choice has not been
+verified here. Cloud audio, transcripts and functional identifiers therefore
+remain unresolved for sharing; the policy's disclosure of possible training
+must not be treated as proof that all processing is solely on our behalf.
 
 | Play data type | Collected | Shared | Required/optional | Purpose | Linked to identity | Tracking |
 |---|---:|---:|---|---|---:|---:|
-| Audio → Voice or sound recordings | Yes | No | Optional (cloud voice only) | App functionality | Yes, to a functional device/user ID | No |
-| Messages / Other user-generated content → cloud voice transcripts and replies | Yes | No | Optional (cloud voice only) | App functionality | Yes, to a functional device/user ID | No |
-| App info & performance → Crash logs | Yes | No | Automatic when a crash occurs | Diagnostics | No | No |
-| App info & performance → Diagnostics (device model, OS, failure context) | Yes | No | Automatic when a crash occurs | Diagnostics | No | No |
-| Device or other IDs → FCM token and Crashlytics installation ID | Yes | No | FCM functional; Crashlytics automatic | App functionality, diagnostics | FCM token links to the paired device; Crashlytics ID is pseudonymous | No |
+| Audio → Voice or sound recordings | Yes | Pending exception review | Optional (cloud voice only) | App functionality | Yes, to a functional device/user ID | No |
+| Messages / Other user-generated content → cloud voice transcripts and replies | Yes | Pending exception review | Optional (cloud voice only) | App functionality | Yes, to a functional device/user ID | No |
+| App info & performance → Crash logs | Yes | No only with verified processor exception | Automatic when a crash occurs | Diagnostics | No | No |
+| App info & performance → Diagnostics (device model, OS, failure context) | Yes | No only with verified processor exception | Automatic when a crash occurs | Diagnostics | No | No |
+| Device or other IDs → FCM token and Crashlytics installation ID | Yes | Review each destination's exception separately | FCM functional; Crashlytics automatic | App functionality, diagnostics | FCM token links to the paired device; Crashlytics ID is pseudonymous | No |
 
 Chat and command content sent only to the user's paired operator is not collected
 by the developer. If the paired operator sends that content to its configured AI
@@ -69,3 +78,16 @@ Analytics, ad-ID collection, and Android-ID analytics collection are disabled.
    remove Crashlytics and update this worksheet before submission.
 6. Compare the Play Console form and privacy-policy URL with this file immediately
    before rollout; screenshots of the submitted answers belong in release evidence.
+7. Retain the configured ElevenLabs account's data-use choice, per-agent audio
+   saving and transcript/audio retention settings, applicable processor terms,
+   and the reason for each sharing exception. Defaults in provider documentation
+   are not evidence of this account's configuration. Verify support can locate
+   and delete developer-controlled records without promising that uninstall or
+   consent revocation deletes previously retained provider records.
+
+## Provider references checked October 1, 2026
+
+- [Google Play Data Safety collection, sharing and exceptions](https://support.google.com/googleplay/android-developer/answer/10787469)
+- [ElevenLabs model-improvement settings and prospective opt-out](https://elevenlabs.io/docs/help-center/legal/is-my-data-used-to-improve-eleven-labs-ai-models)
+- [ElevenLabs conversation audio/transcript retention](https://elevenlabs.io/docs/eleven-agents/customization/privacy/retention)
+- [ElevenLabs per-agent Zero Retention Mode](https://elevenlabs.io/docs/eleven-agents/customization/privacy/zrm)
