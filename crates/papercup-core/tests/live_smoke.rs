@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// LIVE smoke against a running operator — the antidote to
+// LIVE smoke against a running operator with two registered workspaces — the antidote to
 // green-but-stale mocks (mobile-apps-revival-redesign "Risks": verify
 // against the live server, never the wiremock fixtures alone).
 //
@@ -128,7 +128,7 @@ fn live_env() -> Option<(String, String)> {
 }
 
 #[tokio::test]
-#[ignore = "needs a live operator + one-time pair token (see file header)"]
+#[ignore = "needs a live operator, two workspaces and one-time pair token (see file header)"]
 async fn live_p0_contract_smoke() {
     let (base, pair_token) =
         live_env().expect("set PAPERCUP_LIVE_BASE and PAPERCUP_LIVE_PAIR_TOKEN (see file header)");
@@ -148,9 +148,77 @@ async fn live_p0_contract_smoke() {
     );
 
     let client = OperatorClient::new(base.clone(), Some(pair.device_token.clone()));
+    let mut switched_client = None;
 
     with_pair_cleanup(&client, &pair.device_id, async {
         assert!(!pair.device_token.is_empty(), "deviceToken present");
+
+        // One-use pairing, absent auth and workspace scope must be exercised
+        // against the current API, beyond the sanitized wiremock fixtures.
+        match anon.pair(PairBody { pair_token }).await {
+            Err(ApiError::Unauthorized) => {}
+            Ok(replayed) => {
+                let replayed_client =
+                    OperatorClient::new(base.clone(), Some(replayed.device_token));
+                replayed_client
+                    .revoke_device(&replayed.device_id)
+                    .await
+                    .expect("clean an unexpectedly replayed pairing");
+                panic!("a consumed pair token must never create another device");
+            }
+            Err(_) => panic!("consumed pair token must map to Unauthorized"),
+        }
+        assert!(matches!(
+            anon.runtime_config().await,
+            Err(ApiError::Unauthorized)
+        ));
+
+        let absent = format!("android-contract-missing-{}", pair.device_id);
+        assert!(matches!(
+            client.workspace_switch(&absent).await,
+            Err(ApiError::Unauthorized)
+        ));
+        let workspaces = client.list_workspaces().await.expect("workspace list");
+        let target = workspaces
+            .iter()
+            .find(|workspace| workspace.id != pair.workspace_id)
+            .expect("scope acceptance requires two registered workspaces");
+        let switched = client
+            .workspace_switch(&target.id)
+            .await
+            .expect("workspace switch");
+        assert_eq!(switched.workspace_id, target.id);
+        assert!(!switched.device_token.is_empty());
+        let scoped = OperatorClient::new(base.clone(), Some(switched.device_token));
+        assert_eq!(
+            scoped
+                .runtime_config()
+                .await
+                .expect("rotated token auth")
+                .workspace_id,
+            target.id
+        );
+        assert!(!scoped
+            .list_desktop_devices()
+            .await
+            .expect("scoped device list")
+            .iter()
+            .any(|device| device.device_id == pair.device_id));
+        // The new scope may not revoke the private device owned by the old
+        // scope. Original credentials are kept exclusively for cleanup.
+        scoped
+            .revoke_device(&pair.device_id)
+            .await
+            .expect("foreign-scope revoke is a no-op");
+        assert_eq!(
+            client
+                .runtime_config()
+                .await
+                .expect("original scope remains active")
+                .workspace_id,
+            pair.workspace_id
+        );
+        switched_client = Some(scoped);
 
         // 2. runtime-config — voice WS discovery.
         let cfg = client.runtime_config().await.expect("runtime-config");
@@ -342,5 +410,19 @@ async fn live_p0_contract_smoke() {
         }
     })
     .await;
+    assert!(
+        matches!(client.heartbeat().await, Err(ApiError::Unauthorized)),
+        "revoked original token must require re-pairing"
+    );
+    assert!(
+        matches!(
+            switched_client
+                .expect("rotated client was exercised")
+                .runtime_config()
+                .await,
+            Err(ApiError::Unauthorized)
+        ),
+        "revocation must also reject the rotated token"
+    );
     println!("revoked smoke device {}", pair.device_id);
 }

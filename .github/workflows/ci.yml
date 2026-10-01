@@ -156,6 +156,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
           sdkmanager 'emulator' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973' 'system-images;android-36;google_apis_ps16k;x86_64'
           bash tools/run-android-checks.sh verify-emulator
+          bash tools/run-android-checks.sh verify-avd-space 2048M
           cargo install cargo-ndk --locked --version 4.1.2
 
       - name: Run Rust, bindings, ABI, alignment, unit, lint and privacy checks
@@ -176,6 +177,7 @@ jobs:
           sha256sum android/app/build/outputs/apk/debug/app-debug.apk > android-ci-attempt/apk-sha256.txt
           bash tools/run-android-checks.sh prepare-ci
           bash tools/run-android-checks.sh verify-emulator
+          bash tools/run-android-checks.sh verify-avd-space 2048M
 
       - name: Enable KVM for the native test runtime
         if: steps.android-proof.outputs.cache-hit != 'true'
@@ -191,6 +193,11 @@ jobs:
           api-level: 36
           target: google_apis_ps16k
           arch: x86_64
+          # The API 36 default userdata allocation exceeds the remaining
+          # hosted-runner disk. Use the action's maintained size input and
+          # bind the capacity preflight to that same partition size.
+          disk-size: 2048M
+          pre-emulator-launch-script: bash tools/run-android-checks.sh verify-avd-space 2048M
           emulator-options: -no-window -no-snapshot -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: bash tools/run-android-checks.sh connected
 

@@ -36,6 +36,34 @@ PY
 }
 
 mode="${1:-full}"
+if [[ "$mode" == verify-avd-space ]]; then
+    partition="${2:?explicit AVD disk-size is required}"
+    avd_root="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
+    attempt_dir="${3:-android-ci-attempt}"
+    mkdir -p "$avd_root" "$attempt_dir"
+    available_kb="$(df -Pk "$avd_root" | awk 'NR == 2 { print $4 }')"
+    # The emulator reserves 20% beyond the configured userdata partition
+    # (API 36's default 6 GiB required 7.2 GiB in run 36916314060).
+    # Keep another GiB for installed APKs, test output and emulator writes.
+    python3 - "$partition" "$available_kb" "$avd_root" <<'PY' | tee -a "$attempt_dir/avd-space.txt"
+import json
+import re
+import sys
+
+match = re.fullmatch(r'([1-9][0-9]*)([KMG]?)', sys.argv[1])
+if not match or not sys.argv[2].isdigit():
+    raise SystemExit('AVD space preflight requires a positive disk-size and measured free space')
+partition = int(match[1]) * {'': 1, 'K': 1024, 'M': 1024**2, 'G': 1024**3}[match[2]]
+available = int(sys.argv[2]) * 1024
+required = (partition * 6 + 4) // 5 + 1024**3
+print(json.dumps({'avdRoot': sys.argv[3], 'partitionBytes': partition,
+                  'availableBytes': available, 'requiredBytes': required,
+                  'sufficient': available >= required}))
+if available < required:
+    raise SystemExit('Insufficient space for the configured AVD userdata partition and test working set')
+PY
+    exit
+fi
 if [[ "$mode" == verify-emulator ]]; then
     [[ -n "${ANDROID_HOME:-}" ]] || exit 2
     attempt_dir="${2:-android-ci-attempt}"
@@ -98,7 +126,7 @@ if [[ "$mode" == verify-results ]]; then
     exit
 fi
 [[ "$mode" == host || "$mode" == connected || "$mode" == full ]] || {
-    echo 'usage: run-android-checks.sh [host|connected|full|prepare-ci|verify-emulator|verify-results ROOT host|connected]' >&2
+    echo 'usage: run-android-checks.sh [host|connected|full|prepare-ci|verify-emulator|verify-avd-space DISK_SIZE|verify-results ROOT host|connected]' >&2
     exit 2
 }
 

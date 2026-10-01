@@ -71,6 +71,39 @@ fi
 [[ -s "$TMP_ROOT/attempt/storage.txt" ]]
 echo 'Android CI working-set guards: host refusals, four target-only cleans and pinned NDK preservation passed'
 
+# Reproduce the hosted counterexample without consuming a real disk: the
+# retained attempt had 6,405,476 KiB free, insufficient for default userdata.
+# Check the real runner's capacity decision and retained diagnostic evidence.
+cat > "$TMP_ROOT/bin/df" <<'SH'
+#!/usr/bin/env bash
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf '/test 75085112 0 %s 0%% /test\n' "${TEST_CI_AVAILABLE_KB:-6405476}"
+SH
+chmod +x "$TMP_ROOT/bin/df"
+ANDROID_AVD_HOME="$TMP_ROOT/avd with spaces" PATH="$TMP_ROOT/bin:$PATH" \
+    bash "$runner" verify-avd-space 2048M "$TMP_ROOT/avd-space-proof"
+grep -Fq '"sufficient": true' "$TMP_ROOT/avd-space-proof/avd-space.txt"
+if ANDROID_AVD_HOME="$TMP_ROOT/avd with spaces" PATH="$TMP_ROOT/bin:$PATH" \
+    bash "$runner" verify-avd-space 6144M "$TMP_ROOT/default-avd-space-proof" > "$TMP_ROOT/output" 2>&1; then
+    echo 'FAIL: the measured default-userdata capacity failure was accepted' >&2
+    exit 1
+fi
+grep -Fq '"sufficient": false' "$TMP_ROOT/default-avd-space-proof/avd-space.txt"
+if TEST_CI_AVAILABLE_KB=1024 ANDROID_AVD_HOME="$TMP_ROOT/avd with spaces" PATH="$TMP_ROOT/bin:$PATH" \
+    bash "$runner" verify-avd-space 2048M "$TMP_ROOT/low-avd-space-proof" > "$TMP_ROOT/output" 2>&1; then
+    echo 'FAIL: insufficient space for the configured userdata was accepted' >&2
+    exit 1
+fi
+grep -Fq 'Insufficient space' "$TMP_ROOT/output"
+for invalid in 0 2GB -1 ''; do
+    if ANDROID_AVD_HOME="$TMP_ROOT/avd with spaces" PATH="$TMP_ROOT/bin:$PATH" \
+        bash "$runner" verify-avd-space "$invalid" "$TMP_ROOT/invalid-avd-space-proof" > "$TMP_ROOT/output" 2>&1; then
+        echo "FAIL: invalid AVD disk-size was accepted: $invalid" >&2
+        exit 1
+    fi
+done
+echo 'Android AVD capacity guards: configured partition accepted; default oversized, low-space and invalid inputs rejected'
+
 mkdir -p "$TMP_ROOT/sdk/emulator/qemu/linux-x86_64"
 cat > "$TMP_ROOT/sdk/emulator/emulator" <<'SH'
 #!/usr/bin/env bash
