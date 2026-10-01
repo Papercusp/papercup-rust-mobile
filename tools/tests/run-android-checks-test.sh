@@ -70,3 +70,35 @@ fi
 [[ -d "$TMP_ROOT/sdk/ndk/27.0.12077973" ]]
 [[ -s "$TMP_ROOT/attempt/storage.txt" ]]
 echo 'Android CI working-set guards: host refusals, four target-only cleans and pinned NDK preservation passed'
+
+mkdir -p "$TMP_ROOT/sdk/emulator/qemu/linux-x86_64"
+cat > "$TMP_ROOT/sdk/emulator/emulator" <<'SH'
+#!/usr/bin/env bash
+[[ "${TEST_EMULATOR_FAIL:-0}" == 0 ]] || exit 127
+echo 'Android emulator test version'
+SH
+cat > "$TMP_ROOT/sdk/emulator/qemu/linux-x86_64/qemu-system-x86_64" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+cat > "$TMP_ROOT/bin/ldd" <<'SH'
+#!/usr/bin/env bash
+if [[ "${TEST_EMULATOR_MISSING_LIB:-0}" == 1 ]]; then
+    echo 'libpulse.so.0 => not found'
+else
+    echo 'libpulse.so.0 => /test/libpulse.so.0'
+fi
+SH
+chmod +x "$TMP_ROOT/sdk/emulator/emulator" "$TMP_ROOT/sdk/emulator/qemu/linux-x86_64/qemu-system-x86_64" "$TMP_ROOT/bin/ldd"
+ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/emulator-proof"
+[[ -s "$TMP_ROOT/emulator-proof/emulator-version.txt" ]]
+if TEST_EMULATOR_MISSING_LIB=1 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/missing-lib-proof" > "$TMP_ROOT/output" 2>&1; then
+    echo 'FAIL: missing emulator shared library was accepted' >&2
+    exit 1
+fi
+grep -Fq 'libpulse.so.0 => not found' "$TMP_ROOT/missing-lib-proof/emulator-libraries.txt"
+if TEST_EMULATOR_FAIL=1 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/failed-emulator-proof" > "$TMP_ROOT/output" 2>&1; then
+    echo 'FAIL: failed emulator executable was accepted' >&2
+    exit 1
+fi
+echo 'Android emulator preflight guards: working executable accepted; missing library and failed executable rejected'

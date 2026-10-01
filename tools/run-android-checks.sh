@@ -36,6 +36,27 @@ PY
 }
 
 mode="${1:-full}"
+if [[ "$mode" == verify-emulator ]]; then
+    [[ -n "${ANDROID_HOME:-}" ]] || exit 2
+    attempt_dir="${2:-android-ci-attempt}"
+    mkdir -p "$attempt_dir"
+    qemu="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+    [[ -x "$qemu" && -x "$ANDROID_HOME/emulator/emulator" ]] || {
+        echo 'Android emulator executable is missing.' >&2
+        exit 1
+    }
+    ldd "$qemu" > "$attempt_dir/emulator-libraries.txt" 2>&1 || {
+        cat "$attempt_dir/emulator-libraries.txt" >&2
+        exit 1
+    }
+    if grep -Fq 'not found' "$attempt_dir/emulator-libraries.txt"; then
+        echo 'Android emulator shared-library dependencies are missing:' >&2
+        cat "$attempt_dir/emulator-libraries.txt" >&2
+        exit 1
+    fi
+    "$ANDROID_HOME/emulator/emulator" -version > "$attempt_dir/emulator-version.txt" 2>&1
+    exit
+fi
 if [[ "$mode" == prepare-ci ]]; then
     # Only the disposable, owned Actions runner may prune its toolchain.
     [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]] || {
@@ -73,7 +94,7 @@ if [[ "$mode" == verify-results ]]; then
     exit
 fi
 [[ "$mode" == host || "$mode" == connected || "$mode" == full ]] || {
-    echo 'usage: run-android-checks.sh [host|connected|full|prepare-ci|verify-results ROOT host|connected]' >&2
+    echo 'usage: run-android-checks.sh [host|connected|full|prepare-ci|verify-emulator|verify-results ROOT host|connected]' >&2
     exit 2
 }
 
