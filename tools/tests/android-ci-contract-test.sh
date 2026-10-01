@@ -19,6 +19,10 @@ image = "'system-images;android-36;google_apis_ps16k;x86_64'"
 assert image in android and android.index(image) < android.index('make check-android-host'), 'system-image precondition must run before the expensive build'
 assert 'ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973' in android, 'runner default NDK must not override the pinned toolchain'
 assert 'android-ci-attempt/apk-sha256.txt' in android, 'failed native attempts must identify the tested APK'
+assert 'apt-get install --no-install-recommends -y libpulse0' in android, 'QEMU needs the PulseAudio shared library'
+assert "sdkmanager 'emulator'" in android, 'emulator must be installed before executable preflight'
+preflight = 'bash tools/run-android-checks.sh verify-emulator'
+assert android.count(preflight) == 2 and android.index(preflight) < android.index('make check-android-host'), 'emulator loader precondition must run before the expensive build'
 sdk_setup = android.split('uses: android-actions/setup-android@v3', 1)[1].split('\n      -', 1)[0]
 assert '          packages: platform-tools\n' in sdk_setup, 'SDK bootstrap must not request the retired tools package'
 assert '          mkdir -p android-ci-attempt\n' in android, 'bootstrap failures need source-bound attempt evidence'
@@ -44,6 +48,8 @@ text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 (out / 'missing-early-evidence.yml').write_text(text.replace('          mkdir -p android-ci-attempt\n', ''))
 (out / 'missing-working-set.yml').write_text(text.replace('          bash tools/run-android-checks.sh prepare-ci\n', ''))
 (out / 'late-image.yml').write_text(text.replace(" 'system-images;android-36;google_apis_ps16k;x86_64'", ''))
+(out / 'missing-emulator-libs.yml').write_text(text.replace('libpulse0', 'disabled-libpulse'))
+(out / 'missing-emulator-preflight.yml').write_text(text.replace('          bash tools/run-android-checks.sh verify-emulator\n', ''))
 PY
     for fixture in "$TMP_ROOT"/*.yml; do
         if bash "$0" "$fixture" > "$TMP_ROOT/output" 2>&1; then
@@ -51,5 +57,5 @@ PY
             exit 1
         fi
     done
-    echo 'Android CI bootstrap/storage/evidence mutation controls: 4 rejected'
+    echo 'Android CI bootstrap/storage/emulator/evidence mutation controls: 6 rejected'
 fi
