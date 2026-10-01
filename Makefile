@@ -43,7 +43,7 @@ help:
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-ios-host-health test-ios-template-runner
+check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-runner test-android-ci test-ios-host-health test-ios-template-runner
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -94,6 +94,20 @@ test-android-launch-lifecycle:
 
 test-android-release-provenance:
 	./tools/tests/android-release-provenance-test.sh
+
+# The same Android gate runs locally and in CI. Host mode needs no device;
+# full mode also requires a booted API 36 device with 16 KB pages.
+check-android-host:
+	bash tools/run-android-checks.sh host
+
+check-android:
+	bash tools/run-android-checks.sh full
+
+test-android-runner:
+	bash tools/tests/run-android-checks-test.sh
+
+test-android-ci:
+	bash tools/tests/android-ci-contract-test.sh
 
 test-ios-template-runner:
 	bash tools/tests/run-ios-template-tests-test.sh
