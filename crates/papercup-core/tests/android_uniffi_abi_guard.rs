@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Regression coverage for the Android build's UniFFI ABI compatibility guard.
+//! Regression coverage for the Android ABI and owned automatic verification guards.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -108,4 +108,108 @@ fn rejects_a_missing_abi_library() {
     assert!(stderr.contains("Android ABI library missing or empty"));
     assert!(stderr.contains("x86-absent-libpapercup.so"));
     fs::remove_dir_all(root).expect("clean fixture");
+}
+
+// These tests expose the maintained shell guards to the existing Cargo
+// acceptance-check engine. They inspect the real owned workflow/runner and
+// require both working positive controls and rejected mutated inputs.
+#[test]
+fn android_ci_reachability_rejects_omitted_checks_and_failed_proof_caching() {
+    let repo = repo_root();
+    let guard = repo.join("tools/tests/android-ci-contract-test.sh");
+    let source =
+        fs::read_to_string(repo.join(".github/workflows/ci.yml")).expect("owned CI exists");
+    let (root, _, _) = fixture();
+    let baseline = Command::new("bash")
+        .arg(&guard)
+        .output()
+        .expect("run current CI guard");
+    assert!(
+        baseline.status.success(),
+        "{}",
+        String::from_utf8_lossy(&baseline.stderr)
+    );
+    assert!(String::from_utf8_lossy(&baseline.stdout)
+        .contains("Android CI reachability contract: passed"));
+    for (name, original, replacement) in [
+        ("manual-only", "  schedule:", "  disabled_schedule:"),
+        (
+            "missing-host-gate",
+            "make check-android-host",
+            "make disabled-host-gate",
+        ),
+        (
+            "missing-native-gate",
+            "bash tools/run-android-checks.sh connected",
+            "bash disabled-native-gate",
+        ),
+        ("stale-source-cache", "'crates/**'", "'unrelated/**'"),
+        ("failed-proof-cache", "if: success() &&", "if: always() &&"),
+    ] {
+        let mutated = source.replace(original, replacement);
+        assert_ne!(mutated, source, "mutation must exercise {name}");
+        let yaml = root.join(format!("{name}.yml"));
+        fs::write(&yaml, mutated).expect("write CI mutation fixture");
+        let result = Command::new("bash")
+            .arg(&guard)
+            .arg(yaml)
+            .output()
+            .expect("run mutation guard");
+        assert!(!result.status.success(), "CI guard accepted {name}");
+    }
+    fs::remove_dir_all(root).expect("clean CI fixtures");
+}
+
+#[test]
+fn android_ci_results_require_executed_host_and_native_tests() {
+    let repo = repo_root();
+    let runner = repo.join("tools/run-android-checks.sh");
+    let (root, _, _) = fixture();
+    let directories = [
+        "test-results/testDebugUnitTest",
+        "test-results/testReleaseUnitTest",
+        "outputs/androidTest-results/connected/debug/device",
+    ];
+    let good = "<testsuite tests=\"1\"><testcase name=\"executed\"/></testsuite>";
+    for directory in directories {
+        fs::create_dir_all(root.join(directory)).expect("create result fixture");
+        fs::write(root.join(directory).join("TEST-check.xml"), good).expect("write passing result");
+    }
+    let verify = |mode| {
+        Command::new("bash")
+            .arg(&runner)
+            .arg("verify-results")
+            .arg(&root)
+            .arg(mode)
+            .output()
+            .expect("run result guard")
+    };
+    assert!(
+        verify("host").status.success(),
+        "valid host results must pass"
+    );
+    assert!(
+        verify("connected").status.success(),
+        "valid native results must pass"
+    );
+    let release = root.join(directories[1]).join("TEST-check.xml");
+    for bad in [
+        "<testsuite tests=\"0\"/>",
+        "<testsuite tests=\"1\"><testcase><skipped/></testcase></testsuite>",
+        "<testsuite tests=\"1\"><testcase><failure/></testcase></testsuite>",
+        "invalid XML",
+    ] {
+        fs::write(&release, bad).expect("write rejected result");
+        assert!(
+            !verify("host").status.success(),
+            "unexecuted/failed result accepted: {bad}"
+        );
+    }
+    fs::remove_file(root.join(directories[2]).join("TEST-check.xml"))
+        .expect("remove native result");
+    assert!(
+        !verify("connected").status.success(),
+        "missing native result accepted"
+    );
+    fs::remove_dir_all(root).expect("clean result fixtures");
 }
