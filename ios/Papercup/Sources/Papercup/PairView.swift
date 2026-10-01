@@ -39,7 +39,7 @@ struct PairView: View {
 
                 switch mode {
                 case .choose:
-                    Text("On your desktop: Settings → Mobile Access → \"Pair new device\" → scan the QR code shown.")
+                    Text("On your desktop: Settings → Remote access → Pair a phone, then scan the QR code shown.")
                         .font(.callout)
                         .foregroundStyle(PapercupTheme.textMuted)
                         .frame(maxWidth: 320)

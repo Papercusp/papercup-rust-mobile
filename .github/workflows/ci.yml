@@ -1,18 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: CI
 
-# Triggers are manual-only after the Papercusp org hit its Actions
-# spending cap (run 25647070739 burned the budget; runs 25648261681
-# and 25648317810 then failed in seconds before any step executed).
-# Re-enable push/PR triggers below once billing is sorted; until then,
-# trigger via `gh workflow run ci.yml` to avoid red commit dots on
-# every push.
+# Native CI is admitted again (current macOS26 run 36843022700 passed).
+# Managed git-sync commits use [skip ci], so workflow_dispatch remains the
+# explicit release-candidate route even with normal push/PR coverage enabled.
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [master]
-  # pull_request:
-  #   branches: [master]
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -127,6 +124,51 @@ jobs:
         run: |
           make test-ios-release
           tools/build-scripts/verify-ios-release.sh --require-current-sdk
+
+      - name: Clean-install pairing UI smoke
+        run: |
+          set -euo pipefail
+          sim_udid="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/{print $2; exit}')"
+          test -n "$sim_udid"
+          xcodebuild test-without-building \
+            -project ios/Papercup.xcodeproj -scheme Papercup \
+            -destination "platform=iOS Simulator,id=$sim_udid" \
+            -derivedDataPath ios/build/dd \
+            -only-testing:PapercupUITests/PairFlowUITests/testFreshLaunchShowsPairChoices \
+            -resultBundlePath ios/build/ci-pair-smoke.xcresult
+          xcrun xcresulttool get test-results summary \
+            --path ios/build/ci-pair-smoke.xcresult --format json > ios/build/ci-pair-smoke-summary.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('ios/build/ci-pair-smoke-summary.json').read_text())
+          assert result['passedTests'] == 1, result
+          assert result['failedTests'] == 0, result
+          assert result['skippedTests'] == 0, result
+          PY
+
+      - name: Archive unsigned release candidate
+        run: |
+          set -euo pipefail
+          xcodebuild archive -project ios/Papercup.xcodeproj -scheme Papercup \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath ios/build/ci-release/Papercusp.xcarchive CODE_SIGNING_ALLOWED=NO
+          test -f ios/build/ci-release/Papercusp.xcarchive/Info.plist
+          git rev-parse HEAD > ios/build/ci-release/source-sha.txt
+          xcodebuild -version > ios/build/ci-release/xcode-version.txt
+          xcrun --sdk iphoneos --show-sdk-version > ios/build/ci-release/ios-sdk.txt
+
+      - name: Retain native candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iphone-native-candidate-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            ios/build/ci-release
+            ios/build/ci-pair-smoke.xcresult
+            ios/build/ci-pair-smoke-summary.json
 
   design-tokens:
     name: Design tokens drift

@@ -38,6 +38,9 @@ final class PairFlowUITests: XCTestCase {
             app.staticTexts["Papercusp"].exists
         XCTAssertTrue(wordmarkExists, "Papercusp wordmark should be present")
         XCTAssertTrue(app.buttons["Scan QR"].exists, "Scan QR button should be present")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Remote access")).firstMatch.exists,
+                      "Pairing instructions should point to the current desktop settings")
+        XCTAssertTrue(app.buttons["Paste manually"].exists, "Paste pairing should remain available without camera access")
     }
 
     /// End-to-end pair flow + paired-state navigation in one go (the

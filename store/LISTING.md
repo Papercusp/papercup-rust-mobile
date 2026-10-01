@@ -1,6 +1,6 @@
 # Papercusp mobile store listing
 
-_Release copy · August 11, 2026_
+_Release copy · refreshed October 1, 2026; candidate assets and Apple availability require final verification_
 
 - **App name:** Papercusp
 - **Subtitle (iOS):** Your operator, wherever you are
@@ -22,10 +22,11 @@ respond from your phone.
 Papercusp turns your iPhone or Android phone into a voice and chat companion
 for the Papercusp desktop operator you control.
 
-Pair once by scanning the code on your desktop, then:
+In desktop Settings → Remote access → Pair a phone, scan the code or paste the pairing payload. Then:
 
 - Talk or type to your operator from anywhere.
-- See plans, active fleets, notifications, and recent work.
+- See plans, current fleets and pots, agent availability, notifications, and recent work.
+- See system-health alerts alongside the work that needs your attention.
 - Approve sensitive actions and manage paired devices.
 - Use desktop-local voice, or explicitly opt in before cloud voice sends audio
   and transcripts to ElevenLabs and its service providers.
@@ -56,6 +57,7 @@ and explicit cloud-voice privacy controls.
 
 - App icon: bundled in the platform asset catalogs.
 - iPhone screenshots: pair, inbox, operator chat, plans, fleet, settings,
-  privacy policy, and cloud-voice consent from the release candidate.
+  privacy policy, and cloud-voice consent from the release candidate. Include a
+  sanitized system-alert-only Inbox and the current fleet/pot availability view.
 - Android phone screenshots: the same product flow from the release candidate.
 - Google Play feature graphic: 1024 × 500.

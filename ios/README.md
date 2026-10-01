@@ -1,174 +1,81 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# Papercup iOS
+# Papercusp iPhone
 
-SwiftUI shell that mirrors the Compose Android app under `../android/`.
-The Rust core lives in `../crates/papercup-core/` and is exposed to
-Swift via UniFFI.
+The iPhone client is a SwiftUI companion to a paired Papercusp operator. Its
+portable HTTP, cache and voice contracts live in `crates/papercup-core`, exposed
+through a dedicated `PapercupCore` UniFFI module and fresh XCFramework.
 
-## Status
+The app requires iOS 17 or later. Public App Store candidates must use Apple's
+currently accepted SDK; `verify-ios-release.sh --require-current-sdk` enforces
+the iOS 26 floor. A simulator build or unsigned archive is not a signed release.
 
-**Compiles + runs on the iOS Simulator.** Verified via `xcodebuild`
-on Xcode 16.2 against an iPhone 16 sim (iOS 18.3.1 runtime). The
-build flips on with `xcodebuild ... -destination "platform=iOS Simulator,id=<UDID>"`
-— the bare `-destination "name=iPhone 16,OS=18.3.1"` form trips a
-race in Xcode 16.2's destination resolver, so prefer the UDID form.
+## Current surfaces
 
-Feature parity with Android:
+- Pair by QR, link or pasted payload from desktop Settings → Remote access →
+  Pair a phone; the pairing credential is stored in Keychain.
+- Inbox displays work items, attention groups and system-health alerts. The
+  header and tab badge use the same complete attention count.
+- Operator chat shares the workspace conversation; voice uses desktop-local
+  transport or the separately consented ElevenLabs cloud transport.
+- Plans exposes the current plan contract and supported authority-checked
+  actions.
+- Fleet reads current presence-based fleets and pots from
+  `/api/device/monitoring`. “Available” does not mean an agent is executing.
+  A missing producer tile remains unavailable rather than showing zero.
+- Settings manages workspace/device access, voice, diagnostics, legal links
+  and cloud-voice consent. The app does not create a hosted account or sell a
+  subscription; it is a companion to an operator the user controls.
 
-| Surface | iOS file | Notes |
-|---|---|---|
-| Pair (QR + paste) | `PairView.swift` | AVFoundation QR scanner, JSON paste fallback |
-| Credentials | `Credentials.swift` | Keychain (`SecItem*`) JSON-blob record |
-| Tab nav | `AppRoot.swift` (`PairedShell`) | Operator / Harnesses / Activity / Settings |
-| Operator landing | `OperatorView.swift` | Pause card, voice card (tap-to-listen), running, recent |
-| Harness list / detail | `HarnessListView.swift` / `HarnessDetailView.swift` | Live SSE invalidation, RunLog push |
-| Activity | `ActivityView.swift` | Notifications + Actions segmented control |
-| Settings | `SettingsView.swift` | Identity, workspaces (tap-to-switch), paired devices (revoke), nav rows |
-| Standing approvals | `StandingApprovalsView.swift` | Approve/dismiss with optimistic-hide |
-| Voice settings | `VoiceSettingsView.swift` | Wake word, rate/pitch, voice picker (`AVSpeechSynthesizer`), `VoicePrefsStore` |
-| Diagnostics | `DiagnosticsView.swift` | Status pill, ping, pairing, build |
-| Run log | `RunLogView.swift` | URLSession `bytes.lines` SSE parser, filter, autoscroll |
-| Voice WS + STT/TTS | `VoiceManager.swift` | UniFFI `VoiceClient` + `SFSpeechRecognizer` + `AVSpeechSynthesizer` |
-| Mic-level halo | `OperatorView.swift` `leaseCard` | `AVAudioEngine` input-tap RMS → cyan halo |
-| Connection banner | `ConnectionMonitor.swift` | 20s heartbeat, sticky red banner |
-| Wake word | `WakeWordEngine.swift` | Picovoice scaffold, dormant w/o `PICOVOICE_ACCESS_KEY` |
-| **APNs push** | `PushManager.swift` | **Inert** — needs Apple Dev Program + `aps-environment` entitlement |
-| **Mesh tunnel** | `MeshManager.swift` | **Inert** — needs `NetworkExtension` entitlement + `WireGuardKit` SwiftPM + extension target |
+## Build and verify on macOS
 
-## First build (macOS)
+Install Xcode, XcodeGen, SwiftFormat, Rust and the three iOS targets:
+`aarch64-apple-ios`, `aarch64-apple-ios-sim`, `x86_64-apple-ios`.
 
 ```sh
-# 1. One-shot tools
-brew install xcodegen
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
-
-# 2. Build the Rust core into PapercupCore.xcframework + Swift bindings
-cd ..
-make build-ios          # runs tools/build-scripts/build-ios.sh
-
-# 3. Generate Papercup.xcodeproj from project.yml
-cd ios
-xcodegen generate
-
-# 4a. Open in Xcode
-open Papercup.xcodeproj
-
-# 4b. Or build/run from CLI:
-SIM=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone 16 \(/{print $2; exit}')
-xcodebuild -project Papercup.xcodeproj -scheme Papercup -sdk iphonesimulator \
-  -destination "platform=iOS Simulator,id=$SIM" -configuration Debug build
-xcrun simctl boot $SIM
-xcrun simctl install $SIM ~/Library/Developer/Xcode/DerivedData/Papercup-*/Build/Products/Debug-iphonesimulator/Papercup.app
-xcrun simctl launch $SIM com.papercuspai.operator.mobile
-```
-
-## Run tests
-
-```sh
-cd ios
-xcodegen generate
-# build-for-testing succeeds where xcodebuild test sometimes fails
-# (Xcode 16.2 + iOS 18.3.1 sim runtime mismatch — same race the
-# build target hits; retry once if 'Unable to find a destination').
-xcodebuild build-for-testing -project Papercup.xcodeproj -scheme Papercup \
-  -destination "platform=iOS Simulator,id=$SIM" \
-  -sdk iphonesimulator -derivedDataPath build/dd
-xcodebuild test-without-building -project Papercup.xcodeproj -scheme Papercup \
-  -destination "platform=iOS Simulator,id=$SIM" \
-  -derivedDataPath build/dd
-```
-
-11 tests today across `DeepLinkRouterTests` and `VoicePrefsTests`.
-
-## Re-running after Rust changes
-
-```sh
-# UDL changed? regenerate Swift bindings
-make bindings-swift
-
-# Rust core changed? rebuild the xcframework (rm if 'item with same name already exists')
-rm -rf ios/PapercupCore.xcframework
 make build-ios
-
-# Swift sources changed? xcodegen + xcodebuild
-cd ios && xcodegen generate
-xcodebuild ... build
+make test-ios
+make test-ios-ui
+make test-ios-release
 ```
 
-## What `build-ios.sh` does
+`build-ios.sh` regenerates Swift/header bindings, rebuilds all three Rust
+slices, combines simulator slices and creates one XCFramework. Never pair
+new Swift bindings with an older Rust binary.
 
-- Cross-compiles `papercup-bindings` (staticlib exposing the Rust core)
-  for `aarch64-apple-ios`, `aarch64-apple-ios-sim`, `x86_64-apple-ios`
-- `lipo`s the two simulator slices into one
-- Regenerates Swift bindings into `PapercupCore/`
-  (`papercup.swift`, `papercupFFI.h`, `papercupFFI.modulemap`)
-- Packages an `xcframework` containing both device + sim slices
+`PAPERCUP_IOS_SIM_UDID` selects a specific simulator. Unit and UI tests are
+separate. Paired UI/voice flows require a fresh `PAPERCUP_PAIR_PAYLOAD`; without
+it those cases are skipped and cannot establish paired-flow acceptance.
+`PAPERCUP_MINT_PAIR_PAYLOAD_CMD` can mint a new one-use payload per retry.
 
-## Known gaps
+`tools/run-ios-template-tests.sh unit|ui|build-only` is the maintained named-Mac
+runner and checks non-zero native test execution. A build must be exercised on
+a capable Mac/current hosted runner; Linux Rust tests do not prove SwiftUI.
 
-- **APNs push delivery**: `PushManager` code is correct; needs Apple
-  Developer Program enrollment + `aps-environment` entitlement signed
-  in via a real provisioning profile. See `PushManager.swift` for
-  the 4-step enable sequence.
-- **Mesh tunnel**: `MeshManager` is `#if canImport(NetworkExtension) && canImport(WireGuardKit)`-gated.
-  Needs Dev Program + `NetworkExtension` entitlement +
-  `NEPacketTunnelProvider` extension target + `WireGuardKit` SwiftPM
-  package. Enable steps in-file.
-- **Wake word**: `WakeWordEngine` is dormant unless `PICOVOICE_ACCESS_KEY`
-  is set in `Info.plist`. Awaiting Picovoice approval (same blocker
-  as Android).
-- **Xcode 16.2 destination race**: `xcodebuild` sometimes fails to
-  resolve the iPhone 16 sim destination (returns "iOS 18.2 is not
-  installed" because Xcode 16.2 ships SDK 18.2 but Apple no longer
-  hosts that sim runtime). Workaround: build per-target instead of
-  per-scheme:
-  ```
-  xcodebuild -project Papercup.xcodeproj -target Papercup \
-    -sdk iphonesimulator -destination "platform=iOS Simulator,id=$UDID" build
-  ```
-  This bypasses scheme-level destination resolution and works
-  reliably. `make test-ios` (which uses `xcodebuild test ... -scheme`)
-  is currently broken since Sentry SwiftPM was added — Xcode's
-  scheme-side destination resolver fails to enumerate sim devices
-  after Sentry package resolution. Real fix is Xcode 16.3 install
-  on the Mac VM (`xcodes install 16.3`).
-- **CI**: workflow at `.github/workflows/ci.yml` (fmt + clippy
-  `-D warnings` + tests + bindings smoke) is wired but **trigger is
-  manual-only** — the papercupai org hit its Actions spending cap on
-  the first push (~30 macOS-minutes at 10x billing). Re-enable the
-  push/PR triggers in the workflow file once billing is sorted. Run
-  manually with `gh workflow run ci.yml` in the meantime.
+## Current-SDK CI
 
-## Pair-by-link / URL scheme
+The private `.github/workflows/ci.yml` runs Rust, generated bindings, design-token
+drift and the macOS 26 native matrix. Dispatch a release candidate explicitly:
 
-The app registers `papercup://harness/<slug>` (push-tap deep link) and
-`papercup://pair?server=...&pairToken=...&workspaceId=...` (pair-by-link).
-Both go through `DeepLinkRouter` (`PapercupTests` covers parsing).
+```sh
+gh workflow run ci.yml -R Papercusp/papercup-rust-mobile --ref master
+```
 
-**iOS 17.4+ sim limitation**: `xcrun simctl openurl` for custom schemes
-shows an unavoidable "Open in Papercup?" confirmation prompt that
-can't be dismissed from headless simctl. To validate the full pair
-flow end-to-end, either:
+Record the run's actual `head_sha`; branch names alone do not identify the
+candidate. Managed git-sync commits contain `[skip ci]`, so they need this
+explicit candidate dispatch. Normal push/PR triggers cover other source changes.
+The native matrix also checks clean-install pairing guidance, requires its UI
+smoke to execute without skips, and retains the unsigned archive and toolchain
+metadata as private candidate evidence.
 
-1. Use a real device (paid Apple Dev account) where the prompt is
-   auto-accepted from in-app `UIApplication.shared.open()`, OR
-2. Tap the prompt manually in the Simulator window, OR
-3. Use the in-app Paste flow (`PairView` accepts the JSON payload
-   directly without going through the URL scheme).
+## Apple delivery and public acceptance
 
-Required Info.plist keys for URL delivery to work at all:
-- `CFBundleURLTypes` with `papercup` scheme
-- `UIApplicationSceneManifest` (otherwise SwiftUI's `.onOpenURL`
-  silently never fires when wired alongside `UIApplicationDelegateAdaptor`)
-- `NSAppTransportSecurity → NSAllowsArbitraryLoads = YES` for
-  http://10.0.2.2 dev backend reachability
+Use the existing `make release-ios ACTION=preflight|archive|export|validate|upload`
+entrypoint. Apple team/signing/provisioning and App Store Connect inputs are
+external configuration; provider/signing secrets do not belong in this tree.
+Production push additionally requires APNs credentials and push-enabled signing.
 
-## Backend coord asks (still open)
-
-- Mobile-JWT-authed `/api/mobile/harnesses/{slug}/log/stream` so
-  `RunLogView` stops 401-ing on `/api/harness/{slug}/log/stream`
-  (cookie-auth-only).
-- `GET /api/mobile/operator/standing-candidates` +
-  `POST /api/mobile/operator/standing-candidates/decide` actually
-  implemented (today they 500); `StandingApprovalsView` is wired
-  end-to-end client-side.
+See `store/APP-STORE-REVIEW.md` for metadata, screenshots, distribution rights,
+sanitized durable reviewer access, signing and submission requirements. Real
+production APNs, microphone/Bluetooth/interruption, cellular reconnect and
+battery checks require an actual signed iPhone installation. TestFlight availability
+and approved public App Store availability are distinct delivery milestones.

@@ -1,6 +1,6 @@
 # App Store review and submission packet — iPhone 1.0
 
-_Prepared August 11, 2026 for bundle ID `com.papercuspai.operator.mobile`._
+_Refreshed October 1, 2026 for bundle ID `com.papercuspai.operator.mobile`. This packet is preparation, not proof of submission or public availability._
 
 ## Review notes
 
@@ -8,8 +8,11 @@ Papercusp is a companion to a Papercusp desktop operator controlled by the app
 user. The app has no public sign-up or paid features. On first launch, pair it by
 scanning or pasting the pair payload supplied with the review submission.
 
-After pairing, the tabs show the operator inbox, chat, plans, running work,
-notifications, and settings. Desktop-local voice sends data to the paired
+Pairing guidance follows desktop Settings → Remote access → Pair a phone.
+After pairing, the tabs show the operator inbox (including system-health alerts),
+chat, plans, current fleet/pot availability, notifications, and settings.
+Availability counts describe reachable agent presence, not running jobs.
+Desktop-local voice sends data to the paired
 operator. Optional cloud voice remains blocked until the reviewer accepts a
 separate disclosure naming ElevenLabs and the configured AI provider; consent
 can be revoked in Settings.
@@ -48,6 +51,12 @@ the complete paired flow.
 - The dedicated reviewer environment contains no private workspace data and is
   monitored throughout review.
 - All App Store metadata and review attachments contain final values.
+- Record the exact candidate source SHA, version/build, archive/IPA hashes,
+  accepted Apple SDK, executed unit/UI cases and signed distribution identity.
+  Preserve current native CI artifacts and TestFlight/Apple processing receipts.
+- Actual paired UI, cellular, APNs, permission/Bluetooth/lifecycle and endurance
+  checks are separate from clean-install simulator smoke. Missing hardware or
+  signing capability leaves those outcomes unverified.
 - Distribution rights are documented for every copyright holder because this
   repository is currently licensed under GPL-3.0-or-later and App Store terms
   may add restrictions that require separate permission.
