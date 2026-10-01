@@ -11,6 +11,7 @@ text = Path(sys.argv[1]).read_text()
 assert '  schedule:' in text, 'managed skip-ci commits have no automatic CI route'
 android = text.split('\n  android:\n', 1)[1].split('\n  ios:\n', 1)[0]
 assert 'make check-android-host' in android
+assert 'secrets.PAPERCUP_ANDROID_GOOGLE_SERVICES_JSON' in android, 'existing Firebase app configuration is not injected'
 assert 'bash tools/run-android-checks.sh connected' in android
 assert 'api-level: 36' in android and 'target: google_apis_ps16k' in android
 for path in ['android/**', 'crates/**', 'Cargo.toml', 'Cargo.lock', 'tools/**', 'Makefile', 'checks-config.json', '.github/workflows/ci.yml']:

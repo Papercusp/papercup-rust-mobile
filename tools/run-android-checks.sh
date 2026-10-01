@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Reuse the maintained Rust, build, privacy and installer checks. A green
+# Gradle exit with zero, skipped or stale test results is not a verified run.
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+verify_results() {
+    python3 - "$1" "$2" <<'PY'
+import sys
+from pathlib import Path
+import xml.etree.ElementTree as ET
+
+root, mode = Path(sys.argv[1]), sys.argv[2]
+groups = ['test-results/testDebugUnitTest', 'test-results/testReleaseUnitTest'] if mode == 'host' else ['outputs/androidTest-results/connected/debug']
+for group in groups:
+    files = list((root / group).rglob('TEST-*.xml'))
+    if not files:
+        raise SystemExit(f'No executed Android tests in {group}')
+    count = 0
+    for file in files:
+        tree = ET.parse(file).getroot()
+        cases = list(tree.iter('testcase'))
+        if not cases:
+            raise SystemExit(f'Empty Android test report: {file}')
+        for suite in tree.iter('testsuite'):
+            if any(int(suite.get(tag, '0')) for tag in ('failures', 'errors', 'skipped')):
+                raise SystemExit(f'Android suite reports failures or skips: {file}')
+        for case in cases:
+            if any(case.find(tag) is not None for tag in ('failure', 'error', 'skipped')):
+                raise SystemExit(f'Android test did not pass: {file}: {case.get("name")}')
+        count += len(cases)
+    print(f'Android {group}: {count} executed, zero failed or skipped')
+PY
+}
+
+mode="${1:-full}"
+if [[ "$mode" == verify-results ]]; then
+    [[ "${3:-}" == host || "${3:-}" == connected ]] || exit 2
+    verify_results "$2" "$3"
+    exit
+fi
+[[ "$mode" == host || "$mode" == connected || "$mode" == full ]] || {
+    echo 'usage: run-android-checks.sh [host|connected|full|verify-results ROOT host|connected]' >&2
+    exit 2
+}
+
+JAVA_HOME="$(tools/build-scripts/resolve-java-home.sh)"
+export JAVA_HOME
+ANDROID_HOME="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+ANDROID_SDK_ROOT="$ANDROID_HOME"
+export ANDROID_HOME ANDROID_SDK_ROOT
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
+
+if [[ "$mode" != connected ]]; then
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo test --workspace --all-targets
+    make bindings-smoke test-android-java test-android-launch-lifecycle \
+        test-android-release-provenance test-android-runner test-android-ci
+    # build-android.sh verifies all four packaged ABIs, UniFFI checksums and
+    # 16 KB ELF/ZIP alignment; it deliberately does not launch a device.
+    make bindings-kotlin
+    bash tools/build-scripts/build-android.sh debug
+    rm -rf android/app/build/test-results/testDebugUnitTest \
+        android/app/build/test-results/testReleaseUnitTest
+    android/gradlew -p android :app:testDebugUnitTest :app:testReleaseUnitTest \
+        :app:lintRelease --rerun-tasks
+    bash tools/tests/android-privacy-permissions-test.sh
+    verify_results android/app/build host
+fi
+
+if [[ "$mode" != host ]]; then
+    mapfile -t devices < <(adb devices | awk 'NR>1 && $2=="device"{print $1}')
+    [[ ${#devices[@]} == 1 ]] || {
+        echo 'Android native gate requires exactly one connected test device.' >&2
+        exit 1
+    }
+    device="${devices[0]}"
+    [[ "$(adb -s "$device" shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]
+    [[ "$(adb -s "$device" shell getprop ro.build.version.sdk | tr -d '\r')" == 36 ]]
+    [[ "$(adb -s "$device" shell getconf PAGE_SIZE | tr -d '\r')" == 16384 ]]
+    adb -s "$device" shell pm path android | grep -q '^package:'
+    bash tools/build-scripts/install-and-launch.sh
+    rm -rf android/app/build/outputs/androidTest-results/connected/debug
+    ANDROID_SERIAL="$device" android/gradlew -p android :app:connectedDebugAndroidTest --rerun-tasks
+    verify_results android/app/build connected
+fi

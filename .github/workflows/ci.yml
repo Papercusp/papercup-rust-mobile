@@ -15,6 +15,10 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  # git-sync intentionally stamps [skip ci]. Scheduled runs are independent
+  # of that marker; exact-content success caching avoids idle native rebuilds.
+  schedule:
+    - cron: '17,47 * * * *'
 
 env:
   CARGO_TERM_COLOR: always
@@ -23,6 +27,7 @@ env:
 jobs:
   rust:
     name: Rust workspace (Linux)
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     # macos-latest was dropped from the matrix after run 25648261681
     # aborted in 11s with no steps — consistent with hitting the
@@ -55,6 +60,7 @@ jobs:
 
   uniffi-bindings:
     name: UniFFI bindings (Linux)
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     needs: rust
     steps:
@@ -78,8 +84,125 @@ jobs:
             --out-dir /tmp/sw-out
           test -f /tmp/sw-out/papercup.swift
 
+  android:
+    name: Android API 36 / 16 KB verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: android-check-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Compute fresh verification window
+        id: window
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore exact-content native success proof
+        id: android-proof
+        uses: actions/cache/restore@v4
+        with:
+          path: android-ci-proof
+          key: android-api36-16k-v1-${{ runner.os }}-${{ steps.window.outputs.week }}-${{ hashFiles('android/**', 'crates/**', 'Cargo.toml', 'Cargo.lock', 'tools/**', 'Makefile', 'checks-config.json', 'design-tokens/**', 'package.json', 'package-lock.json', 'libs/token-kit/**', '.github/workflows/ci.yml') }}
+
+      - uses: actions/setup-java@v4
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.android-proof.outputs.cache-hit != 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        with:
+          node-version: 22
+
+      - uses: android-actions/setup-android@v3
+        if: steps.android-proof.outputs.cache-hit != 'true'
+
+      - name: Install pinned Android build tools
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.0.12077973'
+          cargo install cargo-ndk --locked --version 4.1.2
+
+      - name: Run Rust, bindings, ABI, alignment, unit, lint and privacy checks
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        env:
+          PAPERCUP_ANDROID_GOOGLE_SERVICES_JSON: ${{ secrets.PAPERCUP_ANDROID_GOOGLE_SERVICES_JSON }}
+        run: |
+          test -n "$PAPERCUP_ANDROID_GOOGLE_SERVICES_JSON" || {
+            echo 'The existing Android Firebase app configuration is required.' >&2
+            exit 1
+          }
+          printf '%s' "$PAPERCUP_ANDROID_GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          make check-android-host
+
+      - name: Enable KVM for the native test runtime
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Execute native instrumentation on API 36 with 16 KB pages
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis_ps16k
+          arch: x86_64
+          emulator-options: -no-window -no-snapshot -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: bash tools/run-android-checks.sh connected
+
+      - name: Bind successful proof to tested source and tools
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p android-ci-proof
+          git rev-parse HEAD > android-ci-proof/source-sha.txt
+          sha256sum android/app/build/outputs/apk/debug/app-debug.apk > android-ci-proof/apk-sha256.txt
+          java -version 2> android-ci-proof/java-version.txt
+          rustc -Vv > android-ci-proof/rust-version.txt
+          "$ANDROID_HOME/emulator/emulator" -version > android-ci-proof/emulator-version.txt
+          cp -r android/app/build/test-results android-ci-proof/unit-results
+          cp -r android/app/build/outputs/androidTest-results android-ci-proof/native-results
+          cp android/app/build/reports/lint-results-release.* android-ci-proof/
+
+      - name: Cache only a completely successful native verification
+        if: success() && steps.android-proof.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: android-ci-proof
+          key: ${{ steps.android-proof.outputs.cache-primary-key }}
+
+      - name: Retain native proof and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-verification-${{ github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            android-ci-proof
+            android/app/build/reports
+            android/app/build/test-results
+            android/app/build/outputs/androidTest-results
+
   ios:
     name: iPhone release gate (iOS 26 SDK)
+    if: github.event_name != 'schedule'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -228,6 +351,7 @@ jobs:
 
   design-tokens:
     name: Design tokens drift
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
