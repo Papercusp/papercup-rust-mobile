@@ -841,7 +841,44 @@ async fn attention_empty_workitems_ok() {
         .await;
     let a = client.attention().await.unwrap();
     assert!(a.work_items.is_empty());
+    assert!(a.system_alerts.is_empty());
     assert_eq!(a.counts.work_items, 0);
+}
+
+// Exact current device/attention shape: system health can be the only reason
+// the owner needs attention. Unknown additive fields must remain compatible.
+#[tokio::test]
+async fn attention_preserves_system_alerts_when_other_layers_are_empty() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/attention"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "groups": [],
+            "workItems": [],
+            "systemAlerts": [{
+                "id": "system:pool-exhaustion",
+                "kind": "pool-exhaustion",
+                "severity": "high",
+                "title": "Inference pool exhausted",
+                "body": "No account can serve the next operator turn.",
+                "futureMetadata": {"source": "pool"}
+            }],
+            "counts": {"groups": 0, "workItems": 0, "systemAlerts": 1}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let feed = client.attention().await.unwrap();
+    assert!(feed.work_items.is_empty());
+    assert_eq!(feed.counts.groups, 0);
+    assert_eq!(feed.system_alerts.len(), 1);
+    let alert = &feed.system_alerts[0];
+    assert_eq!(alert.id, "system:pool-exhaustion");
+    assert_eq!(alert.kind, "pool-exhaustion");
+    assert_eq!(alert.severity, "high");
+    assert_eq!(alert.title, "Inference pool exhausted");
+    assert_eq!(alert.body, "No account can serve the next operator turn.");
 }
 
 #[tokio::test]

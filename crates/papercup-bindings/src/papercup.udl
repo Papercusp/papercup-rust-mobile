@@ -335,8 +335,17 @@ dictionary OperatorTurn {
 dictionary AttentionFeed {
     string groups_json;
     sequence<AttentionWorkItem> work_items;
+    sequence<AttentionSystemAlert> system_alerts;
     i64 group_count;
     i64 work_item_count;
+};
+
+dictionary AttentionSystemAlert {
+    string id;
+    string kind;
+    string severity;
+    string title;
+    string body;
 };
 
 dictionary AttentionWorkItem {

@@ -553,7 +553,7 @@ private final class ShellBadgeHost: ObservableObject {
 
     private func inboxAttentionCount(client: OperatorClient) async -> Int? {
         do {
-            return Int((try await client.attention()).workItemCount)
+            return (try await client.attention()).inboxAttentionCount
         } catch {
             return nil
         }

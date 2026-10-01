@@ -390,7 +390,18 @@ pub struct AttentionResp {
     pub groups: serde_json::Value,
     #[serde(default)]
     pub work_items: Vec<AttentionWorkItem>,
+    #[serde(default)]
+    pub system_alerts: Vec<AttentionSystemAlert>,
     pub counts: AttentionCounts,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AttentionSystemAlert {
+    pub id: String,
+    pub kind: String,
+    pub severity: String,
+    pub title: String,
+    pub body: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

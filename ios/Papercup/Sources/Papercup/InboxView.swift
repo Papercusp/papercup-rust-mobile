@@ -12,6 +12,18 @@
 import SwiftUI
 import PapercupCore
 
+extension AttentionFeed {
+    /// Shared by the Inbox header and shell badge. Count the actual alert
+    /// payload so an additive server counter cannot hide owner attention.
+    var inboxAttentionCount: Int {
+        max(0, Int(workItemCount)) + max(0, Int(groupCount)) + systemAlerts.count
+    }
+
+    var inboxStatusText: String {
+        inboxAttentionCount == 0 ? "All clear" : "\(inboxAttentionCount) awaiting you"
+    }
+}
+
 struct InboxView: View {
     let creds: DeviceCredentials
     let invalidationTick: Int
@@ -67,16 +79,12 @@ struct InboxView: View {
     }
 
     private var header: some View {
-        let count: Int = {
-            if case .ready(let f) = state { return Int(f.workItemCount + f.groupCount) }
-            return 0
-        }()
         return VStack(alignment: .leading, spacing: 2) {
             Text("Needs you")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(PapercupTheme.text)
-            if case .ready = state {
-                Text(count == 0 ? "All clear" : "\(count) awaiting you")
+            if case .ready(let feed) = state {
+                Text(feed.inboxStatusText)
                     .font(.caption)
                     .foregroundStyle(PapercupTheme.textMuted)
             }
@@ -87,9 +95,12 @@ struct InboxView: View {
 
     @ViewBuilder
     private func content(_ feed: AttentionFeed) -> some View {
-        if feed.workItems.isEmpty && feed.groupCount == 0 {
+        if feed.inboxAttentionCount == 0 {
             emptyCard
         } else {
+            ForEach(feed.systemAlerts, id: \.id) { alert in
+                systemAlertCard(alert)
+            }
             if !feed.workItems.isEmpty {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(feed.workItems, id: \.id) { wi in
@@ -166,6 +177,22 @@ struct InboxView: View {
             }
         }
         .papercupCardContainer(accent: PapercupTheme.info.opacity(0.10))
+    }
+
+    private func systemAlertCard(_ alert: AttentionSystemAlert) -> some View {
+        let tone = alert.severity == "high" ? PapercupTheme.error : PapercupTheme.info
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(alert.title)
+                .font(.headline)
+                .foregroundStyle(tone)
+            Text(alert.body)
+                .font(.callout)
+                .foregroundStyle(PapercupTheme.text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .papercupCardContainer(accent: tone.opacity(0.12))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("inbox-system-alert-\(alert.id)")
     }
 
     private var emptyCard: some View {

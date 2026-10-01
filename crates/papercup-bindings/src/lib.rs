@@ -9,6 +9,7 @@
 
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
 use papercup_core::types::{
+    AttentionResp as CoreAttentionResp, AttentionSystemAlert as CoreAttentionSystemAlert,
     AttentionWorkItem as CoreAttentionWorkItem, AuditRow as CoreAudit, DeviceRow as CoreDevice,
     HarnessLite, HarnessStatusFull, PairBody, PauseInfo as CorePauseInfo,
     PlanSummary as CorePlanSummary, PushRegisterBody, RunningHarnessPhase as CoreRunning,
@@ -706,8 +707,88 @@ impl From<CoreStandingCandidate> for StandingCandidate {
 pub struct AttentionFeed {
     pub groups_json: String,
     pub work_items: Vec<AttentionWorkItem>,
+    pub system_alerts: Vec<AttentionSystemAlert>,
     pub group_count: i64,
     pub work_item_count: i64,
+}
+
+pub struct AttentionSystemAlert {
+    pub id: String,
+    pub kind: String,
+    pub severity: String,
+    pub title: String,
+    pub body: String,
+}
+
+impl From<CoreAttentionSystemAlert> for AttentionSystemAlert {
+    fn from(alert: CoreAttentionSystemAlert) -> Self {
+        Self {
+            id: alert.id,
+            kind: alert.kind,
+            severity: alert.severity,
+            title: alert.title,
+            body: alert.body,
+        }
+    }
+}
+
+impl From<CoreAttentionResp> for AttentionFeed {
+    fn from(resp: CoreAttentionResp) -> Self {
+        Self {
+            groups_json: resp.groups.to_string(),
+            group_count: resp.counts.groups,
+            work_item_count: resp.counts.work_items,
+            work_items: resp
+                .work_items
+                .into_iter()
+                .map(AttentionWorkItem::from)
+                .collect(),
+            system_alerts: resp
+                .system_alerts
+                .into_iter()
+                .map(AttentionSystemAlert::from)
+                .collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod attention_feed_tests {
+    use super::{AttentionFeed, CoreAttentionResp};
+    use serde_json::json;
+
+    #[test]
+    fn system_alert_only_response_survives_the_native_boundary() {
+        let response: CoreAttentionResp = serde_json::from_value(json!({
+            "groups": [], "workItems": [],
+            "systemAlerts": [{
+                "id": "system:release-red-gate", "kind": "release-red-gate",
+                "severity": "high", "title": "Release gate is red",
+                "body": "Changes cannot reach production."
+            }],
+            "counts": {"groups": 0, "workItems": 0, "systemAlerts": 1}
+        }))
+        .unwrap();
+        let feed = AttentionFeed::from(response);
+        assert_eq!(feed.groups_json, "[]");
+        assert!(feed.work_items.is_empty());
+        assert_eq!(feed.system_alerts.len(), 1);
+        let alert = &feed.system_alerts[0];
+        assert_eq!(alert.id, "system:release-red-gate");
+        assert_eq!(alert.kind, "release-red-gate");
+        assert_eq!(alert.severity, "high");
+        assert_eq!(alert.title, "Release gate is red");
+        assert_eq!(alert.body, "Changes cannot reach production.");
+    }
+
+    #[test]
+    fn legacy_attention_response_remains_compatible() {
+        let response: CoreAttentionResp = serde_json::from_value(json!({
+            "groups": [], "workItems": [], "counts": {"groups": 0, "workItems": 0}
+        }))
+        .unwrap();
+        assert!(AttentionFeed::from(response).system_alerts.is_empty());
+    }
 }
 
 pub struct AttentionWorkItem {
@@ -1415,16 +1496,7 @@ impl OperatorClient {
             .map_err(|_| ApiError::Network {
                 detail: "tokio join".into(),
             })??;
-        Ok(AttentionFeed {
-            groups_json: resp.groups.to_string(),
-            group_count: resp.counts.groups,
-            work_item_count: resp.counts.work_items,
-            work_items: resp
-                .work_items
-                .into_iter()
-                .map(AttentionWorkItem::from)
-                .collect(),
-        })
+        Ok(AttentionFeed::from(resp))
     }
 
     /// `GET /api/device/plans` — plan summaries. `harness=None` → All Pots.
