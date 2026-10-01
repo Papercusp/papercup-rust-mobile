@@ -48,7 +48,10 @@ it those cases are skipped and cannot establish paired-flow acceptance.
 `PAPERCUP_MINT_PAIR_PAYLOAD_CMD` can mint a new one-use payload per retry.
 
 `tools/run-ios-template-tests.sh unit|ui|build-only` is the maintained named-Mac
-runner and checks non-zero native test execution. A build must be exercised on
+runner. It reads XCTest's execution summary and requires non-zero passing tests,
+zero failures and zero skips; result-tree nodes do not count as execution. It
+forwards a supplied pair payload to the UI test process. `make
+test-ios-template-runner` checks the result guard on any host. A build must be exercised on
 a capable Mac/current hosted runner; Linux Rust tests do not prove SwiftUI.
 
 ## Current-SDK CI
@@ -66,6 +69,16 @@ explicit candidate dispatch. Normal push/PR triggers cover other source changes.
 The native matrix also checks clean-install pairing guidance, requires its UI
 smoke to execute without skips, and retains the unsigned archive and toolchain
 metadata as private candidate evidence.
+
+To exercise paired navigation and retain the actual paired screens, mint a fresh
+one-use payload for a dedicated sanitized operator, inject it as the private
+repository's `PAPERCUP_PAIR_PAYLOAD` Actions secret, then dispatch with
+`-f paired_ui=true`. Rotate the payload for every attempt and remove the secret
+after the run. This case performs pairing, live Inbox fetch, Settings navigation,
+Plans/Fleet captures and the existing chat journey; its summary must report one
+pass, zero failures and zero skips. The private candidate artifact retains its
+xcresult, summary and exported screenshots. Without this input, CI covers the
+clean-install case and remains partial evidence for paired-flow acceptance.
 
 ## Apple delivery and public acceptance
 

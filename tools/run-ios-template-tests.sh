@@ -46,14 +46,24 @@ BUNDLE=PapercupTests
 RESULT="$REPO_ROOT/ios/build/template-checks/$MODE.xcresult"
 SUMMARY="$REPO_ROOT/ios/build/template-checks/$MODE-summary.json"
 rm -rf "$RESULT"
-xcodebuild test-without-building \
+TEST_RUNNER_ENV=()
+if [ -n "${PAPERCUP_PAIR_PAYLOAD:-}" ]; then
+    TEST_RUNNER_ENV+=("TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD=$PAPERCUP_PAIR_PAYLOAD")
+fi
+env ${TEST_RUNNER_ENV[@]+"${TEST_RUNNER_ENV[@]}"} xcodebuild test-without-building \
     -project ios/Papercup.xcodeproj -scheme Papercup \
     -destination "$DESTINATION" -derivedDataPath "$DERIVED" \
     -only-testing:"$BUNDLE" -resultBundlePath "$RESULT"
-xcrun xcresulttool get test-results tests --path "$RESULT" --format json > "$SUMMARY"
-testsCount="$({ grep -o '"nodeIdentifier"' "$SUMMARY" || true; } | wc -l | tr -d ' ')"
-if [ "$testsCount" -eq 0 ]; then
-    testsCount="$({ grep -o '"testIdentifier"' "$SUMMARY" || true; } | wc -l | tr -d ' ')"
-fi
-[ "$testsCount" -gt 0 ] || { echo "ERROR: $BUNDLE executed zero tests" >&2; exit 1; }
-echo "Executed $testsCount tests in $BUNDLE"
+xcrun xcresulttool get test-results summary --path "$RESULT" --format json > "$SUMMARY"
+python3 - "$SUMMARY" "$BUNDLE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+result = json.loads(Path(sys.argv[1]).read_text())
+counts = {key: result.get(key) for key in ('passedTests', 'failedTests', 'skippedTests')}
+valid_counts = all(type(value) is int and value >= 0 for value in counts.values())
+if not valid_counts or counts['passedTests'] == 0 or counts['failedTests'] != 0 or counts['skippedTests'] != 0:
+    raise SystemExit(f"ERROR: {sys.argv[2]} requires nonzero passing tests, zero failures and zero skips: {counts}")
+print(f"Executed {counts['passedTests']} passing tests with zero failures/skips in {sys.argv[2]}")
+PY
