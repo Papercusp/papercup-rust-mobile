@@ -16,6 +16,7 @@ PKG="com.papercuspai.operator.mobile"
 ACT="$PKG/.MainActivity"
 AVD_NAME="${PAPERCUP_AVD:-papercusp-test}"
 ANDROID_SDK="${ANDROID_HOME:-$HOME/Android/Sdk}"
+EMULATOR_UNIT=""
 
 launch_emulator() {
     local emulator="$ANDROID_SDK/emulator/emulator"
@@ -49,6 +50,7 @@ launch_emulator() {
             --property="Description=Papercup Android Emulator ($AVD_NAME)" \
             "${service_env[@]}" \
             "$emulator" "${emulator_args[@]}" >/dev/null
+        EMULATOR_UNIT="$unit.service"
         echo "==> Emulator service: $unit.service (logs: journalctl --user -u $unit.service)"
     else
         echo "==> WARNING: no systemd user manager; emulator lifetime follows the host session" >&2
@@ -74,12 +76,32 @@ if ! printf '%s\n' "${DEVS[@]}" | grep -q '^emulator-'; then
             echo "==> Booting emulator $AVD_NAME (no emulator-* device detected)"
             launch_emulator
             echo -n "==> Waiting for boot"
+            boot_ready=0
             for _ in $(seq 1 90); do
+                # A transport or sys.boot_completed snapshot is not proof that
+                # the emulator producer survived. Collected transient units
+                # may disappear entirely after an early host crash.
+                if [[ -n "$EMULATOR_UNIT" ]] \
+                    && ! systemctl --user is-active --quiet "$EMULATOR_UNIT"; then
+                    echo >&2
+                    echo "ERROR: emulator service exited before boot completed: $EMULATOR_UNIT" >&2
+                    echo "Inspect: journalctl --user -u $EMULATOR_UNIT" >&2
+                    exit 1
+                fi
                 STATE=$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
-                if [ "$STATE" = "1" ]; then echo " — ready"; break; fi
+                if [ "$STATE" = "1" ]; then
+                    boot_ready=1
+                    echo " — ready"
+                    break
+                fi
                 echo -n "."
                 sleep 1
             done
+            if [[ "$boot_ready" != 1 ]]; then
+                echo >&2
+                echo "ERROR: Android boot did not complete; APK installation was not attempted." >&2
+                exit 1
+            fi
             mapfile -t DEVS < <(adb devices | awk 'NR>1 && $2=="device"{print $1}')
         else
             echo "==> No AVD named '$AVD_NAME' — skipping emulator boot. Run 'avdmanager create avd' to create one." >&2

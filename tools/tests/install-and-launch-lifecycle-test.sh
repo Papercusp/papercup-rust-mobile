@@ -30,6 +30,9 @@ cat > "$TMP_ROOT/bin/systemctl" <<'SH'
 #!/usr/bin/env bash
 case "$*" in
     *show-environment*|*reset-failed*) exit 0 ;;
+    *is-active*)
+        [[ "${PAPERCUP_TEST_EMULATOR_EXIT:-0}" != 1 ]]
+        ;;
     *) exit 0 ;;
 esac
 SH
@@ -50,8 +53,12 @@ case "${1:-}" in
         ;;
     -s)
         case "$*" in
-            *'shell getprop sys.boot_completed'*) printf '1\n' ;;
+            *'shell getprop sys.boot_completed'*)
+                [[ "${PAPERCUP_TEST_BOOT_FAIL:-0}" == 1 ]] || printf '1\n'
+                exit 0
+                ;;
             *' install '*)
+                : > "$PAPERCUP_TEST_STATE/install-attempted"
                 if [[ "${PAPERCUP_TEST_INSTALL_FAIL:-0}" == 1 ]]; then
                     printf 'Failure [INSTALL_FAILED_VERSION_DOWNGRADE]\n' >&2
                     exit 1
@@ -73,8 +80,14 @@ case "${1:-}" in
 esac
 SH
 
+cat > "$TMP_ROOT/bin/sleep" <<'SH'
+#!/usr/bin/env bash
+# A bounded boot-timeout regression must not spend 90 real seconds.
+exit 0
+SH
+
 chmod +x "$TMP_ROOT/bin/adb" "$TMP_ROOT/bin/systemctl" "$TMP_ROOT/bin/systemd-run" \
-    "$TMP_ROOT/sdk/emulator/emulator"
+    "$TMP_ROOT/bin/sleep" "$TMP_ROOT/sdk/emulator/emulator"
 
 PATH="$TMP_ROOT/bin:$PATH" \
 HOME="$TMP_ROOT/home" \
@@ -116,4 +129,30 @@ if grep -F 'Done. Devices:' "$TMP_ROOT/launch-failure.log" >/dev/null; then
     fail 'completion banner appeared after an unsuccessful activity launch'
 fi
 
-echo 'install-and-launch lifecycle tests: 3 passed'
+# Boot readiness is a precondition, not a cosmetic progress message.
+# A device transport may appear while the emulator's producer has died.
+rm -f "$TMP_ROOT/state/systemd-run.args" "$TMP_ROOT/state/install-attempted" \
+    "$TMP_ROOT/state/activity-started"
+if PATH="$TMP_ROOT/bin:$PATH" ANDROID_HOME="$TMP_ROOT/sdk" \
+    PAPERCUP_ANDROID_APK="$TMP_ROOT/app-debug.apk" PAPERCUP_TEST_STATE="$TMP_ROOT/state" \
+    PAPERCUP_TEST_EMULATOR_EXIT=1 "$SCRIPT" > "$TMP_ROOT/emulator-exit.log" 2>&1; then
+    fail 'an exited emulator service was accepted as boot-ready'
+fi
+[[ ! -f "$TMP_ROOT/state/install-attempted" ]] \
+    || fail 'APK installation attempted after the emulator producer exited'
+grep -F 'emulator service exited before boot completed' "$TMP_ROOT/emulator-exit.log" >/dev/null \
+    || fail 'producer failure did not identify its boot precondition'
+
+rm -f "$TMP_ROOT/state/systemd-run.args" "$TMP_ROOT/state/install-attempted" \
+    "$TMP_ROOT/state/activity-started"
+if PATH="$TMP_ROOT/bin:$PATH" ANDROID_HOME="$TMP_ROOT/sdk" \
+    PAPERCUP_ANDROID_APK="$TMP_ROOT/app-debug.apk" PAPERCUP_TEST_STATE="$TMP_ROOT/state" \
+    PAPERCUP_TEST_BOOT_FAIL=1 "$SCRIPT" > "$TMP_ROOT/boot-timeout.log" 2>&1; then
+    fail 'an emulator that never completed boot was accepted'
+fi
+[[ ! -f "$TMP_ROOT/state/install-attempted" ]] \
+    || fail 'APK installation attempted without a completed Android boot'
+grep -F 'Android boot did not complete' "$TMP_ROOT/boot-timeout.log" >/dev/null \
+    || fail 'boot failure did not identify its readiness precondition'
+
+echo 'install-and-launch lifecycle tests: 5 passed'
