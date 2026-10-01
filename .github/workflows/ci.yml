@@ -7,6 +7,10 @@ name: CI
 on:
   workflow_dispatch:
     inputs:
+      android_only:
+        description: Run the complete Android gate without rerunning the iPhone gate
+        type: boolean
+        default: false
       paired_ui:
         description: Execute sanitized paired UI using a fresh one-use PAPERCUP_PAIR_PAYLOAD secret
         type: boolean
@@ -27,7 +31,7 @@ env:
 jobs:
   rust:
     name: Rust workspace (Linux)
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && inputs.android_only != true
     runs-on: ubuntu-latest
     # macos-latest was dropped from the matrix after run 25648261681
     # aborted in 11s with no steps — consistent with hitting the
@@ -60,7 +64,7 @@ jobs:
 
   uniffi-bindings:
     name: UniFFI bindings (Linux)
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && inputs.android_only != true
     runs-on: ubuntu-latest
     needs: rust
     steps:
@@ -202,7 +206,7 @@ jobs:
 
   ios:
     name: iPhone release gate (iOS 26 SDK)
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && inputs.android_only != true
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -351,7 +355,7 @@ jobs:
 
   design-tokens:
     name: Design tokens drift
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && inputs.android_only != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
