@@ -8,7 +8,7 @@
         bindings-kotlin bindings-swift test test-ios test-ios-ui \
         verify-ios-release test-ios-release release-ios check \
         fmt fmt-check clippy lint-android test-android-java test-android-launch-lifecycle test-android-release-provenance \
-        test-ios-host-health bindings-smoke install-hooks clean tokens tokens-check
+        test-ios-host-health test-ios-template-runner bindings-smoke install-hooks clean tokens tokens-check
 
 help:
 	@echo "Targets:"
@@ -29,6 +29,7 @@ help:
 	@echo "  make verify-ios-release — validate iOS metadata, privacy, signing config, and release copy"
 	@echo "  make test-ios-release   — exercise the iOS release verifier and its failure guards"
 	@echo "  make test-ios-host-health — test the macOS GUI/media saturation preflight"
+	@echo "  make test-ios-template-runner — test native executed/failure/skip result guards"
 	@echo "  make release-ios        — archive/export iOS 1.0.0 (set signing env; ACTION=preflight|archive|export|validate|upload)"
 	@echo "  make bindings-kotlin    — regenerate Kotlin bindings into android/app/src/main/kotlin/uniffi"
 	@echo "  make bindings-swift     — regenerate Swift bindings into ios/PapercupCore"
@@ -42,7 +43,7 @@ help:
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-ios-host-health
+check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-ios-host-health test-ios-template-runner
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -93,6 +94,9 @@ test-android-launch-lifecycle:
 
 test-android-release-provenance:
 	./tools/tests/android-release-provenance-test.sh
+
+test-ios-template-runner:
+	bash tools/tests/run-ios-template-tests-test.sh
 
 build-rust:
 	cargo build --workspace
