@@ -71,6 +71,31 @@ fi
 [[ -s "$TMP_ROOT/attempt/storage.txt" ]]
 echo 'Android CI working-set guards: host refusals, four target-only cleans and pinned NDK preservation passed'
 
+# Full cleanup is admitted only after executed host tests and a preserved APK.
+mkdir -p "$TMP_ROOT/outputs/apk/debug"
+printf '%s' "$good" > "$release"
+printf 'built APK fixture' > "$TMP_ROOT/outputs/apk/debug/app-debug.apk"
+GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted ANDROID_HOME="$TMP_ROOT/sdk" \
+    TEST_CI_COMMAND_LOG="$TMP_ROOT/after-host-commands" PATH="$TMP_ROOT/bin:$PATH" \
+    bash "$runner" prepare-ci "$TMP_ROOT/after-host-attempt" after-host "$TMP_ROOT"
+grep -Fxq clean "$TMP_ROOT/after-host-commands"
+for missing in report apk; do
+    if [[ "$missing" == report ]]; then
+        printf '<testsuite tests="0"/>' > "$release"
+    else
+        printf '%s' "$good" > "$release"
+        rm "$TMP_ROOT/outputs/apk/debug/app-debug.apk"
+    fi
+    if GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted ANDROID_HOME="$TMP_ROOT/sdk" \
+        TEST_CI_COMMAND_LOG="$TMP_ROOT/refused-cleanup-$missing" PATH="$TMP_ROOT/bin:$PATH" \
+        bash "$runner" prepare-ci "$TMP_ROOT/after-host-attempt" after-host "$TMP_ROOT" > "$TMP_ROOT/output" 2>&1; then
+        echo "FAIL: after-host cleanup accepted missing $missing" >&2
+        exit 1
+    fi
+    [[ ! -e "$TMP_ROOT/refused-cleanup-$missing" ]]
+done
+echo 'Android after-host cleanup guards: executed reports and preserved APK required'
+
 # Reproduce the hosted counterexample without consuming a real disk: the
 # retained attempt had 6,405,476 KiB free, insufficient for default userdata.
 # Check the real runner's capacity decision and retained diagnostic evidence.
@@ -80,9 +105,16 @@ printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
 printf '/test 75085112 0 %s 0%% /test\n' "${TEST_CI_AVAILABLE_KB:-6405476}"
 SH
 chmod +x "$TMP_ROOT/bin/df"
-ANDROID_AVD_HOME="$TMP_ROOT/avd with spaces" PATH="$TMP_ROOT/bin:$PATH" \
-    bash "$runner" verify-avd-space 2048M "$TMP_ROOT/avd-space-proof"
+TEST_CI_AVAILABLE_KB=10485760 ANDROID_AVD_HOME="$TMP_ROOT/avd with spaces" PATH="$TMP_ROOT/bin:$PATH" \
+    bash "$runner" verify-avd-space 6144M "$TMP_ROOT/avd-space-proof"
 grep -Fq '"sufficient": true' "$TMP_ROOT/avd-space-proof/avd-space.txt"
+if ANDROID_AVD_HOME="$TMP_ROOT/avd with spaces" PATH="$TMP_ROOT/bin:$PATH" \
+    bash "$runner" verify-avd-space 2048M "$TMP_ROOT/undersized-avd-space-proof" > "$TMP_ROOT/output" 2>&1; then
+    echo 'FAIL: a 2-GiB request hid the effective 6-GiB capacity failure' >&2
+    exit 1
+fi
+grep -Fq '"configuredPartitionBytes": 2147483648' "$TMP_ROOT/undersized-avd-space-proof/avd-space.txt"
+grep -Fq '"partitionBytes": 6442450944' "$TMP_ROOT/undersized-avd-space-proof/avd-space.txt"
 if ANDROID_AVD_HOME="$TMP_ROOT/avd with spaces" PATH="$TMP_ROOT/bin:$PATH" \
     bash "$runner" verify-avd-space 6144M "$TMP_ROOT/default-avd-space-proof" > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: the measured default-userdata capacity failure was accepted' >&2
@@ -102,7 +134,7 @@ for invalid in 0 2GB -1 ''; do
         exit 1
     fi
 done
-echo 'Android AVD capacity guards: configured partition accepted; default oversized, low-space and invalid inputs rejected'
+echo 'Android AVD capacity guards: effective minimum enforced; adequate space accepted; low-space and invalid inputs rejected'
 
 mkdir -p "$TMP_ROOT/sdk/emulator/qemu/linux-x86_64"
 cat > "$TMP_ROOT/sdk/emulator/emulator" <<'SH'

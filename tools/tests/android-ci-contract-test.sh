@@ -23,8 +23,10 @@ assert 'apt-get install --no-install-recommends -y libpulse0' in android, 'QEMU 
 assert "sdkmanager 'emulator'" in android, 'emulator must be installed before executable preflight'
 preflight = 'bash tools/run-android-checks.sh verify-emulator'
 assert android.count(preflight) == 2 and android.index(preflight) < android.index('make check-android-host'), 'emulator loader precondition must run before the expensive build'
-space_preflight = 'bash tools/run-android-checks.sh verify-avd-space 2048M'
-assert '          disk-size: 2048M\n' in android, 'AVD userdata demand must be explicit and match the capacity guard'
+late_cleanup = 'bash tools/run-android-checks.sh prepare-ci android-ci-attempt after-host'
+assert late_cleanup in android and android.index('make check-android-host') < android.index(late_cleanup) < android.index('uses: reactivecircus/android-emulator-runner@v2'), 'full intermediate cleanup must follow verified host checks and precede native execution'
+space_preflight = 'bash tools/run-android-checks.sh verify-avd-space 6144M'
+assert '          disk-size: 6144M\n' in android, 'AVD userdata demand must cover the measured effective 6-GiB allocation'
 assert android.count(space_preflight) == 3 and android.index(space_preflight) < android.index('make check-android-host'), 'AVD capacity must be checked before host build, native setup and launch'
 assert f'          pre-emulator-launch-script: {space_preflight}\n' in android, 'AVD capacity must be rechecked after AVD creation'
 sdk_setup = android.split('uses: android-actions/setup-android@v3', 1)[1].split('\n      -', 1)[0]
@@ -84,10 +86,12 @@ text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 (out / 'late-image.yml').write_text(text.replace(" 'system-images;android-36;google_apis_ps16k;x86_64'", ''))
 (out / 'missing-emulator-libs.yml').write_text(text.replace('libpulse0', 'disabled-libpulse'))
 (out / 'missing-emulator-preflight.yml').write_text(text.replace('          bash tools/run-android-checks.sh verify-emulator\n', ''))
-(out / 'default-avd-disk.yml').write_text(text.replace('          disk-size: 2048M\n', ''))
-(out / 'oversized-avd-disk.yml').write_text(text.replace('          disk-size: 2048M\n', '          disk-size: 6144M\n'))
-(out / 'missing-avd-space.yml').write_text(text.replace('          bash tools/run-android-checks.sh verify-avd-space 2048M\n', ''))
-(out / 'missing-avd-launch-space.yml').write_text(text.replace('          pre-emulator-launch-script: bash tools/run-android-checks.sh verify-avd-space 2048M\n', ''))
+(out / 'default-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', ''))
+(out / 'undersized-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', '          disk-size: 2048M\n'))
+(out / 'oversized-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', '          disk-size: 8192M\n'))
+(out / 'missing-avd-space.yml').write_text(text.replace('          bash tools/run-android-checks.sh verify-avd-space 6144M\n', ''))
+(out / 'missing-avd-launch-space.yml').write_text(text.replace('          pre-emulator-launch-script: bash tools/run-android-checks.sh verify-avd-space 6144M\n', ''))
+(out / 'missing-after-host-cleanup.yml').write_text(text.replace(' prepare-ci android-ci-attempt after-host', ' prepare-ci'))
 PY
     for fixture in "$TMP_ROOT"/*.yml; do
         if bash "$0" "$fixture" > "$TMP_ROOT/output" 2>&1; then
@@ -95,7 +99,7 @@ PY
             exit 1
         fi
     done
-    echo 'Android CI bootstrap/storage/emulator/evidence mutation controls: 10 rejected'
+    echo 'Android CI bootstrap/storage/emulator/evidence mutation controls: 12 rejected'
 
     # A workflow invoking "host" is insufficient if the owned runner stops
     # executing one of its required phases. Keep each omission reproducible.

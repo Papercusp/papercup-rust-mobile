@@ -42,8 +42,10 @@ if [[ "$mode" == verify-avd-space ]]; then
     attempt_dir="${3:-android-ci-attempt}"
     mkdir -p "$avd_root" "$attempt_dir"
     available_kb="$(df -Pk "$avd_root" | awk 'NR == 2 { print $4 }')"
-    # The emulator reserves 20% beyond the configured userdata partition
-    # (API 36's default 6 GiB required 7.2 GiB in run 36916314060).
+    # The selected API 36/16-KB runtime allocated 6 GiB even after the action
+    # requested 2048M (run 36927827065). A requested size is not an effective
+    # allocation. Cover that measured minimum as well as larger requests.
+    # The emulator reserves 20% beyond the effective userdata partition.
     # Keep another GiB for installed APKs, test output and emulator writes.
     python3 - "$partition" "$available_kb" "$avd_root" <<'PY' | tee -a "$attempt_dir/avd-space.txt"
 import json
@@ -53,14 +55,16 @@ import sys
 match = re.fullmatch(r'([1-9][0-9]*)([KMG]?)', sys.argv[1])
 if not match or not sys.argv[2].isdigit():
     raise SystemExit('AVD space preflight requires a positive disk-size and measured free space')
-partition = int(match[1]) * {'': 1, 'K': 1024, 'M': 1024**2, 'G': 1024**3}[match[2]]
+configured = int(match[1]) * {'': 1, 'K': 1024, 'M': 1024**2, 'G': 1024**3}[match[2]]
+partition = max(configured, 6 * 1024**3)
 available = int(sys.argv[2]) * 1024
 required = (partition * 6 + 4) // 5 + 1024**3
-print(json.dumps({'avdRoot': sys.argv[3], 'partitionBytes': partition,
+print(json.dumps({'avdRoot': sys.argv[3], 'configuredPartitionBytes': configured,
+                  'partitionBytes': partition,
                   'availableBytes': available, 'requiredBytes': required,
                   'sufficient': available >= required}))
 if available < required:
-    raise SystemExit('Insufficient space for the configured AVD userdata partition and test working set')
+    raise SystemExit('Insufficient space for the effective AVD userdata partition and test working set')
 PY
     exit
 fi
@@ -100,17 +104,34 @@ if [[ "$mode" == prepare-ci ]]; then
         exit 2
     }
     attempt_dir="${2:-android-ci-attempt}"
+    stage="${3:-before-host}"
+    case "$stage" in
+        before-host|after-host) ;;
+        *) echo 'CI preparation stage must be before-host or after-host.' >&2; exit 2 ;;
+    esac
     mkdir -p "$attempt_dir"
     {
         date -u +%FT%TZ
         df -Pk . "$ANDROID_HOME"
         du -sk "${CARGO_TARGET_DIR:-target}" "$ANDROID_HOME/ndk" 2>/dev/null || true
     } >> "$attempt_dir/storage.txt"
-    # The packaged JNI copies survive. Host bindgen/test outputs survive too;
-    # only the four reproducible Android release intermediates are removed.
-    for target in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
-        cargo clean --release --target "$target"
-    done
+    if [[ "$stage" == after-host ]]; then
+        build_root="${4:-android/app/build}"
+        # Native execution consumes the built APK and Gradle outputs, not Cargo
+        # intermediates. Refuse full cleanup until real host reports and the APK
+        # exist. This branch is restricted to the disposable hosted runner above.
+        verify_results "$build_root" host
+        [[ -s "$build_root/outputs/apk/debug/app-debug.apk" ]] || {
+            echo 'After-host cleanup requires the built debug APK.' >&2
+            exit 1
+        }
+        cargo clean
+    else
+        # Keep host bindgen/test outputs until their checks have executed.
+        for target in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
+            cargo clean --release --target "$target"
+        done
+    fi
     for ndk in "$ANDROID_HOME"/ndk/*; do
         [[ -d "$ndk" ]] || continue
         revision="${ndk##*/}"
