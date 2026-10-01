@@ -35,3 +35,38 @@ if bash "$runner" verify-results "$TMP_ROOT" connected > "$TMP_ROOT/output" 2>&1
     exit 1
 fi
 echo 'Android result guard tests: 10 passed'
+
+# The CI preparation phase must refuse a real developer/self-hosted machine.
+if GITHUB_ACTIONS=false RUNNER_ENVIRONMENT=github-hosted bash "$runner" prepare-ci > "$TMP_ROOT/output" 2>&1; then
+    echo 'FAIL: CI cleanup admitted a developer host' >&2
+    exit 1
+fi
+if GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=self-hosted bash "$runner" prepare-ci > "$TMP_ROOT/output" 2>&1; then
+    echo 'FAIL: CI cleanup admitted a self-hosted runner' >&2
+    exit 1
+fi
+
+mkdir -p "$TMP_ROOT/bin" "$TMP_ROOT/sdk/ndk/26.0.1" "$TMP_ROOT/sdk/ndk/27.0.12077973"
+cat > "$TMP_ROOT/bin/cargo" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TEST_CI_COMMAND_LOG"
+SH
+cat > "$TMP_ROOT/bin/sdkmanager" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TEST_CI_COMMAND_LOG"
+SH
+chmod +x "$TMP_ROOT/bin/cargo" "$TMP_ROOT/bin/sdkmanager"
+GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted ANDROID_HOME="$TMP_ROOT/sdk" \
+    TEST_CI_COMMAND_LOG="$TMP_ROOT/ci-commands" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" prepare-ci "$TMP_ROOT/attempt"
+[[ "$(grep -c '^clean --release --target ' "$TMP_ROOT/ci-commands")" == 4 ]]
+for target in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
+    grep -Fxq "clean --release --target $target" "$TMP_ROOT/ci-commands"
+done
+grep -Fq -- '--uninstall ndk;26.0.1' "$TMP_ROOT/ci-commands"
+if grep -Fq 'ndk;27.0.12077973' "$TMP_ROOT/ci-commands"; then
+    echo 'FAIL: CI cleanup removed the pinned NDK' >&2
+    exit 1
+fi
+[[ -d "$TMP_ROOT/sdk/ndk/27.0.12077973" ]]
+[[ -s "$TMP_ROOT/attempt/storage.txt" ]]
+echo 'Android CI working-set guards: host refusals, four target-only cleans and pinned NDK preservation passed'

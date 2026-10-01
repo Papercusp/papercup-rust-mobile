@@ -36,13 +36,44 @@ PY
 }
 
 mode="${1:-full}"
+if [[ "$mode" == prepare-ci ]]; then
+    # Only the disposable, owned Actions runner may prune its toolchain.
+    [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]] || {
+        echo 'CI working-set preparation requires a GitHub-hosted runner.' >&2
+        exit 2
+    }
+    [[ -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME/ndk" ]] || {
+        echo 'CI working-set preparation requires the installed Android SDK.' >&2
+        exit 2
+    }
+    attempt_dir="${2:-android-ci-attempt}"
+    mkdir -p "$attempt_dir"
+    {
+        date -u +%FT%TZ
+        df -Pk . "$ANDROID_HOME"
+        du -sk "${CARGO_TARGET_DIR:-target}" "$ANDROID_HOME/ndk" 2>/dev/null || true
+    } >> "$attempt_dir/storage.txt"
+    # The packaged JNI copies survive. Host bindgen/test outputs survive too;
+    # only the four reproducible Android release intermediates are removed.
+    for target in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
+        cargo clean --release --target "$target"
+    done
+    for ndk in "$ANDROID_HOME"/ndk/*; do
+        [[ -d "$ndk" ]] || continue
+        revision="${ndk##*/}"
+        [[ "$revision" == 27.0.12077973 ]] && continue
+        sdkmanager "--sdk_root=$ANDROID_HOME" --uninstall "ndk;$revision"
+    done
+    df -Pk . "$ANDROID_HOME" >> "$attempt_dir/storage.txt"
+    exit
+fi
 if [[ "$mode" == verify-results ]]; then
     [[ "${3:-}" == host || "${3:-}" == connected ]] || exit 2
     verify_results "$2" "$3"
     exit
 fi
 [[ "$mode" == host || "$mode" == connected || "$mode" == full ]] || {
-    echo 'usage: run-android-checks.sh [host|connected|full|verify-results ROOT host|connected]' >&2
+    echo 'usage: run-android-checks.sh [host|connected|full|prepare-ci|verify-results ROOT host|connected]' >&2
     exit 2
 }
 
