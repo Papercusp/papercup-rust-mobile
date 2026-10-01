@@ -158,6 +158,18 @@ jobs:
           xcodebuild -version > ios/build/ci-release/xcode-version.txt
           xcrun --sdk iphoneos --show-sdk-version > ios/build/ci-release/ios-sdk.txt
 
+      - name: Export candidate UI screenshots
+        run: |
+          set -euo pipefail
+          xcrun xcresulttool export attachments \
+            --path ios/build/ci-pair-smoke.xcresult \
+            --output-path ios/build/ci-release/ui-attachments
+          python3 - <<'PY'
+          from pathlib import Path
+          screenshots = list(Path('ios/build/ci-release/ui-attachments').rglob('*.png'))
+          assert screenshots, 'The clean-install UI test must retain a real candidate screenshot'
+          PY
+
       - name: Retain native candidate evidence
         if: always()
         uses: actions/upload-artifact@v4

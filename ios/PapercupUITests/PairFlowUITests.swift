@@ -41,6 +41,13 @@ final class PairFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Remote access")).firstMatch.exists,
                       "Pairing instructions should point to the current desktop settings")
         XCTAssertTrue(app.buttons["Paste manually"].exists, "Paste pairing should remain available without camera access")
+
+        // Retain a real candidate image for the review packet after the
+        // clean-install assertions have established the visible screen.
+        let pairingScreenshot = XCTAttachment(screenshot: app.screenshot())
+        pairingScreenshot.name = "clean-install-pairing"
+        pairingScreenshot.lifetime = .keepAlways
+        add(pairingScreenshot)
     }
 
     /// End-to-end pair flow + paired-state navigation in one go (the
