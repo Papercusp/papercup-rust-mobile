@@ -19,8 +19,107 @@
 // auth, runtime-config (voice WS discovery), rest-query (polling sync),
 // list/feeds, both error envelopes, and 403→Unauthorized.
 
+use futures_util::FutureExt;
 use papercup_core::client::{ApiError, OperatorClient};
 use papercup_core::types::PairBody;
+use std::future::Future;
+use std::panic::{resume_unwind, AssertUnwindSafe};
+
+// A failed contract assertion must not leave its private live pairing behind.
+// Catch the test body's panic only long enough to revoke, then retain the
+// original failure. A cleanup failure must never turn the smoke green.
+async fn with_pair_cleanup(
+    client: &OperatorClient,
+    device_id: &str,
+    checks: impl Future<Output = ()>,
+) {
+    let outcome = AssertUnwindSafe(checks).catch_unwind().await;
+    let cleanup = client.revoke_device(device_id).await;
+    if let Err(original_panic) = outcome {
+        if let Err(error) = cleanup {
+            eprintln!("smoke pairing cleanup failed for {device_id}: {error}");
+        }
+        resume_unwind(original_panic);
+    }
+    cleanup.expect("revoke smoke pairing");
+}
+
+// These guards run in the ordinary workspace suite; only the actual live
+// smoke below is ignored. All requests use a private localhost mock identity.
+async fn cleanup_fixture(status: u16) -> (OperatorClient, wiremock::MockServer) {
+    use wiremock::matchers::{bearer_token, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/api/device/devices/smoke-test"))
+        .and(bearer_token("private-test-token"))
+        .respond_with(
+            ResponseTemplate::new(status).set_body_json(serde_json::json!({
+                "ok": status == 200,
+                "error": "cleanup-test",
+            })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    (
+        OperatorClient::new(server.uri(), Some("private-test-token".into())),
+        server,
+    )
+}
+
+#[tokio::test]
+async fn successful_checks_revoke_pairing() {
+    let (client, server) = cleanup_fixture(200).await;
+    with_pair_cleanup(&client, "smoke-test", async {}).await;
+    server.verify().await;
+}
+
+#[tokio::test]
+async fn panicking_checks_revoke_pairing_and_preserve_failure() {
+    let (client, server) = cleanup_fixture(200).await;
+    let panic = AssertUnwindSafe(with_pair_cleanup(&client, "smoke-test", async {
+        panic!("original contract failure");
+    }))
+    .catch_unwind()
+    .await
+    .expect_err("the original failure must not be swallowed");
+    assert_eq!(
+        panic.downcast_ref::<&str>(),
+        Some(&"original contract failure")
+    );
+    server.verify().await;
+}
+
+#[tokio::test]
+async fn cleanup_failure_cannot_report_success() {
+    let (client, server) = cleanup_fixture(500).await;
+    assert!(
+        AssertUnwindSafe(with_pair_cleanup(&client, "smoke-test", async {}))
+            .catch_unwind()
+            .await
+            .is_err(),
+        "a rejected revoke must fail the smoke"
+    );
+    server.verify().await;
+}
+
+#[tokio::test]
+async fn cleanup_failure_preserves_original_contract_failure() {
+    let (client, server) = cleanup_fixture(500).await;
+    let panic = AssertUnwindSafe(with_pair_cleanup(&client, "smoke-test", async {
+        panic!("original contract failure");
+    }))
+    .catch_unwind()
+    .await
+    .expect_err("the original failure must survive a cleanup rejection");
+    assert_eq!(
+        panic.downcast_ref::<&str>(),
+        Some(&"original contract failure")
+    );
+    server.verify().await;
+}
 
 fn live_env() -> Option<(String, String)> {
     let base = std::env::var("PAPERCUP_LIVE_BASE").ok()?;
@@ -42,7 +141,6 @@ async fn live_p0_contract_smoke() {
         })
         .await
         .expect("pair should succeed with a fresh token");
-    assert!(!pair.device_token.is_empty(), "deviceToken present");
     assert!(!pair.device_id.is_empty(), "deviceId present");
     println!(
         "paired: device={} workspace={} defguard={:?}",
@@ -51,200 +149,198 @@ async fn live_p0_contract_smoke() {
 
     let client = OperatorClient::new(base.clone(), Some(pair.device_token.clone()));
 
-    // 2. runtime-config — voice WS discovery.
-    let cfg = client.runtime_config().await.expect("runtime-config");
-    println!(
-        "runtime-config: meshHost={} voiceWs={:?}/{}",
-        cfg.mesh_host, cfg.voice_ws.port, cfg.voice_ws.path
-    );
-    assert_eq!(cfg.workspace_id, pair.workspace_id);
-    assert_eq!(cfg.voice_ws.path, "/api/device/voice");
+    with_pair_cleanup(&client, &pair.device_id, async {
+        assert!(!pair.device_token.is_empty(), "deviceToken present");
 
-    // 3. rest-query — the polling sync path, all server-known names.
-    for name in [
-        "toastLog.recent",
-        "auditLog.recent",
-        "operatorScans.running",
-        "harnessStatus.list",
-        "standingCandidates.list",
-    ] {
-        let resp = client
-            .rest_query(name, "{}")
-            .await
-            .unwrap_or_else(|e| panic!("rest_query {name}: {e}"));
-        assert!(resp.rows.is_array(), "{name} rows is an array");
+        // 2. runtime-config — voice WS discovery.
+        let cfg = client.runtime_config().await.expect("runtime-config");
         println!(
-            "rest-query {name}: {} rows",
-            resp.rows.as_array().map(|a| a.len()).unwrap_or(0)
+            "runtime-config: meshHost={} voiceWs={:?}/{}",
+            cfg.mesh_host, cfg.voice_ws.port, cfg.voice_ws.path
         );
-    }
-    // unknown name → flat 400 envelope decodes
-    match client.rest_query("nope.unknown", "{}").await {
-        Err(ApiError::Server {
-            status: 400,
-            detail,
-        }) => {
-            assert!(
-                detail.contains("unknown query"),
-                "flat envelope decoded: {detail}"
+        assert_eq!(cfg.workspace_id, pair.workspace_id);
+        assert_eq!(cfg.voice_ws.path, "/api/device/voice");
+
+        // 3. rest-query — the polling sync path, all server-known names.
+        for name in [
+            "toastLog.recent",
+            "auditLog.recent",
+            "operatorScans.running",
+            "harnessStatus.list",
+            "standingCandidates.list",
+        ] {
+            let resp = client
+                .rest_query(name, "{}")
+                .await
+                .unwrap_or_else(|e| panic!("rest_query {name}: {e}"));
+            assert!(resp.rows.is_array(), "{name} rows is an array");
+            println!(
+                "rest-query {name}: {} rows",
+                resp.rows.as_array().map(|a| a.len()).unwrap_or(0)
             );
         }
-        other => panic!("unknown rest-query name should 400, got {other:?}"),
-    }
+        // unknown name → flat 400 envelope decodes
+        match client.rest_query("nope.unknown", "{}").await {
+            Err(ApiError::Server {
+                status: 400,
+                detail,
+            }) => {
+                assert!(
+                    detail.contains("unknown query"),
+                    "flat envelope decoded: {detail}"
+                );
+            }
+            other => panic!("unknown rest-query name should 400, got {other:?}"),
+        }
 
-    // 4. Typed reads.
-    let harnesses = client.list_harnesses().await.expect("list_harnesses");
-    println!("harnesses: {}", harnesses.len());
-    let (_scan, running) = client.running_snapshot().await.expect("running_snapshot");
-    println!("running phases: {}", running.len());
-    client.recent_notifications().await.expect("notifications");
-    client.recent_actions().await.expect("actions");
-    client.list_workspaces().await.expect("workspaces");
-    let devices = client.list_desktop_devices().await.expect("devices");
-    assert!(
-        devices.iter().any(|d| d.device_id == pair.device_id),
-        "this device appears in the paired-device list"
-    );
-    client.pause_get().await.expect("pause_get");
-    client.heartbeat().await.expect("heartbeat");
-
-    // 4b. D-002 routes — attention (Inbox) + plans. These exercise the
-    // work_items-native + PG-canonical-plans decoders against real data.
-    let att = client.attention().await.expect("attention");
-    println!(
-        "attention: {} groups, {} workItems (counts {}/{})",
-        att.groups.as_array().map(|a| a.len()).unwrap_or(0),
-        att.work_items.len(),
-        att.counts.groups,
-        att.counts.work_items
-    );
-    let plans = client
-        .plans_list(None, false)
-        .await
-        .expect("plans_list (All Pots)");
-    println!("plans (All Pots): {}", plans.len());
-    if let Some(p) = plans.first() {
-        let detail = client
-            .plan_get(&p.slug, Some(&p.harness))
-            .await
-            .unwrap_or_else(|e| panic!("plan_get {}: {e}", p.slug));
-        println!(
-            "plan_get {}: title={:?} items={}",
-            detail.slug,
-            detail.title,
-            detail.items.as_array().map(|a| a.len()).unwrap_or(0)
+        // 4. Typed reads.
+        let harnesses = client.list_harnesses().await.expect("list_harnesses");
+        println!("harnesses: {}", harnesses.len());
+        let (_scan, running) = client.running_snapshot().await.expect("running_snapshot");
+        println!("running phases: {}", running.len());
+        client.recent_notifications().await.expect("notifications");
+        client.recent_actions().await.expect("actions");
+        client.list_workspaces().await.expect("workspaces");
+        let devices = client.list_desktop_devices().await.expect("devices");
+        assert!(
+            devices.iter().any(|d| d.device_id == pair.device_id),
+            "this device appears in the paired-device list"
         );
-    }
-    // push register — idempotent upsert; a dummy APNS token is fine, it
-    // just lands in mobile_push_tokens keyed by (device_id, 'apns').
-    client
-        .register_push(papercup_core::types::PushRegisterBody {
-            platform: "apns".into(),
-            token: format!("live-smoke-apns-{}", pair.device_id),
-        })
-        .await
-        .expect("register_push");
-    println!("push registered (apns)");
+        client.pause_get().await.expect("pause_get");
+        client.heartbeat().await.expect("heartbeat");
 
-    // 4c. Operator conversation (chat) — read the shared thread. The SEND
-    // (operator_converse) posts a REAL turn to the owner's conversation and
-    // burns a brain call, so it only runs when explicitly opted in via
-    // PAPERCUP_LIVE_CONVERSE=1.
-    let conv = client
-        .operator_conversation(5)
-        .await
-        .expect("operator_conversation");
-    println!(
-        "conversation: {} turns={} hasMore={}",
-        conv.conversation.id,
-        conv.turns.len(),
-        conv.has_more_earlier
-    );
-    if std::env::var("PAPERCUP_LIVE_CONVERSE").as_deref() == Ok("1") {
-        let before = conv.turns.last().map(|t| t.seq).unwrap_or(0);
+        // 4b. D-002 routes — attention (Inbox) + plans. These exercise the
+        // work_items-native + PG-canonical-plans decoders against real data.
+        let att = client.attention().await.expect("attention");
+        println!(
+            "attention: {} groups, {} workItems (counts {}/{})",
+            att.groups.as_array().map(|a| a.len()).unwrap_or(0),
+            att.work_items.len(),
+            att.counts.groups,
+            att.counts.work_items
+        );
+        let plans = client
+            .plans_list(None, false)
+            .await
+            .expect("plans_list (All Pots)");
+        println!("plans (All Pots): {}", plans.len());
+        if let Some(p) = plans.first() {
+            let detail = client
+                .plan_get(&p.slug, Some(&p.harness))
+                .await
+                .unwrap_or_else(|e| panic!("plan_get {}: {e}", p.slug));
+            println!(
+                "plan_get {}: title={:?} items={}",
+                detail.slug,
+                detail.title,
+                detail.items.as_array().map(|a| a.len()).unwrap_or(0)
+            );
+        }
+        // push register — idempotent upsert; a dummy APNS token is fine, it
+        // just lands in mobile_push_tokens keyed by (device_id, 'apns').
         client
+            .register_push(papercup_core::types::PushRegisterBody {
+                platform: "apns".into(),
+                token: format!("live-smoke-apns-{}", pair.device_id),
+            })
+            .await
+            .expect("register_push");
+        println!("push registered (apns)");
+
+        // 4c. Operator conversation (chat) — read the shared thread. The SEND
+        // (operator_converse) posts a REAL turn to the owner's conversation and
+        // burns a brain call, so it only runs when explicitly opted in via
+        // PAPERCUP_LIVE_CONVERSE=1.
+        let conv = client
+            .operator_conversation(5)
+            .await
+            .expect("operator_conversation");
+        println!(
+            "conversation: {} turns={} hasMore={}",
+            conv.conversation.id,
+            conv.turns.len(),
+            conv.has_more_earlier
+        );
+        if std::env::var("PAPERCUP_LIVE_CONVERSE").as_deref() == Ok("1") {
+            let before = conv.turns.last().map(|t| t.seq).unwrap_or(0);
+            client
             .operator_converse(
                 "Live contract smoke from the iOS mobile client — reply with one short sentence.",
             )
             .await
             .expect("operator_converse");
-        let after = client
-            .operator_conversation(5)
-            .await
-            .expect("re-read conversation");
-        let new_last = after.turns.last().map(|t| t.seq).unwrap_or(0);
-        assert!(
-            new_last > before,
-            "converse should append turns (seq {before} -> {new_last})"
-        );
-        println!(
-            "converse OK: seq {} -> {} (last role={})",
-            before,
-            new_last,
-            after.turns.last().map(|t| t.role.as_str()).unwrap_or("?")
-        );
-    }
-
-    // 5. voice-session-init — any outcome is fine as long as it's the
-    // documented contract: a session OR a flat-envelope config error.
-    match client.voice_session_init().await {
-        Ok(init) if init.mode == "desktop-local" => {
-            assert_eq!(init.turn_path.as_deref(), Some("/api/device/voice/turn"));
-            assert_eq!(
-                init.warmup_path.as_deref(),
-                Some("/api/device/voice/warmup")
-            );
-            assert_eq!(init.device_id.as_deref(), Some(pair.device_id.as_str()));
-            assert_eq!(
-                init.workspace_id.as_deref(),
-                Some(pair.workspace_id.as_str())
-            );
+            let after = client
+                .operator_conversation(5)
+                .await
+                .expect("re-read conversation");
+            let new_last = after.turns.last().map(|t| t.seq).unwrap_or(0);
             assert!(
-                init.base_urls.is_array(),
-                "desktop-local baseUrls is an array"
+                new_last > before,
+                "converse should append turns (seq {before} -> {new_last})"
             );
             println!(
-                "voice-session-init: mode={} voiceMode={} transports={}",
-                init.mode,
-                init.voice_mode,
-                init.base_urls.as_array().map(Vec::len).unwrap_or(0),
+                "converse OK: seq {} -> {} (last role={})",
+                before,
+                new_last,
+                after.turns.last().map(|t| t.role.as_str()).unwrap_or("?")
             );
         }
-        Ok(init) => {
-            assert_eq!(init.mode, "elevenlabs-conv");
-            assert!(
-                !init.conversation_token.is_empty(),
-                "EL conversation token present"
-            );
-            assert!(!init.agent_id.is_empty(), "EL agent id present");
-            println!(
-                "voice-session-init: mode={} agent={} voiceMode={}",
-                init.mode, init.agent_id, init.voice_mode
-            );
-        }
-        Err(ApiError::Server { status, detail }) => {
-            println!("voice-session-init unavailable ({status}): {detail}");
-            assert!(
-                matches!(status, 404 | 429 | 502 | 503),
-                "documented statuses"
-            );
-        }
-        Err(e) => panic!("voice-session-init unexpected error: {e}"),
-    }
 
-    // 6. Auth failure mode — a garbage token must read as Unauthorized
-    // (the route answers 401 no-principal or 403 forbidden; both re-pair).
-    let bad = OperatorClient::new(base.clone(), Some("garbage-token".into()));
-    match bad.list_harnesses().await {
-        Err(ApiError::Unauthorized) => {}
-        other => panic!("garbage token should map to Unauthorized, got {other:?}"),
-    }
+        // 5. voice-session-init — any outcome is fine as long as it's the
+        // documented contract: a session OR a flat-envelope config error.
+        match client.voice_session_init().await {
+            Ok(init) if init.mode == "desktop-local" => {
+                assert_eq!(init.turn_path.as_deref(), Some("/api/device/voice/turn"));
+                assert_eq!(
+                    init.warmup_path.as_deref(),
+                    Some("/api/device/voice/warmup")
+                );
+                assert_eq!(init.device_id.as_deref(), Some(pair.device_id.as_str()));
+                assert_eq!(
+                    init.workspace_id.as_deref(),
+                    Some(pair.workspace_id.as_str())
+                );
+                assert!(
+                    init.base_urls.is_array(),
+                    "desktop-local baseUrls is an array"
+                );
+                println!(
+                    "voice-session-init: mode={} voiceMode={} transports={}",
+                    init.mode,
+                    init.voice_mode,
+                    init.base_urls.as_array().map(Vec::len).unwrap_or(0),
+                );
+            }
+            Ok(init) => {
+                assert_eq!(init.mode, "elevenlabs-conv");
+                assert!(
+                    !init.conversation_token.is_empty(),
+                    "EL conversation token present"
+                );
+                assert!(!init.agent_id.is_empty(), "EL agent id present");
+                println!(
+                    "voice-session-init: mode={} agent={} voiceMode={}",
+                    init.mode, init.agent_id, init.voice_mode
+                );
+            }
+            Err(ApiError::Server { status, detail }) => {
+                println!("voice-session-init unavailable ({status}): {detail}");
+                assert!(
+                    matches!(status, 404 | 429 | 502 | 503),
+                    "documented statuses"
+                );
+            }
+            Err(e) => panic!("voice-session-init unexpected error: {e}"),
+        }
 
-    // 7. Clean up — revoke this smoke pairing so the device list doesn't
-    // accumulate test entries.
-    client
-        .revoke_device(&pair.device_id)
-        .await
-        .expect("revoke self");
+        // 6. Auth failure mode — a garbage token must read as Unauthorized
+        // (the route answers 401 no-principal or 403 forbidden; both re-pair).
+        let bad = OperatorClient::new(base.clone(), Some("garbage-token".into()));
+        match bad.list_harnesses().await {
+            Err(ApiError::Unauthorized) => {}
+            other => panic!("garbage token should map to Unauthorized, got {other:?}"),
+        }
+    })
+    .await;
     println!("revoked smoke device {}", pair.device_id);
 }
