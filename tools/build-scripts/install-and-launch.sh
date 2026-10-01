@@ -96,8 +96,23 @@ for d in "${DEVS[@]}"; do
     echo "==> [$d] install + launch"
     # Force-stop first so launch always shows the new build state.
     adb -s "$d" shell am force-stop "$PKG" >/dev/null 2>&1 || true
-    adb -s "$d" install -r -d "$APK" 2>&1 | grep -E "Success|Failure" || true
-    adb -s "$d" shell am start -n "$ACT" >/dev/null
+    # An install rejection must stop the journey, rather than launch the
+    # previously installed app and certify it as the newly built candidate.
+    if ! install_output="$(adb -s "$d" install -r "$APK" 2>&1)"; then
+        printf '%s\n' "$install_output" >&2
+        echo "ERROR: [$d] APK installation failed; activity was not launched." >&2
+        exit 1
+    fi
+    printf '%s\n' "$install_output"
+    # Activity Manager can report an error while adb still exits zero.
+    # Waiting for its explicit status proves this candidate actually opened.
+    if ! launch_output="$(adb -s "$d" shell am start -W -n "$ACT" 2>&1)" \
+        || ! printf '%s\n' "$launch_output" | tr -d '\r' | grep -Eq '^Status: ok[[:space:]]*$'; then
+        printf '%s\n' "$launch_output" >&2
+        echo "ERROR: [$d] activity launch was not confirmed." >&2
+        exit 1
+    fi
+    printf '%s\n' "$launch_output"
 done
 
 echo "==> Done. Devices:"

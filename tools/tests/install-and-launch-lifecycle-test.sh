@@ -51,7 +51,21 @@ case "${1:-}" in
     -s)
         case "$*" in
             *'shell getprop sys.boot_completed'*) printf '1\n' ;;
-            *' install '*) printf 'Success\n' ;;
+            *' install '*)
+                if [[ "${PAPERCUP_TEST_INSTALL_FAIL:-0}" == 1 ]]; then
+                    printf 'Failure [INSTALL_FAILED_VERSION_DOWNGRADE]\n' >&2
+                    exit 1
+                fi
+                printf 'Success\n'
+                ;;
+            *'shell am start '*)
+                : > "$PAPERCUP_TEST_STATE/activity-started"
+                if [[ "${PAPERCUP_TEST_LAUNCH_FAIL:-0}" == 1 ]]; then
+                    printf 'Error type 3\nError: Activity class does not exist.\n'
+                else
+                    printf 'Status: ok\nActivity: com.papercuspai.operator.mobile/.MainActivity\n'
+                fi
+                ;;
             *) exit 0 ;;
         esac
         ;;
@@ -82,4 +96,24 @@ grep -F 'Emulator service: papercusp-android-emulator-papercusp-test.service' "$
     || fail 'durable service identity was not reported'
 grep -F 'Done. Devices:' "$TMP_ROOT/output.log" >/dev/null || fail 'install flow did not complete'
 
-echo 'install-and-launch lifecycle tests: 1 passed'
+rm -f "$TMP_ROOT/state/activity-started"
+if PATH="$TMP_ROOT/bin:$PATH" ANDROID_HOME="$TMP_ROOT/sdk" \
+    PAPERCUP_ANDROID_APK="$TMP_ROOT/app-debug.apk" PAPERCUP_TEST_STATE="$TMP_ROOT/state" \
+    PAPERCUP_TEST_INSTALL_FAIL=1 "$SCRIPT" > "$TMP_ROOT/install-failure.log" 2>&1; then
+    fail 'failed APK installation was reported as success'
+fi
+[[ ! -f "$TMP_ROOT/state/activity-started" ]] || fail 'activity launched after failed APK installation'
+if grep -F 'Done. Devices:' "$TMP_ROOT/install-failure.log" >/dev/null; then
+    fail 'completion banner appeared after failed APK installation'
+fi
+
+if PATH="$TMP_ROOT/bin:$PATH" ANDROID_HOME="$TMP_ROOT/sdk" \
+    PAPERCUP_ANDROID_APK="$TMP_ROOT/app-debug.apk" PAPERCUP_TEST_STATE="$TMP_ROOT/state" \
+    PAPERCUP_TEST_LAUNCH_FAIL=1 "$SCRIPT" > "$TMP_ROOT/launch-failure.log" 2>&1; then
+    fail 'activity error with adb exit zero was reported as success'
+fi
+if grep -F 'Done. Devices:' "$TMP_ROOT/launch-failure.log" >/dev/null; then
+    fail 'completion banner appeared after an unsuccessful activity launch'
+fi
+
+echo 'install-and-launch lifecycle tests: 3 passed'
