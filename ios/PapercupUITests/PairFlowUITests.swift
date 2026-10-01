@@ -19,6 +19,13 @@ import XCTest
 import UIKit
 
 final class PairFlowUITests: XCTestCase {
+    private func retainScreenshot(_ app: XCUIApplication, named name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
@@ -44,10 +51,7 @@ final class PairFlowUITests: XCTestCase {
 
         // Retain a real candidate image for the review packet after the
         // clean-install assertions have established the visible screen.
-        let pairingScreenshot = XCTAttachment(screenshot: app.screenshot())
-        pairingScreenshot.name = "clean-install-pairing"
-        pairingScreenshot.lifetime = .keepAlways
-        add(pairingScreenshot)
+        retainScreenshot(app, named: "clean-install-pairing")
     }
 
     /// End-to-end pair flow + paired-state navigation in one go (the
@@ -90,6 +94,7 @@ final class PairFlowUITests: XCTestCase {
         let operatorTab = tabItem("Operator")
         XCTAssertTrue(operatorTab.waitForExistence(timeout: 20),
                       "Operator tab should appear after launch-arg pair backdoor")
+        retainScreenshot(app, named: "paired-operator")
 
         // Hop to Settings, scroll to find the new nav rows, open each.
         let settingsTab = tabItem("Settings")
@@ -125,9 +130,11 @@ final class PairFlowUITests: XCTestCase {
         assertRowPresent("Voice")
         let diagnostics = settingsRow("Diagnostics")
         assertRowPresent("Diagnostics")
+        retainScreenshot(app, named: "paired-settings")
         diagnostics.tap()
         XCTAssertTrue(app.staticTexts["Diagnostics"].waitForExistence(timeout: 5),
                       "Diagnostics detail page should open — proves Settings navigation works")
+        retainScreenshot(app, named: "paired-diagnostics")
 
         // ── Brief 44 verify-clause legs (pair → Inbox live → chat
         // round-trip), still on the same one-shot pair token. ──
@@ -163,6 +170,17 @@ final class PairFlowUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(liveLoaded.waitForExistence(timeout: 20),
                       "Inbox should resolve the live attention fetch (count or all-clear)")
+        retainScreenshot(app, named: "paired-inbox")
+
+        tabButton("Plans").tap()
+        XCTAssertTrue(app.staticTexts["Plans"].waitForExistence(timeout: 10),
+                      "Plans screen should render on the paired candidate")
+        retainScreenshot(app, named: "paired-plans")
+
+        tabButton("Fleet").tap()
+        XCTAssertTrue(app.staticTexts["Fleet activity"].waitForExistence(timeout: 10),
+                      "Fleet screen should render on the paired candidate")
+        retainScreenshot(app, named: "paired-fleet")
 
         // Chat leg — a real round-trip on the SHARED operator thread:
         // send a marker message, then assert the persisted thread re-read

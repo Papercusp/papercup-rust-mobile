@@ -6,6 +6,11 @@ name: CI
 # explicit release-candidate route even with normal push/PR coverage enabled.
 on:
   workflow_dispatch:
+    inputs:
+      paired_ui:
+        description: Execute sanitized paired UI using a fresh one-use PAPERCUP_PAIR_PAYLOAD secret
+        type: boolean
+        default: false
   push:
     branches: [master]
   pull_request:
@@ -44,6 +49,9 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace --all-targets
+
+      - name: Native test result guard regressions
+        run: make test-ios-template-runner
 
   uniffi-bindings:
     name: UniFFI bindings (Linux)
@@ -147,6 +155,35 @@ jobs:
           assert result['skippedTests'] == 0, result
           PY
 
+      - name: Sanitized paired UI capture
+        if: ${{ inputs.paired_ui }}
+        env:
+          TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD: ${{ secrets.PAPERCUP_PAIR_PAYLOAD }}
+        run: |
+          set -euo pipefail
+          test -n "$TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD" || {
+            echo 'A fresh sanitized pairing payload is required for paired_ui' >&2
+            exit 1
+          }
+          sim_udid="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/{print $2; exit}')"
+          test -n "$sim_udid"
+          xcodebuild test-without-building \
+            -project ios/Papercup.xcodeproj -scheme Papercup \
+            -destination "platform=iOS Simulator,id=$sim_udid" \
+            -derivedDataPath ios/build/dd \
+            -only-testing:PapercupUITests/PairFlowUITests/testPairAndPairedNavigation \
+            -resultBundlePath ios/build/ci-paired-ui.xcresult
+          xcrun xcresulttool get test-results summary \
+            --path ios/build/ci-paired-ui.xcresult --format json > ios/build/ci-paired-ui-summary.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('ios/build/ci-paired-ui-summary.json').read_text())
+          assert result['passedTests'] == 1, result
+          assert result['failedTests'] == 0, result
+          assert result['skippedTests'] == 0, result
+          PY
+
       - name: Archive unsigned release candidate
         run: |
           set -euo pipefail
@@ -164,6 +201,11 @@ jobs:
           xcrun xcresulttool export attachments \
             --path ios/build/ci-pair-smoke.xcresult \
             --output-path ios/build/ci-release/ui-attachments
+          if [ -d ios/build/ci-paired-ui.xcresult ]; then
+            xcrun xcresulttool export attachments \
+              --path ios/build/ci-paired-ui.xcresult \
+              --output-path ios/build/ci-release/paired-ui-attachments
+          fi
           python3 - <<'PY'
           from pathlib import Path
           screenshots = list(Path('ios/build/ci-release/ui-attachments').rglob('*.png'))
@@ -181,6 +223,8 @@ jobs:
             ios/build/ci-release
             ios/build/ci-pair-smoke.xcresult
             ios/build/ci-pair-smoke-summary.json
+            ios/build/ci-paired-ui.xcresult
+            ios/build/ci-paired-ui-summary.json
 
   design-tokens:
     name: Design tokens drift
