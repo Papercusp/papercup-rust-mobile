@@ -2,15 +2,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Resolve a Java runtime suitable for the Android Gradle Plugin.
 #
-# Explicit JAVA_HOME wins when it points at Java 17+. Otherwise discover an
-# Android Studio JBR from the current or versioned install (including Snap),
-# then fall back to the ambient java. The candidate override/search-root
-# variables are deterministic seams for the shell regression test.
+# Explicit JAVA_HOME wins when it is supported by the pinned Android tooling.
+# Otherwise discover Android Studio JBRs and standalone JDKs, then try ambient
+# java. Kotlin's version parser rejects newer runtimes such as JDK 25 before
+# Gradle can run any tasks, so a minimum version alone is not sufficient.
 set -euo pipefail
 
 MIN_JAVA_MAJOR="${PAPERCUP_MIN_JAVA_MAJOR:-17}"
+MAX_JAVA_MAJOR="${PAPERCUP_MAX_JAVA_MAJOR:-21}"
 if ! [[ "$MIN_JAVA_MAJOR" =~ ^[0-9]+$ ]]; then
     echo "ERROR: PAPERCUP_MIN_JAVA_MAJOR must be an integer, got '$MIN_JAVA_MAJOR'." >&2
+    exit 2
+fi
+if ! [[ "$MAX_JAVA_MAJOR" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: PAPERCUP_MAX_JAVA_MAJOR must be an integer, got '$MAX_JAVA_MAJOR'." >&2
+    exit 2
+fi
+if (( MAX_JAVA_MAJOR < MIN_JAVA_MAJOR )); then
+    echo "ERROR: Android Java maximum $MAX_JAVA_MAJOR is below minimum $MIN_JAVA_MAJOR." >&2
     exit 2
 fi
 
@@ -40,6 +49,13 @@ add_java_bin_home() {
 discover_from_root() {
     local root="$1"
     [[ -d "$root" ]] || return 0
+
+    # Standalone Linux JDKs live below /usr/lib/jvm and are not named jbr.
+    # A configured search root can also be a JDK itself.
+    local jdk
+    for jdk in "$root" "$root"/*; do
+        [[ -x "$jdk/bin/java" ]] && add_candidate "$jdk"
+    done
 
     # The explicit paths cover the stable Android Studio layouts and the Snap
     # `current` link; find covers numbered Snap revisions and Toolbox installs.
@@ -72,6 +88,7 @@ else
             /snap/android-studio
             /opt/android-studio
             /usr/local/android-studio
+            /usr/lib/jvm
             "$HOME/android-studio"
             "$HOME/.local/share/JetBrains/Toolbox/apps/AndroidStudio"
         )
@@ -102,10 +119,13 @@ validate_candidate() {
         -e 's/.*java[[:space:]]+([0-9]+).*/\1/p' | head -n 1)"
     one_line="$(printf '%s' "$version_output" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-180)"
 
-    if (( status == 0 )) && [[ "$major" =~ ^[0-9]+$ ]] && (( major >= MIN_JAVA_MAJOR )); then
+    if (( status == 0 )) && [[ "$major" =~ ^[0-9]+$ ]] \
+        && (( major >= MIN_JAVA_MAJOR && major <= MAX_JAVA_MAJOR )); then
         return 0
     fi
-    if [[ -n "$major" ]]; then
+    if [[ "$major" =~ ^[0-9]+$ ]] && (( major > MAX_JAVA_MAJOR )); then
+        DIAGNOSTICS["$candidate"]="Java major $major is above supported maximum $MAX_JAVA_MAJOR${one_line:+ ($one_line)}"
+    elif [[ -n "$major" ]]; then
         DIAGNOSTICS["$candidate"]="Java major $major is below $MIN_JAVA_MAJOR${one_line:+ ($one_line)}"
     else
         DIAGNOSTICS["$candidate"]="could not read a Java version${one_line:+ ($one_line)}"
@@ -120,14 +140,14 @@ for candidate in "${CANDIDATES[@]}"; do
     fi
 done
 
-echo "ERROR: no Java ${MIN_JAVA_MAJOR}+ runtime was found for Android Gradle." >&2
+echo "ERROR: no Java ${MIN_JAVA_MAJOR}..${MAX_JAVA_MAJOR} runtime was found for Android Gradle." >&2
 if ((${#CANDIDATES[@]} == 0)); then
-    echo 'Checked no candidates: set JAVA_HOME or install Android Studio with its bundled JBR.' >&2
+    echo 'Checked no candidates: set JAVA_HOME or install a supported standalone JDK or Android Studio JBR.' >&2
 else
     echo 'Candidates checked:' >&2
     for candidate in "${CANDIDATES[@]}"; do
         echo "  - $candidate: ${DIAGNOSTICS[$candidate]}" >&2
     done
 fi
-echo 'Set JAVA_HOME to a Java 17+ installation, or install Android Studio/JBR.' >&2
+echo "Set JAVA_HOME to a Java ${MIN_JAVA_MAJOR}..${MAX_JAVA_MAJOR} installation." >&2
 exit 1
