@@ -67,6 +67,66 @@ fn parse_sse_frame(frame: &str) -> Option<(String, String)> {
     Some((event, data_lines.join("\n")))
 }
 
+// Keep transport chunks as bytes until a complete frame arrives: an HTTP
+// chunk boundary can fall inside a UTF-8 character or a CRLF separator.
+fn take_sse_frame(buffer: &mut Vec<u8>) -> Result<Option<String>, ApiError> {
+    let lf = buffer
+        .windows(2)
+        .position(|bytes| bytes == b"\n\n")
+        .map(|pos| (pos, 2));
+    let crlf = buffer
+        .windows(4)
+        .position(|bytes| bytes == b"\r\n\r\n")
+        .map(|pos| (pos, 4));
+    let Some((position, separator_length)) = lf
+        .into_iter()
+        .chain(crlf)
+        .min_by_key(|(position, _)| *position)
+    else {
+        return Ok(None);
+    };
+    let frame = std::str::from_utf8(&buffer[..position])
+        .map_err(|error| ApiError::Decode(format!("invalid UTF-8 in chat stream: {error}")))?
+        .to_owned();
+    buffer.drain(..position + separator_length);
+    Ok(Some(frame))
+}
+
+#[cfg(test)]
+mod stream_frame_tests {
+    use super::*;
+
+    #[test]
+    fn chunk_boundaries_do_not_corrupt_utf8_or_frame_separators() {
+        for separator in ["\n", "\r\n"] {
+            let wire = format!(
+                "event: delta{separator}data: {{\"text\":\"héllo 🌍\"}}{separator}{separator}"
+            );
+            for split in 1..wire.len() {
+                let mut buffer = wire.as_bytes()[..split].to_vec();
+                assert!(take_sse_frame(&mut buffer).unwrap().is_none());
+                buffer.extend_from_slice(&wire.as_bytes()[split..]);
+                let frame = take_sse_frame(&mut buffer).unwrap().unwrap();
+                let (event, data) = parse_sse_frame(&frame).unwrap();
+                assert_eq!(event, "delta");
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&data).unwrap()["text"],
+                    "héllo 🌍"
+                );
+                assert!(buffer.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn complete_frames_reject_invalid_utf8() {
+        assert!(matches!(
+            take_sse_frame(&mut b"data: \xff\n\n".to_vec()),
+            Err(ApiError::Decode(_))
+        ));
+    }
+}
+
 /// Map a non-success response to an `ApiError`. 401 and 403 both mean
 /// the device principal was rejected → `Unauthorized` (re-pair). Other
 /// statuses surface as `Server` with the decoded error envelope.
@@ -499,21 +559,38 @@ impl OperatorClient {
         // `{"text": "..."}` fragments; an `error` event carries
         // `{"message": "..."}` and fails the send.
         let mut stream = resp.bytes_stream();
-        let mut buf = String::new();
+        let mut buf = Vec::new();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
-            buf.push_str(&String::from_utf8_lossy(&chunk));
-            while let Some(pos) = buf.find("\n\n") {
-                let frame: String = buf.drain(..pos + 2).take(pos).collect();
+            buf.extend_from_slice(&chunk);
+            while let Some(frame) = take_sse_frame(&mut buf)? {
                 match parse_sse_frame(&frame) {
                     Some((event, data)) if event == "delta" => {
-                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
-                            if let Some(t) = v.get("text").and_then(|t| t.as_str()) {
-                                if !t.is_empty() {
-                                    on_delta(t);
-                                }
-                            }
+                        let value: serde_json::Value =
+                            serde_json::from_str(&data).map_err(|error| {
+                                ApiError::Decode(format!("invalid chat delta: {error}"))
+                            })?;
+                        let text = value
+                            .get("text")
+                            .and_then(|text| text.as_str())
+                            .ok_or_else(|| {
+                                ApiError::Decode("chat delta requires string text".into())
+                            })?;
+                        if !text.is_empty() {
+                            on_delta(text);
                         }
+                    }
+                    Some((event, data)) if event == "done" => {
+                        let value: serde_json::Value =
+                            serde_json::from_str(&data).map_err(|error| {
+                                ApiError::Decode(format!("invalid chat completion: {error}"))
+                            })?;
+                        if !value.is_object() {
+                            return Err(ApiError::Decode(
+                                "chat completion requires an object".into(),
+                            ));
+                        }
+                        return Ok(());
                     }
                     Some((event, data)) if event == "error" => {
                         let detail = serde_json::from_str::<serde_json::Value>(&data)
@@ -531,7 +608,9 @@ impl OperatorClient {
                 }
             }
         }
-        Ok(())
+        Err(ApiError::Decode(
+            "chat stream ended before completion".into(),
+        ))
     }
 
     /// Buffered variant of [`operator_converse_stream`] — drains the SSE

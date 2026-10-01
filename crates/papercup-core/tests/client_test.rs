@@ -1238,3 +1238,75 @@ async fn operator_converse_buffered_drains_without_deltas() {
         .await;
     client.operator_converse("hi").await.unwrap();
 }
+
+#[tokio::test]
+async fn operator_converse_rejects_malformed_delta_payloads() {
+    for data in ["not-json", "{}", "{\"text\":7}"] {
+        let (client, server) = paired_client().await;
+        Mock::given(method("POST"))
+            .and(path("/api/device/operator/converse"))
+            .and(bearer_token(TOKEN))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(format!(
+                        "event: delta\ndata: {data}\n\nevent: done\ndata: {{}}\n\n"
+                    )),
+            )
+            .mount(&server)
+            .await;
+        let mut deltas = Vec::new();
+        let result = client
+            .operator_converse_stream("hi", |text| deltas.push(text.to_owned()))
+            .await;
+        assert!(
+            matches!(result, Err(ApiError::Decode(_))),
+            "{data}: {result:?}"
+        );
+        assert!(deltas.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn operator_converse_rejects_streams_without_completion() {
+    for body in [
+        "",
+        "event: delta\ndata: {\"text\":\"partial\"}\n\n",
+        "event: done\ndata: {}",
+    ] {
+        let (client, server) = paired_client().await;
+        Mock::given(method("POST"))
+            .and(path("/api/device/operator/converse"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(body),
+            )
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client.operator_converse("hi").await,
+            Err(ApiError::Decode(_))
+        ));
+    }
+}
+
+#[tokio::test]
+async fn operator_converse_accepts_crlf_frames_and_preserves_unicode() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/device/operator/converse"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string("event: delta\r\ndata: {\"text\":\"héllo 🌍\"}\r\n\r\nevent: done\r\ndata: {}\r\n\r\n"),
+        )
+        .mount(&server)
+        .await;
+    let mut text = String::new();
+    client
+        .operator_converse_stream("hi", |delta| text.push_str(delta))
+        .await
+        .unwrap();
+    assert_eq!(text, "héllo 🌍");
+}
