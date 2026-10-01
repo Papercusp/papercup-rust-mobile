@@ -151,6 +151,14 @@ private fun AppRoot(
         return
     }
 
+    val onWorkspaceSwitched: (DeviceCredentials) -> Unit = remember(store) {
+        { fresh ->
+            store.save(fresh)
+            creds = fresh
+        }
+    }
+    val workspaceActivity = rememberFragmentActivity()
+
     // Phase 3 — shared in-memory cache. Registers exactly the query
     // names the backend actually emits invalidates for (verified
     // against papercup-rust-server: sync_invalidate::notify call
@@ -275,7 +283,21 @@ private fun AppRoot(
                     }
                 }
                 is VoiceManager.Intent.WorkspaceSwitch -> {
-                    runCatching { current.client().workspaceSwitch(intent.workspaceId) }
+                    try {
+                        current.switchWorkspace(
+                            intent.workspaceId,
+                            gatedWorkspaceClient(current, workspaceActivity)::workspaceSwitch,
+                            onWorkspaceSwitched,
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Throwable) {
+                        android.widget.Toast.makeText(
+                            context,
+                            HumanError.describe(failure, "Switching workspace"),
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                    }
                 }
             }
         }
@@ -343,12 +365,6 @@ private fun AppRoot(
         {
             store.clear()
             creds = null
-        }
-    }
-    val onWorkspaceSwitched: (DeviceCredentials) -> Unit = remember(store) {
-        { fresh ->
-            store.save(fresh)
-            creds = fresh
         }
     }
     val scope = rememberCoroutineScope()

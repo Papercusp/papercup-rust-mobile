@@ -779,6 +779,89 @@ async fn workspace_switch_posts_camel_case_and_decodes_new_token() {
     assert_eq!(r.workspace_id, "side");
 }
 
+#[tokio::test]
+async fn workspace_switch_without_token_never_sends_a_request() {
+    let server = MockServer::start().await;
+    let client = OperatorClient::new(server.uri(), None);
+    assert!(matches!(
+        client.workspace_switch("side").await,
+        Err(ApiError::Unauthorized)
+    ));
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+// Current device auth rejects expired/revoked tokens with 401/403. A denied
+// workspace is also a 403 from routes/device/pair.ts. None is a transport
+// failure, and replaying the switch against a fallback must never occur.
+#[tokio::test]
+async fn workspace_switch_auth_rejection_never_retries_fallback() {
+    for status in [401, 403] {
+        let primary = MockServer::start().await;
+        let fallback = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/device/workspace/switch"))
+            .and(bearer_token(TOKEN))
+            .respond_with(ResponseTemplate::new(status).set_body_json(json!({
+                "error": {"code":"forbidden", "message":"device principal rejected"}
+            })))
+            .expect(1)
+            .mount(&primary)
+            .await;
+        let client =
+            OperatorClient::new_with_fallback(primary.uri(), fallback.uri(), Some(TOKEN.into()));
+        assert!(matches!(
+            client.workspace_switch("side").await,
+            Err(ApiError::Unauthorized)
+        ));
+        assert_eq!(client.base_url(), primary.uri());
+        assert!(fallback.received_requests().await.unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn workspace_switch_requires_both_replacement_token_and_scope() {
+    for response in [
+        json!({"deviceToken":"JWT-2"}),
+        json!({"workspaceId":"side"}),
+    ] {
+        let (client, server) = paired_client().await;
+        Mock::given(method("POST"))
+            .and(path("/api/device/workspace/switch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response))
+            .mount(&server)
+            .await;
+        assert!(matches!(
+            client.workspace_switch("side").await,
+            Err(ApiError::Decode(_))
+        ));
+    }
+}
+
+#[tokio::test]
+async fn workspace_switch_replacement_token_authenticates_followup_requests() {
+    let (client, server) = paired_client().await;
+    Mock::given(method("POST"))
+        .and(path("/api/device/workspace/switch"))
+        .and(bearer_token(TOKEN))
+        .and(body_json(json!({"workspaceId":"side"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "deviceToken":"JWT-2", "workspaceId":"side"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/harnesses"))
+        .and(bearer_token("JWT-2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"harnesses":[]})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let switched = client.workspace_switch("side").await.unwrap();
+    let fresh = OperatorClient::new(server.uri(), Some(switched.device_token));
+    assert!(fresh.list_harnesses().await.unwrap().is_empty());
+}
+
 // ── D-002 routes: attention (Inbox) + plans ────────────────────────────
 // Fixtures mirror packages/operator-core/lib/endpoint-route/routes/device/
 // {attention,plans}.ts (verified 2026-06-05). workItems mirror the server

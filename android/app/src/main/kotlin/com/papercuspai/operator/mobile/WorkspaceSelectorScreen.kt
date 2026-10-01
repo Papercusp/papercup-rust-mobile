@@ -131,13 +131,14 @@ fun WorkspaceSelectorScreen(
                                     scope.launch {
                                         busyWorkspaceId = workspace.id
                                         try {
-                                            val res = gatedWorkspaceClient(creds, activity).workspaceSwitch(workspace.id)
-                                            val fresh = creds.copy(
-                                                deviceToken = res.deviceToken,
-                                                workspaceId = res.workspaceId,
+                                            val fresh = creds.switchWorkspace(
+                                                workspace.id,
+                                                gatedWorkspaceClient(creds, activity)::workspaceSwitch,
+                                                onWorkspaceSwitched,
                                             )
-                                            currentWorkspaceId = res.workspaceId
-                                            onWorkspaceSwitched(fresh)
+                                            currentWorkspaceId = fresh.workspaceId
+                                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                            throw cancelled
                                         } catch (t: Throwable) {
                                             error = HumanError.describe(t, "Switching workspace")
                                         } finally {
@@ -282,7 +283,7 @@ private fun WorkspaceCard(
 }
 
 @Composable
-private fun rememberFragmentActivity(): FragmentActivity? {
+internal fun rememberFragmentActivity(): FragmentActivity? {
     val context = androidx.compose.ui.platform.LocalContext.current
     return remember(context) {
         var current: android.content.Context = context
@@ -293,7 +294,7 @@ private fun rememberFragmentActivity(): FragmentActivity? {
     }
 }
 
-private fun gatedWorkspaceClient(creds: DeviceCredentials, activity: FragmentActivity?): OperatorClient =
+internal fun gatedWorkspaceClient(creds: DeviceCredentials, activity: FragmentActivity?): OperatorClient =
     creds.client().also { client ->
         activity?.let { client.setBiometricPrompt(BiometricGate(it)) }
     }

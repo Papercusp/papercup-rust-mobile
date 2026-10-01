@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import uniffi.papercup.ApiException
 import uniffi.papercup.OperatorClient
+import uniffi.papercup.WorkspaceSwitchResult
 
 data class DeviceCredentials(
     val server: String,
@@ -32,6 +34,20 @@ data class DeviceCredentials(
         } else {
             OperatorClient(server, deviceToken)
         }
+    }
+
+    suspend fun switchWorkspace(
+        workspaceId: String,
+        request: suspend (String) -> WorkspaceSwitchResult,
+        onSwitched: (DeviceCredentials) -> Unit,
+    ): DeviceCredentials {
+        val response = request(workspaceId)
+        if (response.workspaceId != workspaceId || response.deviceToken.isBlank()) {
+            throw ApiException.Decode("Workspace switch returned an invalid token or workspace")
+        }
+        val fresh = copy(deviceToken = response.deviceToken, workspaceId = response.workspaceId)
+        onSwitched(fresh)
+        return fresh
     }
 }
 
