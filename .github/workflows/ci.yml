@@ -104,7 +104,12 @@ jobs:
 
       - name: Compute fresh verification window
         id: window
-        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+          mkdir -p android-ci-attempt
+          git rev-parse HEAD > android-ci-attempt/source-sha.txt
+          printf '%s\n' "$GITHUB_EVENT_NAME" > android-ci-attempt/event.txt
+          date -u +%FT%TZ > android-ci-attempt/started-at.txt
 
       - name: Restore exact-content native success proof
         id: android-proof
@@ -135,6 +140,12 @@ jobs:
 
       - uses: android-actions/setup-android@v3
         if: steps.android-proof.outputs.cache-hit != 'true'
+        with:
+          # v3 defaults to the retired 'tools' package; the maintained SDK
+          # manager cannot install it. Command-line tools are set up by the
+          # action itself, and platform/build/NDK versions are pinned below.
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
 
       - name: Install pinned Android build tools
         if: steps.android-proof.outputs.cache-hit != 'true'
@@ -199,6 +210,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: |
+            android-ci-attempt
             android-ci-proof
             android/app/build/reports
             android/app/build/test-results
