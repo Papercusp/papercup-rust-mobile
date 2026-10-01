@@ -264,6 +264,13 @@ impl OperatorClient {
             .map(|r| (r.scan, r.harnesses))
     }
 
+    /// Current presence-based fleet/pot activity. A null tile is unavailable,
+    /// never a measured empty fleet.
+    pub async fn monitoring(&self) -> Result<crate::types::MonitoringSnapshot, ApiError> {
+        self.request_json(reqwest::Method::GET, "/api/device/monitoring", None)
+            .await
+    }
+
     /// `GET /api/device/runtime-config` — post-pair device config: mesh
     /// host + the voice WS port/path (the WS lives on its own port, NOT
     /// the API port; `voice_ws.port == None` means voice is unavailable).
