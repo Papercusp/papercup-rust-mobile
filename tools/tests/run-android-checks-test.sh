@@ -486,6 +486,40 @@ SH
 chmod +x "$TMP_ROOT/sdk/emulator/emulator" "$TMP_ROOT/sdk/emulator/qemu/linux-x86_64/qemu-system-x86_64" "$TMP_ROOT/bin/ldd"
 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/emulator-proof"
 [[ -s "$TMP_ROOT/emulator-proof/emulator-version.txt" ]]
+for port in 5554 5584; do
+    ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/valid-port-$port" "$port"
+done
+for port in 5553 5555 5586 5596 invalid; do
+    if ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/invalid-port-$port" "$port" > "$TMP_ROOT/output" 2>&1; then
+        echo "FAIL: unsupported emulator discovery port accepted: $port" >&2
+        exit 1
+    fi
+done
+mkdir -p "$TMP_ROOT/boot-bin"
+cat > "$TMP_ROOT/boot-bin/adb" <<'SH'
+#!/usr/bin/env bash
+if [[ "$*" == '-s emulator-5584 shell getprop sys.boot_completed' ]]; then
+    if [[ "${TEST_BOOT_READY:-0}" == 1 ]]; then printf '1\r\n'; else echo 'error: device not found' >&2; exit 1; fi
+elif [[ "$*" == 'devices -l' ]]; then
+    printf 'List of devices attached\n'
+else
+    echo "unexpected boot fixture command: $*" >&2; exit 1
+fi
+SH
+chmod +x "$TMP_ROOT/boot-bin/adb"
+TEST_BOOT_READY=1 PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 "$TMP_ROOT/boot-pass" 1
+if PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 "$TMP_ROOT/boot-fail" 1 > "$TMP_ROOT/output" 2>&1; then
+    echo 'FAIL: missing ADB transport accepted as a booted emulator' >&2; exit 1
+fi
+python3 - "$TMP_ROOT" <<'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+assert json.loads((root / 'boot-pass/emulator-boot.json').read_text())['bootCompleted'] is True
+bad = json.loads((root / 'boot-fail/emulator-boot.json').read_text())
+assert bad['bootCompleted'] is False and 'device not found' in bad['adbError']
+assert (root / 'boot-fail/boot-transports.txt').is_file()
+PY
 if TEST_EMULATOR_MISSING_LIB=1 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/missing-lib-proof" > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: missing emulator shared library was accepted' >&2
     exit 1

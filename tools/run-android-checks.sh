@@ -418,9 +418,47 @@ if available < required:
 PY
     exit
 fi
+if [[ "$mode" == verify-emulator-boot ]]; then
+    serial="${2:?explicit owned emulator serial is required}"
+    attempt_dir="${3:?boot evidence directory is required}"
+    checks="${4:-120}"
+    [[ "$serial" =~ ^emulator-[0-9]+$ && "$checks" =~ ^[1-9][0-9]*$ ]] || exit 2
+    mkdir -p "$attempt_dir"
+    boot_ready=0
+    for ((n=1; n<=checks; n++)); do
+        adb -s "$serial" shell getprop sys.boot_completed > "$attempt_dir/boot-property.txt" 2> "$attempt_dir/boot-adb-error.txt" || true
+        if [[ "$(tr -d '\r\n' < "$attempt_dir/boot-property.txt")" == 1 ]]; then boot_ready=1; break; fi
+        if (( n < checks )); then sleep 1; fi
+    done
+    adb devices -l > "$attempt_dir/boot-transports.txt" 2>&1 || true
+    python3 - "$serial" "$attempt_dir" "$boot_ready" "$n" <<'PY'
+import json, sys
+from pathlib import Path
+serial, destination, ready, count = sys.argv[1:]
+out = Path(destination)
+proof = {'serial': serial, 'bootCompleted': ready == '1', 'checks': int(count),
+         'property': (out / 'boot-property.txt').read_text().strip(),
+         'adbError': (out / 'boot-adb-error.txt').read_text().strip(),
+         'transportEvidence': 'boot-transports.txt'}
+(out / 'emulator-boot.json').write_text(json.dumps(proof, indent=2) + '\n')
+if not proof['bootCompleted']:
+    raise SystemExit('Owned emulator did not boot; see emulator-boot.json and boot-transports.txt')
+PY
+    exit
+fi
 if [[ "$mode" == verify-emulator ]]; then
     [[ -n "${ANDROID_HOME:-}" ]] || exit 2
     attempt_dir="${2:-android-ci-attempt}"
+    if [[ -n "${3:-}" ]]; then
+        # ADB discovers only the documented console-port range by default.
+        # Reject ports outside it instead of relying on a remembered transport
+        # from an earlier emulator or a manual adb connection.
+        port="$3"
+        [[ "$port" =~ ^[0-9]{4}$ ]] && (( port >= 5554 && port <= 5584 && port % 2 == 0 )) || {
+            echo 'Android emulator console port must be even and between 5554 and 5584 for ADB discovery.' >&2
+            exit 2
+        }
+    fi
     mkdir -p "$attempt_dir"
     qemu="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
     [[ -x "$qemu" && -x "$ANDROID_HOME/emulator/emulator" ]] || {
