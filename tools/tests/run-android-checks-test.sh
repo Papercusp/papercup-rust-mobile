@@ -54,6 +54,7 @@ device = '12345678-1234-1234-1234-123456789abc'
 original_device = '87654321-4321-4321-4321-cba987654321'
 
 cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail',
+         'setup-unavailable', 'setup-no-selection',
          'native-pass', 'native-empty', 'native-no-proof', 'native-no-label-proof', 'native-no-browser-boundary',
          'native-no-inbox-scope', 'native-no-inbox-rendering', 'native-no-inbox-unauthorized', 'native-no-inbox-recovery',
          'native-no-pairing-trace',
@@ -77,11 +78,14 @@ for case in cases:
 
         def do_GET(self):
             if self.path == '/api/workspaces':
+                if case == 'setup-unavailable':
+                    self.reply({'error': 'fixture-unavailable'}, 503)
+                    return
                 rows = state['workspaces']
                 if case == 'preflight-fail' and len(rows) == 2 and not state['hidden']:
                     rows = rows[:1]
                     state['hidden'] = True
-                self.reply({'workspaces': rows, 'current': state['current']})
+                self.reply({'workspaces': rows, 'current': None if case == 'setup-no-selection' else state['current']})
             elif self.path == '/api/device/desktop/devices':
                 self.reply({'devices': state['devices']})
             else:
@@ -287,7 +291,7 @@ else:
         assert state['current'] == 'original'
         assert result['checkKind'] == ('native' if native_mode else 'rust')
         assert len(result['runId']) == 32
-        if case not in ('native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
+        if case not in ('setup-unavailable', 'setup-no-selection', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
             assert result['ownedWorkspace']['name'].startswith('android-live-scope-')
         else:
             assert result['ownedWorkspace'] is None
@@ -297,8 +301,10 @@ else:
         else:
             assert result['cleanupVerified'] == (case not in ('native-local-cleanup-fail', 'native-uninstalled')), (case, result)
             assert state['workspaces'] == [{'id': 'original', 'name': 'Original'}], (case, result, state)
-        if case in ('preflight-fail', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
+        if case in ('setup-unavailable', 'setup-no-selection', 'preflight-fail', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
             assert not state['minted'], 'failed fixture preflight still minted credentials'
+        if case in ('setup-unavailable', 'setup-no-selection'):
+            assert result['setupFailed'] and not result['executionStarted']
         if native_mode:
             if state['minted']:
                 assert result['nativePairTokenDisposition'] == ('redeemed-by-cleanup' if case == 'native-unused-token' else 'redeemed-before-cleanup'), (case, result)
@@ -327,7 +333,24 @@ else:
 remote = subprocess.run(['bash', runner, 'live', str(root / 'remote-refused')],
     env=dict(os.environ, PAPERCUP_LIVE_BASE='https://public.example'), capture_output=True, text=True)
 assert remote.returncode != 0 and not (root / 'remote-refused').exists()
-print(f'Android live fixture guards: {len(cases) + 1} passed; Rust/native ownership, executed proof and independent cleanup verified')
+
+# A real connection refusal must retain the same structured setup failure.
+# This runs the canonical runner, and intentionally starts no fake Cargo/ADB.
+import socket
+with socket.socket() as reserved:
+    reserved.bind(('127.0.0.1', 0))
+    offline_port = reserved.getsockname()[1]
+offline = root / 'connection-refused'
+run = subprocess.run(['bash', runner, 'live', str(offline), 'native'],
+    env=dict(os.environ, PAPERCUP_LIVE_BASE=f'http://127.0.0.1:{offline_port}'),
+    capture_output=True, text=True, timeout=15)
+failure = json.loads((offline / 'result.json').read_text())
+assert run.returncode != 0 and failure['exitCode'] != 0
+assert failure['setupFailed'] and failure['setupFailureClass'] == 'URLError'
+assert not failure['executionStarted'] and failure['ownedWorkspace'] is None
+assert failure['ownedDeviceIds'] == [] and failure['cleanupVerified']
+assert failure['errors'] and failure['finishedAt']
+print(f'Android live fixture guards: {len(cases) + 2} passed; Rust/native ownership, executed proof and independent cleanup verified')
 PY
 echo 'Android result guard tests: 10 passed'
 

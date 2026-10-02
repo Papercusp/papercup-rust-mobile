@@ -82,11 +82,10 @@ def api(path, method='GET', body=None):
 def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-before = api('/api/workspaces')
-workspace = os.environ.get('PAPERCUP_LIVE_WORKSPACE', before.get('current'))
-existing = {row['id'] for row in before['workspaces']}
-if not before.get('current') or workspace not in existing:
-    raise SystemExit('live checks require an existing workspace and current selection')
+before = None
+workspace = None
+existing = set()
+setup_ready = False
 fixture_name = f'android-live-scope-{attempt}'
 command = ['cargo', 'test', '-p', 'papercup-core', '--test', 'live_smoke',
            'live_p0_contract_smoke', '--', '--ignored', '--nocapture']
@@ -98,7 +97,7 @@ result = {'command': command, 'startedAt': now(), 'runtime': base,
               for path in ['tools/run-android-checks.sh', 'crates/papercup-core/tests/live_smoke.rs']},
           'scope': ('Owned local debug native pairing/JNI/navigation with external browser intent fixture; no signed-candidate, mesh, phone or Play acceptance'
                     if kind == 'native' else 'Rust API contract on current operator; no native or release-candidate acceptance'),
-          'log': str(log_path), 'exitCode': 1, 'cleanupVerified': False}
+          'log': str(log_path), 'exitCode': 1, 'executionStarted': False, 'cleanupVerified': False}
 fixture_id = None
 token = None
 errors = []
@@ -149,6 +148,15 @@ def prepare_native():
     app_shell('mkdir -p files')
 
 try:
+    # Initialize the result before any fallible service prerequisite. A
+    # disconnected or invalid workspace API must leave an honest failure
+    # record even though no command or owned fixture was started.
+    before = api('/api/workspaces')
+    workspace = os.environ.get('PAPERCUP_LIVE_WORKSPACE', before.get('current'))
+    existing = {row['id'] for row in before['workspaces']}
+    if not before.get('current') or workspace not in existing:
+        raise RuntimeError('live checks require an existing workspace and current selection')
+    setup_ready = True
     if kind == 'native':
         prepare_native()
         existing_devices = {row['device_id'] for row in api('/api/device/desktop/devices')['devices']}
@@ -209,6 +217,7 @@ try:
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt',
                             'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']})
     with log_path.open('a' if kind == 'native' else 'w') as log:
+        result['executionStarted'] = True
         native_execution_started = kind == 'native'
         try:
             completed = subprocess.run(command, env=env, stdout=log,
@@ -247,6 +256,9 @@ try:
         result['exitCode'] = 1
         errors.append('canonical live test did not execute exactly once without failures or skips')
 except Exception as error:
+    if not setup_ready:
+        result['setupFailed'] = True
+        result['setupFailureClass'] = error.__class__.__name__
     errors.append(str(error))
     result['exitCode'] = result['exitCode'] or 1
 finally:
@@ -352,10 +364,13 @@ finally:
                 raise RuntimeError('private workspace changed identity; refusing removal')
             if row:
                 api('/api/workspaces/' + urllib.parse.quote(fixture_id, safe=''), 'DELETE')
-        after = api('/api/workspaces')
-        if (after.get('current') != before['current'] or
-                fixture_id and any(row['id'] == fixture_id for row in after['workspaces'])):
-            raise RuntimeError('workspace cleanup or current-selection preservation failed')
+        if setup_ready:
+            after = api('/api/workspaces')
+            if (after.get('current') != before['current'] or
+                    fixture_id and any(row['id'] == fixture_id for row in after['workspaces'])):
+                raise RuntimeError('workspace cleanup or current-selection preservation failed')
+        else:
+            result['cleanupScope'] = 'No remote or native fixtures were allocated'
         result['cleanupVerified'] = local_cleanup_ok
     except Exception as error:
         errors.append('cleanup: ' + str(error))
