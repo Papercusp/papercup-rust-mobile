@@ -5,6 +5,16 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+    id("com.mikepenz.aboutlibraries.plugin")
+}
+
+// Generate dependency/license resources with the maintained collector. Native
+// engine/model notices and Rust licenses are supplemental release requirements.
+aboutLibraries {
+    export {
+        variant.set("release")
+        prettyPrint.set(true)
+    }
 }
 
 val generateUniFfiKotlin by
