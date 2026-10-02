@@ -84,13 +84,15 @@ for name in ('app-debug.apk', 'app-debug-androidTest.apk'):
         raise SystemExit('Missing or changed tested APK: ' + name)
 reports = list((out / 'native-results').rglob('TEST-*.xml'))
 cases = [case for report in reports for case in ET.parse(report).getroot().iter('testcase')]
-if (len(cases) != 2 or {c.get('name') for c in cases} !=
-        {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls'}
+if (len(cases) != 4 or {c.get('name') for c in cases} !=
+        {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls',
+         'unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn',
+         'forbiddenSendKeepsDraftWithoutInventingAPersistedTurn'}
         or any(c.find(tag) is not None for c in cases for tag in ('failure', 'error', 'skipped'))
         or any(int(suite.get(tag, '0')) for report in reports
                for suite in ET.parse(report).getroot().iter('testsuite')
                for tag in ('failures', 'errors', 'skipped'))):
-    raise SystemExit('Exactly two successful paired native tests required')
+    raise SystemExit('Exactly four successful paired native tests required')
 print('Isolated paired native proof: source/counterpart/APK/JUnit/journey/cleanup verified')
 PY
     exit $?
@@ -388,7 +390,7 @@ try:
         command = ['android/gradlew', '-p', 'android', ':app:connectedDebugAndroidTest',
                    '--rerun', '--console=plain',
                    '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true',
-                   '-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.PapercupAppSmokeTest#launcherActivityStarts,com.papercuspai.operator.mobile.PapercupAppSmokeTest#privateInboxScopeAcceptsOnlyDocumentedGlobalControls',
+                   '-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.PapercupAppSmokeTest#launcherActivityStarts,com.papercuspai.operator.mobile.PapercupAppSmokeTest#privateInboxScopeAcceptsOnlyDocumentedGlobalControls,com.papercuspai.operator.mobile.OperatorChatScreenTest',
                    '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true']
         env['ANDROID_SERIAL'] = native_device
         if not env.get('JAVA_HOME'):
@@ -409,7 +411,9 @@ try:
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/HumanError.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/OperatorChatScreen.kt',
                             'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt',
+                            'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/OperatorChatScreenTest.kt',
                             'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/UniffiCallbackTest.kt']})
     with log_path.open('a' if kind == 'native' else 'w') as log:
         result['executionStarted'] = True
@@ -425,7 +429,9 @@ try:
     if kind == 'native' and result['exitCode'] == 0:
         reports = list(connected.rglob('TEST-*.xml'))
         cases = [case for file in reports for case in ET.parse(file).getroot().iter('testcase')]
-        required_native_tests = {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls'}
+        required_native_tests = {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls',
+                                 'unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn',
+                                 'forbiddenSendKeepsDraftWithoutInventingAPersistedTurn'}
         if (len(cases) != len(required_native_tests)
                 or {case.get('name') for case in cases} != required_native_tests
                 or any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))

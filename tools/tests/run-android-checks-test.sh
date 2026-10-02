@@ -105,13 +105,16 @@ runtime = dict(exitCode=0, executionStarted=True, hostCleanupVerified=True,
                nativeProcessCleanupVerified=True, runtime=native['runtime'],
                workspaceId='test-runtime-fixture', operatorSourceCommit=expected, bundleSha256='b'*64,
                health={'sha': expected[:12]})
-good_xml = '<testsuite tests="2"><testcase name="launcherActivityStarts"/><testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"/></testsuite>'
+chat_xml = ('<testcase name="unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn"/>'
+            '<testcase name="forbiddenSendKeepsDraftWithoutInventingAPersistedTurn"/>')
+good_xml = '<testsuite tests="4"><testcase name="launcherActivityStarts"/><testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"/>' + chat_xml + '</testsuite>'
 cases = ['pass', 'stale-counterpart', 'missing-bundle', 'native-failed', 'host-failed',
          'native-not-executed', 'host-not-executed', 'native-cleanup', 'host-cleanup',
          'native-process-cleanup', 'ambient-runtime', 'runtime-mismatch', 'other-attempt',
          'other-workspace', 'other-device', 'stale-source', 'missing-fingerprints',
          'changed-apk', 'missing-apk', 'missing-xml', 'skipped-xml', 'duplicate-test',
-         'stale-loaded-source', 'missing-loaded-source'] + ['missing-'+f for f in flags]
+         'stale-loaded-source', 'missing-loaded-source', 'missing-chat-tests',
+         'skipped-chat-test', 'failed-chat-test'] + ['missing-'+f for f in flags]
 for case in cases:
     out = temp / ('paired-proof-' + case); out.mkdir()
     reports = out / 'native-results'; reports.mkdir()
@@ -144,6 +147,9 @@ for case in cases:
     if case == 'missing-apk': (out/'app-debug.apk').unlink()
     if case == 'skipped-xml': xml = good_xml.replace('name="launcherActivityStarts"/>', 'name="launcherActivityStarts"><skipped/></testcase>')
     if case == 'duplicate-test': xml = good_xml.replace('privateInboxScopeAcceptsOnlyDocumentedGlobalControls', 'launcherActivityStarts')
+    if case == 'missing-chat-tests': xml = good_xml.replace(chat_xml, '')
+    if case == 'skipped-chat-test': xml = good_xml.replace('name="forbiddenSendKeepsDraftWithoutInventingAPersistedTurn"/>', 'name="forbiddenSendKeepsDraftWithoutInventingAPersistedTurn"><skipped/></testcase>')
+    if case == 'failed-chat-test': xml = good_xml.replace('name="unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn"/>', 'name="unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn"><failure>lost draft</failure></testcase>')
     if case.startswith('missing-') and case[8:] in flags: n['nativeJourney'].pop(case[8:])
     if case != 'missing-xml': (reports/'TEST-paired.xml').write_text(xml)
     (out/'result.json').write_text(json.dumps(n)); (host/'result.json').write_text(json.dumps(r))
@@ -325,7 +331,9 @@ sys.exit(101 if case == 'test-fail' else 0)
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt',
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/HumanError.kt',
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt',
+                         'android/app/src/main/kotlin/com/papercuspai/operator/mobile/OperatorChatScreen.kt',
                          'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt',
+                         'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/OperatorChatScreenTest.kt',
                          'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/UniffiCallbackTest.kt']:
             target = native_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -417,20 +425,23 @@ else:
     assert '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true' in sys.argv
     assert any('PapercupAppSmokeTest#launcherActivityStarts' in arg for arg in sys.argv)
     assert any('PapercupAppSmokeTest#privateInboxScopeAcceptsOnlyDocumentedGlobalControls' in arg for arg in sys.argv)
+    assert any('com.papercuspai.operator.mobile.OperatorChatScreenTest' in arg for arg in sys.argv)
     assert all('private-test-token' not in arg for arg in sys.argv)
     if case == 'native-timeout': time.sleep(5)
     p = Path('android/app/build/outputs/androidTest-results/connected/debug/TEST-native.xml')
     p.parent.mkdir(parents=True, exist_ok=True)
     journey = '<testcase name="launcherActivityStarts"/>'
     scope = '<testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"/>'
+    chat = ('<testcase name="unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn"/>'
+            '<testcase name="forbiddenSendKeepsDraftWithoutInventingAPersistedTurn"/>')
     if case == 'native-no-scope-test': scope = ''
     if case == 'native-duplicate-journey': scope = journey
     if case == 'native-wrong-scope-test': scope = '<testcase name="unrelatedTest"/>'
     if case == 'native-skipped-scope-test':
         scope = '<testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"><skipped/></testcase>'
     p.write_text('<testsuite tests="0"/>' if case == 'native-empty' else
-                 '<testsuite tests="2" failures="1"><testcase name="launcherActivityStarts"><failure>lifecycle failure</failure></testcase>' + scope + '</testsuite>' if case == 'native-test-fail' else
-                 '<testsuite tests="2">' + journey + scope + '</testsuite>')
+                 '<testsuite tests="4" failures="1"><testcase name="launcherActivityStarts"><failure>lifecycle failure</failure></testcase>' + scope + chat + '</testsuite>' if case == 'native-test-fail' else
+                 '<testsuite tests="4">' + journey + scope + chat + '</testsuite>')
     # AGP uninstalls both packages by default, deleting app-private proof.
     # Model that side effect so a missing retention option cannot pass here.
     if case == 'native-uninstalled' or '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true' not in sys.argv:

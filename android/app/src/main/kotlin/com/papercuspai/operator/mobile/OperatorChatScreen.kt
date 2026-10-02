@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.papercup.ConverseDelta
+import uniffi.papercup.ApiException
 
 /**
  * The Operator tab — a real chat thread on the SHARED operator conversation
@@ -87,6 +88,7 @@ fun OperatorChatScreen(
     }
 
     fun send() {
+        val draft = input
         val text = input.trim()
         if (text.isBlank() || sending) return
         input = ""
@@ -122,12 +124,19 @@ fun OperatorChatScreen(
                     ChatTurn(userSeq + 1, "assistant", finalText.ifBlank { "…" })
                 reloadTick += 1 // reconcile against the persisted thread
             } catch (t: Throwable) {
-                // If we streamed anything, keep it; otherwise drop the empty bubble.
                 val streamed = displayText(sb.toString())
-                turns = if (streamed.isBlank()) {
-                    turns.dropLast(1)
+                if (t is ApiException.Unauthorized) {
+                    // The device gate rejected this request before persisting
+                    // either turn. Keep the draft for an explicit retry after
+                    // recovery, and remove both optimistic chat bubbles.
+                    turns = turns.filterNot { it.seq == userSeq || it.seq == userSeq + 1 }
+                    input = draft
+                } else if (streamed.isBlank()) {
+                    // Other failures may happen after the server saved the
+                    // user turn. Preserve it, without an empty assistant bubble.
+                    turns = turns.dropLast(1)
                 } else {
-                    turns.dropLast(1) + ChatTurn(userSeq + 1, "assistant", streamed)
+                    turns = turns.dropLast(1) + ChatTurn(userSeq + 1, "assistant", streamed)
                 }
                 error = HumanError.describe(t, "Sending the message")
             } finally {

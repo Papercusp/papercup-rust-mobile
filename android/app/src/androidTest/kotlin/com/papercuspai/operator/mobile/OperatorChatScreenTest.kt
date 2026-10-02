@@ -7,7 +7,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -116,7 +119,9 @@ class OperatorChatScreenTest {
                 compose.waitUntil(10_000) { server.requestCount >= 4 }
                 compose.onAllNodes(hasText(text) and !hasSetTextAction()).assertCountEquals(1)
                 compose.onAllNodes(hasText(reply)).assertCountEquals(1)
-                compose.onNode(hasSetTextAction()).assertTextEquals("")
+                compose.onNode(hasSetTextAction()).assert(
+                    SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")),
+                )
                 assertEquals(2, sends.get())
             }
             assertEquals("GET", requireNotNull(server.takeRequest(1, TimeUnit.SECONDS)).method)

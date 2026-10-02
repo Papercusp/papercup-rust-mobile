@@ -128,9 +128,12 @@ repository from the authorized credential store, outside source files.
 
 The automatic emulator leg runs this paired route. Its cache key includes both
 mobile content and the pinned operator commit; restored proof is revalidated.
-Only successful exact-source, APK, two-test JUnit, journey and cleanup evidence
+Only successful exact-source, APK, four-test JUnit, journey and cleanup evidence
 can become a success cache. The artifact retains counterpart provenance and
 paired diagnostics, without uploading the operator checkout or dependency tree.
+The native selection also runs the maintained chat 401/403 Compose/JNI
+regressions against HTTP fixtures, checking draft retention, absence of unsent
+conversation bubbles, explicit retry and persisted-thread reconciliation.
 An actual hosted run still must pass before claiming automatic paired coverage.
 This debug integration route preserves the signed-candidate, physical
 phone, external mesh and Play acceptance requirements.
