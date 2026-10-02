@@ -102,6 +102,27 @@ under `android/app/build/ci-evidence`. Only loopback operators are accepted;
 the containing runtime must be measured before invocation. API proof does not
 establish native, signed-candidate, physical-phone or Play acceptance.
 
+To run the maintained paired Inbox native journey against a prepared operator
+bundle with its own migrated database, workspace, HOME and embedding sidecar:
+
+```sh
+ANDROID_SERIAL=emulator-5556 bash tools/run-android-checks.sh isolated-native \
+  /path/to/prepared/operator-checkout android/app/build/ci-evidence/paired-attempt
+```
+
+This extends `with-test-pg.mjs --isolated-runtime=operator-api`. It starts the
+actual Hono bundle, checks its private workspace before minting a one-use token,
+and runs pairing/JNI, Inbox scope/rendering, invalid-JWT handling, recovery and
+navigation on the explicitly owned API 36 / 16 KB emulator. The native runner
+revokes its device and removes its workspace and private app inputs; the wrapper
+stops its host even on interruption, then the canonical bootstrap disposes its
+database and private runtime. Runtime and native evidence use separate attempt
+directories. Prepare the operator dependencies/bundle before invocation; a
+missing bundle or an ambient runtime is refused. Scheduled CI still needs this
+prepared counterpart wired into its job before it establishes automatic paired
+coverage. This debug integration route preserves the signed-candidate, physical
+phone, external mesh and Play acceptance requirements.
+
 ```sh
 cargo watch -x 'test --workspace'
 ```
@@ -113,7 +134,7 @@ UDL changes require re-running the binding generator (see `tools/build-scripts/`
 - **Xcode 16.2 destination race**: `xcodebuild` occasionally fails first-try with "iOS 18.2 is not installed" because the SDK and the only-installed 18.3.1 runtime mismatch on the destination resolver. The `make test-ios` wrapper retries 8x. Switching to Xcode 16.3 resolves it.
 - **iOS voice mode requires Xcode 16.3+**. ElevenLabsSDK pulls LiveKit + livekit-uniffi-xcframework + JWTKit transitively. Xcode 16.2's SwiftPM dep-order resolution fails to build these in the right order, surfacing as `no such module 'LiveKitUniFFI'` and then `no such module 'Crypto'`. Same dep-resolution fragility as the destination-resolver race above. Android voice path is unaffected (Maven Central + Gradle handles deps cleanly).
 - **`xcodebuild test -scheme` post-Sentry**: Permanently broken since the Sentry SwiftPM landed — the package resolver loses sim devices in Xcode's cache. Workaround: per-target builds (`xcodebuild -target Papercup`, `-target PapercupTests`, `-target PapercupUITests`).
-- **CI billing**: GitHub Actions org capped. Workflow is `workflow_dispatch`-only. `make check` + pre-push hook is the actual gate today.
+- **CI triggers**: Android verification has push/PR coverage and a scheduled route for managed `[skip ci]` commits. Read the actual run event, source SHA, executed tests and retained artifact before claiming automatic coverage; a cached or historical result does not prove a new paired journey.
 - **Apple Developer Program**: Required for APNs delivery, NetworkExtension entitlement (mesh), and TestFlight. iOS push + mesh code is wired but inert without enrollment.
 
 ## Hardware verified

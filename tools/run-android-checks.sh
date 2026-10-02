@@ -87,6 +87,8 @@ if base != 'http://127.0.0.1:' + os.environ.get('PAPERCUSP_HONO_PORT', ''):
 operator = Path(os.environ['PAPERCUP_OPERATOR_ROOT'])
 bundle = operator / 'apps/operator/dist-host/hono-host.mjs'
 evidence = Path(os.environ['PAPERCUP_ANDROID_EVIDENCE'])
+if evidence.exists():
+    raise SystemExit('isolated-native refuses existing native evidence')
 runtime_evidence = Path(str(evidence) + '-runtime')
 runtime_evidence.mkdir(mode=0o700, parents=True, exist_ok=False)
 proof = {'schemaVersion': 1, 'runtime': base, 'workspaceId': workspace,
@@ -96,6 +98,11 @@ proof = {'schemaVersion': 1, 'runtime': base, 'workspaceId': workspace,
          'executionStarted': False, 'exitCode': 1, 'hostCleanupVerified': False,
          'scope': 'Private operator/debug native integration; not signed-candidate, physical-phone or Play acceptance'}
 host = None
+native = None
+def interrupted(signum, frame):
+    raise RuntimeError('private native runtime interrupted')
+signal.signal(signal.SIGTERM, interrupted)
+signal.signal(signal.SIGINT, interrupted)
 try:
     with (runtime_evidence / 'host.log').open('w') as log:
         host = subprocess.Popen(['node', str(bundle)], cwd=operator,
@@ -122,12 +129,23 @@ try:
             time.sleep(0.25)
         env = dict(os.environ, PAPERCUP_LIVE_BASE=base)
         proof['executionStarted'] = True
-        run = subprocess.run(['bash', os.environ['PAPERCUP_ANDROID_RUNNER'], 'live',
-                              str(evidence), 'native'], env=env, timeout=1800)
-        proof['exitCode'] = run.returncode
+        native = subprocess.Popen(['bash', os.environ['PAPERCUP_ANDROID_RUNNER'], 'live',
+                                   str(evidence), 'native'], env=env, start_new_session=True)
+        proof['exitCode'] = native.wait(timeout=1800)
 except Exception as error:
     proof['error'] = str(error)
 finally:
+    if native is not None:
+        try:
+            os.killpg(native.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            native.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            os.killpg(native.pid, signal.SIGKILL)
+            native.wait(timeout=10)
+        proof['nativeProcessCleanupVerified'] = native.poll() is not None
     if host is not None:
         if host.poll() is None:
             os.killpg(host.pid, signal.SIGTERM)

@@ -5,6 +5,82 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 runner="$ROOT/tools/run-android-checks.sh"
+python3 - "$runner" "$TMP_ROOT" <<'PY'
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+
+runner, temp = Path(sys.argv[1]), Path(sys.argv[2])
+# Execute the maintained private-host lifecycle against real HTTP/process
+# boundaries. Native execution is a stub here; these tests claim no JNI pass.
+source = runner.read_text().split('if [[ "$mode" == isolated-native-child ]]; then', 1)[1]
+child = source.split("<<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+operator = temp / 'operator'; (operator / 'apps/operator/dist-host').mkdir(parents=True)
+bundle = operator / 'apps/operator/dist-host/hono-host.mjs'
+native = temp / 'native.sh'
+native.write_text('''#!/bin/bash
+test "$1" = live && test "$3" = native || exit 93
+test "$PAPERCUP_LIVE_BASE" = "$PAPERCUSP_OPERATOR_URL" || exit 94
+exit "$NATIVE_TEST_EXIT"
+''')
+with tempfile.TemporaryDirectory(prefix='papercusp-test-runtime-') as runtime:
+    home = Path(runtime) / 'home'; home.mkdir()
+    for case in ['pass', 'native-fail', 'host-fail', 'ambient', 'wrong-url', 'wrong-home', 'existing-evidence', 'interrupt']:
+        evidence = temp / case
+        env = dict(os.environ, HOME=str(home), PAPERCUSP_WORKSPACE_ID='test-runtime-fixture',
+            PAPERCUSP_BACKGROUND_WORKERS='0', PAPERCUSP_DBOS_ENABLE='0', PAPERCUSP_CLUSTER='0',
+            PAPERCUSP_SKIP_PG_DISCOVERY='1', PAPERCUSP_BIND_HOST='127.0.0.1',
+            PAPERCUP_OPERATOR_ROOT=str(operator), PAPERCUP_ANDROID_RUNNER=str(native),
+            PAPERCUP_ANDROID_EVIDENCE=str(evidence), NATIVE_TEST_EXIT='17' if case=='native-fail' else '0')
+        import socket
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
+        env.update(PAPERCUSP_HONO_PORT=str(port), PAPERCUSP_OPERATOR_URL=f'http://127.0.0.1:{port}')
+        bundle.write_text('process.exit(31);' if case=='host-fail' else '''
+import http from 'node:http';
+http.createServer((req,res)=>{
+ res.setHeader('Content-Type','application/json');
+ res.end(JSON.stringify(req.url==='/api/health'
+   ? {ok:true,service:'papercusp-operator',sha:'fixture'}
+   : {current:process.env.PAPERCUSP_WORKSPACE_ID,workspaces:[{id:process.env.PAPERCUSP_WORKSPACE_ID}]}));
+}).listen(Number(process.env.PAPERCUSP_HONO_PORT),'127.0.0.1');
+''')
+        if case=='ambient': env['PAPERCUSP_BACKGROUND_WORKERS']='1'
+        if case=='wrong-url': env['PAPERCUSP_OPERATOR_URL']='http://public.example:3170'
+        if case=='wrong-home': env['HOME']=str(temp)
+        if case=='existing-evidence': evidence.mkdir(); (evidence/'owned').write_text('preserve')
+        marker=temp/'native-started'
+        if case=='interrupt':
+            native.write_text('#!/bin/bash\ntouch "'+str(marker)+'"\nsleep 20\n')
+        process = subprocess.Popen([sys.executable,'-c',child],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        if case=='interrupt':
+            deadline=time.monotonic()+5
+            # A waiting native child lets us interrupt after host readiness.
+            while not marker.exists() and time.monotonic()<deadline:
+                time.sleep(0.02)
+            assert marker.exists(), 'native child never started'
+            process.send_signal(signal.SIGTERM)
+        stdout,stderr=process.communicate(timeout=8)
+        proof_path=Path(str(evidence)+'-runtime')/'result.json'
+        if case in ['ambient','wrong-url','wrong-home','existing-evidence']:
+            assert process.returncode!=0 and not proof_path.exists(), (case,stderr)
+        else:
+            proof=json.loads(proof_path.read_text())
+            assert proof['hostCleanupVerified'], (case,proof)
+            assert (process.returncode==0)==(case=='pass'), (case,stdout,stderr,proof)
+            assert proof['executionStarted']==(case in ['pass','native-fail','interrupt']), (case,proof)
+            if proof['executionStarted']: assert proof['nativeProcessCleanupVerified'], (case,proof)
+            if case=='native-fail': assert process.returncode==17
+            with socket.socket() as sock:
+                assert sock.connect_ex(('127.0.0.1',port))!=0, 'owned host survived cleanup'
+        if case=='existing-evidence': assert (evidence/'owned').read_text()=='preserve'
+print('Android private operator lifecycle: 8 launch/cleanup/refusal controls passed (native stub only)')
+PY
 mkdir -p "$TMP_ROOT/test-results/testDebugUnitTest" "$TMP_ROOT/test-results/testReleaseUnitTest" \
     "$TMP_ROOT/outputs/androidTest-results/connected/debug/device"
 debug="$TMP_ROOT/test-results/testDebugUnitTest/TEST-unit.xml"
