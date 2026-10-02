@@ -138,6 +138,24 @@ It also exercises the actual shell's Settings roundtrip and manual re-pair,
 activity recreation, and different-workspace/server draft isolation. Drafts
 survive same-scope recovery in shell saved state, never auto-send, and are
 discarded when the server or workspace changes; no credentials enter that state.
+
+Keep raw attempt receipts private and unchanged. Before committing a public
+operational summary under the operator's `docs/evidence`, use its maintained
+identity-safe JSON exporter from that checkout:
+
+```sh
+node scripts/lib/identity-leak-patterns.mjs --serialize-json \
+  < "$PRIVATE_SUMMARY_JSON" > "$PUBLIC_SUMMARY_JSON"
+```
+
+Use distinct input and output files. The exporter sanitizes personal home paths
+and machine identities in string values while preserving counts, source/APK/log
+hashes and scope limits. It rejects invalid JSON or identity-bearing field names
+without emitting a partial report. When a command argument represents a prepared
+operator checkout, record a portable environment-variable reference and explain
+its exact source-commit basis. Retain the original command privately, bind the
+hash of the committed public bytes, and do not claim hosted, release-candidate,
+physical-phone or Play acceptance from a local debug run.
 An actual hosted run still must pass before claiming automatic paired coverage.
 This debug integration route preserves the signed-candidate, physical
 phone, external mesh and Play acceptance requirements.
