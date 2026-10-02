@@ -250,3 +250,58 @@ licensing clearance, or make a private artifact accessible to recipients. Before
 distribution, supplement any required dependency sources/notices, bind the final
 delivery to the candidate and verify actual recipient retrieval. Do not publish
 the source archive merely because local preparation passed.
+
+### Locked Rust dependency source preparation
+
+The October 2 local preparation at mobile commit
+`f41bf7f40ea3a633271ac3d3747b40e43307e39b` also uses Cargo's maintained
+vendoring command:
+
+```sh
+cargo vendor --frozen --versioned-dirs \
+  android/app/build/outputs/papercusp-rust-dependencies \
+  > android/app/build/outputs/papercusp-rust-source-config.toml
+```
+
+The resulting population matches all 249 registry packages in the retained
+`Cargo.lock` (SHA-256
+`389f43b2d8d5fec43b35c2dc71246e0fd395a598ec9517516b54c8e8c6746c81`).
+All 12,321 file digests recorded in their `.cargo-checksum.json` files were
+verified. This inventory includes host, development and platform-specific
+dependencies; it does not identify which crates are linked into an Android
+candidate. No Git dependency appears in this locked population.
+
+The filename-based notice scan was supplemented by reading `r-efi` 5.3.0's
+`AUTHORS`, which retains its permission/copyright text. Nine UniFFI 0.32.2
+packages declare MPL-2.0 and contain MPL source headers. Their packaged
+`.cargo_vcs_info.json` identifies upstream revision
+`7bc621ee9d0d15371d792612707ba5ed4111f950`; the full
+[license text at that revision](https://raw.githubusercontent.com/mozilla/uniffi-rs/7bc621ee9d0d15371d792612707ba5ed4111f950/LICENSE)
+was retained separately, with SHA-256
+`1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5`.
+The vendor files remain unmodified, so their original Cargo checksums still
+apply. These texts and sources support review; they do not by themselves
+finalize the candidate's notices or license obligations.
+
+The private local supplementary archive is
+`android/app/build/outputs/papercusp-rust-dependencies.tar.gz` (42,672,304
+bytes; SHA-256
+`c3e3ef5c280b270deb739ba1341443d47cbd3fe3afb7693b14c74df0ee570f8d`).
+It extracts into the same `papercusp-mobile-source` directory as the retained
+root source archive. It supplies the vendor directory, its inventory, the
+revision-pinned MPL supplement and `.cargo/config.toml` pointing at the
+extracted vendor directory. Actual local extraction of both archives followed
+by `cargo metadata --frozen --format-version 1` resolved all 249 registry
+packages from that extracted directory and re-verified their 12,321 file
+digests. The receipt is
+`android/app/build/outputs/papercusp-rust-source-extraction-result.json`
+(SHA-256
+`9dd80dad718af3ec088b50f34112c8ddde1c02e81019e0e0d1f80b41f2561575`).
+Temporary extraction was removed afterward.
+
+This proves local source extraction and Cargo graph resolution for the recorded
+revision. Compilation, Android/Gradle/native SDK source obligations, final
+notices, licensing clearance and actual recipient retrieval remain open.
+Recreate the contributions from the exact final candidate revision and verify
+the final delivery before publication; these retained preparation archives
+have not been published.
