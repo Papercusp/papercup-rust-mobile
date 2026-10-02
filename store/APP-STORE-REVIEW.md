@@ -143,6 +143,34 @@ it; direct dependencies alone omit transitive and native components.
 | Picovoice Porcupine Android 4.0.0 | Gradle includes the SDK; `WakeWordEngine.kt` initializes it only when configured. The [public repository license](https://github.com/Picovoice/porcupine/blob/master/LICENSE) and [current service terms](https://picovoice.ai/docs/terms-of-use/) are separate evidence surfaces. | Exact artifact/model/engine license terms and the applicable account agreement/entitlement. Do not infer clearance for packaged binaries or configured service use from the public wrapper license or a working AccessKey. |
 | Firebase, ML Kit, AndroidX, Compose, OkHttp, JNA and Rust dependencies | Android Gradle declarations, `Cargo.lock`, and the packaged library/notice inventory. | Complete resolved release graph, license texts and required notices, including native payloads. Verify accessibility of the final notices and any source delivery required by the applicable licenses. |
 
+The retained October 2 source preparation report comes from Gradle
+`:app:dependencies --configuration releaseRuntimeClasspath` on mobile commit
+`e5719e09330586b256120adc132b148810f520fa`. Its complete output is
+`android/app/build/ci-evidence/p007-release-runtime-dependencies-20261002.log`
+(SHA-256 `72d5fc540fce8fab2ad3ef17c02b8b6fd35cfea3a5983ec58bd5593f95d4f350`).
+Selected resolved direct entries relevant to this review are:
+
+| Gradle module | Resolved version |
+|---|---|
+| `ai.picovoice:porcupine-android` | `4.0.0` |
+| `io.elevenlabs:elevenlabs-android` | `0.9.0` |
+| `com.google.firebase:firebase-messaging-ktx` | `24.1.0` |
+| `com.google.firebase:firebase-crashlytics-ktx` | `19.2.1` |
+| `com.google.firebase:firebase-analytics-ktx` | `22.1.2` |
+| `com.google.mlkit:barcode-scanning` | `17.3.0` |
+| `net.java.dev.jna:jna` | `5.19.1` |
+| `com.squareup.okhttp3:okhttp` and `okhttp-sse` | `4.12.0` |
+
+The report resolves versions beyond declarations, including
+`androidx.core:core-ktx` from `1.15.0` to `1.16.0`. The Firebase `33.6.0`
+and Compose `2024.10.01` BOMs supply version constraints; they are not a
+packaged-library inventory. Reconcile the full transitive report, Rust/native
+payloads and license texts with the exact signed candidate's packaged contents
+and final notices. A resolved SDK does not establish its runtime activation,
+collection behavior, account entitlement or distribution rights. In particular,
+the Firebase entries still require the existing candidate-bound collection and
+disclosure checks even when source collection defaults are disabled.
+
 The inspected local debug and historical release APKs contain several AndroidX
 license entries and OkHttp's public-suffix notice. This limited filename-based
 inspection does not prove completeness or apply to a new candidate. Re-inspect
