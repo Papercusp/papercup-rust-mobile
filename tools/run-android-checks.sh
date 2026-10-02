@@ -201,6 +201,11 @@ try:
                             'android/app/build.gradle.kts',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/SettingsScreen.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/DiagnosticsScreen.kt',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/MainActivity.kt',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/InboxScreen.kt',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/CompanionFeed.kt',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/HumanError.kt',
                             'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']})
     with log_path.open('a' if kind == 'native' else 'w') as log:
         native_execution_started = kind == 'native'
@@ -226,6 +231,8 @@ try:
                 or not all(proof.get(k) is True for k in
                     ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
                      'activityRecreated', 'valueRowLabelsPassed', 'enrollmentBrowserStubbed',
+                     'inboxScopedReadPassed', 'inboxRenderingPassed',
+                     'inboxUnauthorizedPassed', 'inboxRecoveryPassed',
                      'navigationPassed', 'credentialsCleared'))):
             raise RuntimeError('native live journey proof is missing, mismatched or incomplete')
         registered = api('/api/device/desktop/devices')['devices']

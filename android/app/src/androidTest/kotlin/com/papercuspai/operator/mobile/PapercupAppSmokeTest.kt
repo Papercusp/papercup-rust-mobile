@@ -34,7 +34,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
 import org.json.JSONObject
+import uniffi.papercup.ApiException
 
 @RunWith(AndroidJUnit4::class)
 class PapercupAppSmokeTest {
@@ -141,6 +143,35 @@ class PapercupAppSmokeTest {
             assertTrue("Pairing token must survive recreation", paired.deviceToken == restored.deviceToken)
             waitForPairedShell()
             result.put("activityRecreated", true)
+            stage = "scoped-inbox"
+            verifyOwnedInbox(paired, result)
+            result.put("inboxRenderingPassed", true)
+
+            // Exercise the real JNI/HTTP authorization boundary without
+            // revoking any other device or changing the desktop selection.
+            // This is an invalid-JWT fixture, not proof of expiry/revocation.
+            stage = "inbox-invalid-session"
+            val invalid = paired.copy(deviceToken = "native-invalid-device-jwt")
+            val rejected = runCatching { runBlocking { invalid.client().attention() } }.exceptionOrNull()
+            assertTrue("Invalid device JWT must be rejected by the real Inbox endpoint", rejected is ApiException.Unauthorized)
+            store.save(invalid)
+            scenario.recreate()
+            waitForPairedShell()
+            compose.onNodeWithContentDescription("Inbox").performClick()
+            waitForText("Could not load inbox")
+            compose.onNodeWithText("Inbox status unavailable").assertIsDisplayed()
+            compose.onNodeWithText("Loading the inbox failed — this device's pairing is no longer valid. Re-pair with your Papercup server from Settings.")
+                .assertIsDisplayed()
+            compose.onNodeWithContentDescription("Inbox status unavailable").assertIsDisplayed()
+            compose.onNodeWithText("Inbox zero — nothing needs you right now.").assertDoesNotExist()
+            result.put("inboxUnauthorizedPassed", true)
+
+            stage = "inbox-session-recovery"
+            store.save(paired)
+            scenario.recreate()
+            waitForPairedShell()
+            verifyOwnedInbox(paired, result)
+            result.put("inboxRecoveryPassed", true)
             stage = "paired-navigation"
             for (tab in listOf("Inbox", "Operator", "Plans", "Fleet", "Settings")) {
                 compose.onNodeWithContentDescription(tab).assertIsDisplayed()
@@ -191,6 +222,39 @@ class PapercupAppSmokeTest {
             compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Inbox"))
                 .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
         }
+    }
+
+    private fun verifyOwnedInbox(paired: DeviceCredentials, result: JSONObject) {
+        val feed = runBlocking { paired.client().attention() }
+        // This runner creates a fresh private workspace with no harness or
+        // work-item fixtures. Global system alerts may still be present.
+        assertEquals("Private workspace must not leak other attention groups", 0L, feed.groupCount)
+        assertEquals("Private workspace must not leak other work items", 0L, feed.workItemCount)
+        assertTrue(feed.workItems.isEmpty())
+        val groups = if (feed.groupsJson.trim().startsWith("[")) JSONArray(feed.groupsJson)
+            else JSONObject(feed.groupsJson).getJSONArray("groups")
+        assertEquals(0, groups.length())
+        result.put("inboxScopedReadPassed", true).put("inboxSystemAlertCount", feed.systemAlerts.size)
+        compose.onNodeWithContentDescription("Inbox").performClick()
+        if (feed.systemAlerts.isEmpty()) {
+            waitForText("Inbox zero — nothing needs you right now.")
+        } else {
+            waitForText("SYSTEM ALERTS")
+            compose.onNodeWithText("Inbox zero — nothing needs you right now.").assertDoesNotExist()
+        }
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Inbox status unavailable"))
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).isEmpty()
+        }
+        compose.onNodeWithText("Could not load inbox").assertDoesNotExist()
+        compose.onNodeWithText("Inbox status unavailable").assertDoesNotExist()
+    }
+
+    private fun waitForText(text: String) {
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(hasText(text)).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+        }
+        compose.onNodeWithText(text).assertIsDisplayed()
     }
 
     @Test
