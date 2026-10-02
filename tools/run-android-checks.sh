@@ -84,15 +84,19 @@ for name in ('app-debug.apk', 'app-debug-androidTest.apk'):
         raise SystemExit('Missing or changed tested APK: ' + name)
 reports = list((out / 'native-results').rglob('TEST-*.xml'))
 cases = [case for report in reports for case in ET.parse(report).getroot().iter('testcase')]
-if (len(cases) != 4 or {c.get('name') for c in cases} !=
+if (len(cases) != 8 or {c.get('name') for c in cases} !=
         {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls',
          'unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn',
-         'forbiddenSendKeepsDraftWithoutInventingAPersistedTurn'}
+         'forbiddenSendKeepsDraftWithoutInventingAPersistedTurn',
+         'rejectedDraftSurvivesSettingsRoundTrip',
+         'rejectedDraftSurvivesSameScopeRepairAndActivityRecreation',
+         'repairToAnotherWorkspaceDoesNotExposePreviousDraft',
+         'repairToAnotherServerDoesNotExposePreviousDraft'}
         or any(c.find(tag) is not None for c in cases for tag in ('failure', 'error', 'skipped'))
         or any(int(suite.get(tag, '0')) for report in reports
                for suite in ET.parse(report).getroot().iter('testsuite')
                for tag in ('failures', 'errors', 'skipped'))):
-    raise SystemExit('Exactly four successful paired native tests required')
+    raise SystemExit('Exactly eight successful paired native tests required')
 print('Isolated paired native proof: source/counterpart/APK/JUnit/journey/cleanup verified')
 PY
     exit $?
@@ -431,7 +435,11 @@ try:
         cases = [case for file in reports for case in ET.parse(file).getroot().iter('testcase')]
         required_native_tests = {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls',
                                  'unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn',
-                                 'forbiddenSendKeepsDraftWithoutInventingAPersistedTurn'}
+                                 'forbiddenSendKeepsDraftWithoutInventingAPersistedTurn',
+                                 'rejectedDraftSurvivesSettingsRoundTrip',
+                                 'rejectedDraftSurvivesSameScopeRepairAndActivityRecreation',
+                                 'repairToAnotherWorkspaceDoesNotExposePreviousDraft',
+                                 'repairToAnotherServerDoesNotExposePreviousDraft'}
         if (len(cases) != len(required_native_tests)
                 or {case.get('name') for case in cases} != required_native_tests
                 or any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))

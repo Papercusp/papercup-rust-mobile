@@ -20,6 +20,7 @@ import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.papercup.ConverseDelta
@@ -56,9 +57,10 @@ private fun displayText(raw: String): String {
 fun OperatorChatScreen(
     creds: DeviceCredentials,
     liveTick: Int,
+    input: String,
+    onInputChange: (String) -> Unit,
 ) {
     var turns by remember { mutableStateOf<List<ChatTurn>>(emptyList()) }
-    var input by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var conversationId by remember { mutableStateOf<String?>(null) }
@@ -78,6 +80,8 @@ fun OperatorChatScreen(
                 ChatTurn(seq = t.seq, role = t.role, text = displayText(t.text))
             }
             error = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (t: Throwable) {
             error = HumanError.describe(t, "Loading the conversation")
         }
@@ -91,7 +95,7 @@ fun OperatorChatScreen(
         val draft = input
         val text = input.trim()
         if (text.isBlank() || sending) return
-        input = ""
+        onInputChange("")
         error = null
         sending = true
         // Optimistic user bubble + a streaming assistant bubble.
@@ -123,6 +127,10 @@ fun OperatorChatScreen(
                 turns = turns.dropLast(1) +
                     ChatTurn(userSeq + 1, "assistant", finalText.ifBlank { "…" })
                 reloadTick += 1 // reconcile against the persisted thread
+            } catch (cancelled: CancellationException) {
+                // Navigation/credential replacement disposes this screen.
+                // It is not an auth rejection and must not restore old text.
+                throw cancelled
             } catch (t: Throwable) {
                 val streamed = displayText(sb.toString())
                 if (t is ApiException.Unauthorized) {
@@ -130,7 +138,7 @@ fun OperatorChatScreen(
                     // either turn. Keep the draft for an explicit retry after
                     // recovery, and remove both optimistic chat bubbles.
                     turns = turns.filterNot { it.seq == userSeq || it.seq == userSeq + 1 }
-                    input = draft
+                    onInputChange(draft)
                 } else if (streamed.isBlank()) {
                     // Other failures may happen after the server saved the
                     // user turn. Preserve it, without an empty assistant bubble.
@@ -205,7 +213,7 @@ fun OperatorChatScreen(
             ChatComposer(
                 value = input,
                 enabled = !sending,
-                onValueChange = { input = it },
+                onValueChange = onInputChange,
                 onSend = { send() },
             )
         }

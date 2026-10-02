@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -98,6 +99,32 @@ private fun AppRoot(
     var lastInvalidate by remember { mutableStateOf<String?>(null) }
     // Pot (harness) filter for the header switcher — null = "All Pots" (D-003).
     var selectedPot by remember { mutableStateOf<String?>(null) }
+    // Keep an unsent draft above route/pairing disposal. Only the server and
+    // workspace identify its scope: token/device rotation must not lose it.
+    // This saved shell state contains no credential and never sends anything.
+    var operatorDraft by rememberSaveable { mutableStateOf("") }
+    var draftServer by rememberSaveable { mutableStateOf(creds?.server?.trimEnd('/')) }
+    var draftWorkspace by rememberSaveable { mutableStateOf(creds?.workspaceId) }
+    val onCredentialsChanged: (DeviceCredentials) -> Unit = { fresh ->
+        store.save(fresh)
+        if (draftServer != fresh.server.trimEnd('/') || draftWorkspace != fresh.workspaceId) {
+            operatorDraft = ""
+        }
+        draftServer = fresh.server.trimEnd('/')
+        draftWorkspace = fresh.workspaceId
+        creds = fresh
+    }
+    // A restored activity may find credentials replaced outside its old shell.
+    // Rendering below also checks scope synchronously, before this effect runs.
+    LaunchedEffect(creds?.server, creds?.workspaceId) {
+        creds?.let { fresh ->
+            if (draftServer != fresh.server.trimEnd('/') || draftWorkspace != fresh.workspaceId) {
+                operatorDraft = ""
+                draftServer = fresh.server.trimEnd('/')
+                draftWorkspace = fresh.workspaceId
+            }
+        }
+    }
 
     // Deep-link from a tapped notification → harness detail. Cleared
     // immediately so a back-press doesn't re-navigate on recomposition.
@@ -144,19 +171,13 @@ private fun AppRoot(
     val current = creds
     if (current == null) {
         PairScreen(onPaired = { fresh ->
-            store.save(fresh)
-            creds = fresh
+            onCredentialsChanged(fresh)
             route = Route.Inbox
         })
         return
     }
 
-    val onWorkspaceSwitched: (DeviceCredentials) -> Unit = remember(store) {
-        { fresh ->
-            store.save(fresh)
-            creds = fresh
-        }
-    }
+    val onWorkspaceSwitched = onCredentialsChanged
     val workspaceActivity = rememberFragmentActivity()
 
     // Phase 3 — shared in-memory cache. Registers exactly the query
@@ -447,6 +468,17 @@ private fun AppRoot(
             onOpenDiagnostics = { route = Route.Diagnostics },
             onOpenPrivacyPolicy = { route = Route.PrivacyPolicy },
             onForget = onForget,
+            operatorDraft = if (draftServer == current.server.trimEnd('/') &&
+                draftWorkspace == current.workspaceId) operatorDraft else "",
+            onOperatorDraftChange = { text ->
+                // A canceled old-scope request must not restore private text
+                // after switching credentials.
+                if (creds?.server == current.server && creds?.workspaceId == current.workspaceId) {
+                    operatorDraft = text
+                    draftServer = current.server.trimEnd('/')
+                    draftWorkspace = current.workspaceId
+                }
+            },
         )
         else -> {}
     }
@@ -472,6 +504,8 @@ private fun PairedShell(
     onOpenDiagnostics: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
     onForget: () -> Unit,
+    operatorDraft: String,
+    onOperatorDraftChange: (String) -> Unit,
 ) {
     val cloudConsentRequired by voice.cloudConsentRequired.collectAsState()
     val connState by monitor.state.collectAsState()
@@ -587,10 +621,14 @@ private fun PairedShell(
                     liveTick = liveTick,
                     onSelectHarness = onSelectHarness,
                 )
-                Route.Operator -> OperatorChatScreen(
-                    creds = current,
-                    liveTick = liveTick,
-                )
+                Route.Operator -> key(current.server, current.workspaceId, current.deviceToken) {
+                    OperatorChatScreen(
+                        creds = current,
+                        liveTick = liveTick,
+                        input = operatorDraft,
+                        onInputChange = onOperatorDraftChange,
+                    )
+                }
                 Route.Plans -> PlansScreen(
                     creds = current,
                     liveTick = liveTick,

@@ -5,6 +5,10 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assert
@@ -12,18 +16,20 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -79,6 +85,7 @@ class OperatorChatScreenTest {
         val freshWorkspace = if (recovery == "workspace") "other-workspace" else "draft-workspace"
         val sends = AtomicInteger()
         val pairs = AtomicInteger()
+        val persistedText = AtomicReference("")
         MockWebServer().use { first ->
             MockWebServer().use { second ->
                 val dispatcher = object : Dispatcher() {
@@ -98,7 +105,9 @@ class OperatorChatScreenTest {
                                     .put("workspaceId", if (pairs.get() == 0) "draft-workspace" else freshWorkspace)
                                     .put("harnessSlug", JSONObject.NULL).put("status", "active")
                                     .put("startedAt", 1).put("endedAt", JSONObject.NULL))
-                                    .put("turns", JSONArray()).put("hasMoreEarlier", false).toString(),
+                                    .put("turns", if (persistedText.get().isEmpty()) JSONArray() else JSONArray()
+                                        .put(turn(1, "user", persistedText.get())).put(turn(2, "assistant", "Recovered reply")))
+                                    .put("hasMoreEarlier", false).toString(),
                             )
                         request.path == "/api/device/operator/converse" -> {
                             val text = JSONObject(request.body.readUtf8()).getString("text")
@@ -109,6 +118,7 @@ class OperatorChatScreenTest {
                             } else {
                                 assertEquals(if (recovery in listOf("workspace", "server")) "new scope draft" else draft, text)
                                 assertEquals("Bearer fresh-draft-token", request.getHeader("Authorization"))
+                                persistedText.set(text)
                                 MockResponse().setHeader("Content-Type", "text/event-stream")
                                     .setBody("event: delta\ndata: {\"text\":\"Recovered reply\"}\n\nevent: done\ndata: {}\n\n")
                             }
@@ -133,7 +143,8 @@ class OperatorChatScreenTest {
                         compose.onNode(hasSetTextAction()).assertTextContains(draft)
                         compose.onNodeWithContentDescription("Settings").performClick()
                         if (recovery != "settings") {
-                            compose.onNodeWithText("Forget this device").performScrollTo().performClick()
+                            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Forget this device"))
+                            compose.onNodeWithText("Forget this device").performClick()
                             compose.onNodeWithText("Paste manually").performClick()
                             val target = if (recovery == "server") second else first
                             compose.onNode(hasSetTextAction()).performTextInput(JSONObject()
@@ -213,7 +224,10 @@ class OperatorChatScreenTest {
                 "native-chat-fixture", "native-chat-device", "native-chat-workspace")
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { activity ->
-                    activity.setContent { MaterialTheme { OperatorChatScreen(creds, 0) } }
+                    activity.setContent {
+                        var input by remember { mutableStateOf("") }
+                        MaterialTheme { OperatorChatScreen(creds, 0, input) { input = it } }
+                    }
                 }
                 compose.waitUntil(10_000) { server.requestCount >= 1 }
                 compose.onNode(hasSetTextAction()).performTextInput(text)

@@ -107,14 +107,18 @@ runtime = dict(exitCode=0, executionStarted=True, hostCleanupVerified=True,
                health={'sha': expected[:12]})
 chat_xml = ('<testcase name="unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn"/>'
             '<testcase name="forbiddenSendKeepsDraftWithoutInventingAPersistedTurn"/>')
-good_xml = '<testsuite tests="4"><testcase name="launcherActivityStarts"/><testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"/>' + chat_xml + '</testsuite>'
+recovery_xml = ''.join('<testcase name="'+name+'"/>' for name in (
+    'rejectedDraftSurvivesSettingsRoundTrip', 'rejectedDraftSurvivesSameScopeRepairAndActivityRecreation',
+    'repairToAnotherWorkspaceDoesNotExposePreviousDraft', 'repairToAnotherServerDoesNotExposePreviousDraft'))
+good_xml = '<testsuite tests="8"><testcase name="launcherActivityStarts"/><testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"/>' + chat_xml + recovery_xml + '</testsuite>'
 cases = ['pass', 'stale-counterpart', 'missing-bundle', 'native-failed', 'host-failed',
          'native-not-executed', 'host-not-executed', 'native-cleanup', 'host-cleanup',
          'native-process-cleanup', 'ambient-runtime', 'runtime-mismatch', 'other-attempt',
          'other-workspace', 'other-device', 'stale-source', 'missing-fingerprints',
          'changed-apk', 'missing-apk', 'missing-xml', 'skipped-xml', 'duplicate-test',
          'stale-loaded-source', 'missing-loaded-source', 'missing-chat-tests',
-         'skipped-chat-test', 'failed-chat-test'] + ['missing-'+f for f in flags]
+         'skipped-chat-test', 'failed-chat-test'] + ['missing-'+f for f in flags] + [
+         'missing-recovery', 'failed-recovery', 'skipped-recovery', 'duplicate-recovery']
 for case in cases:
     out = temp / ('paired-proof-' + case); out.mkdir()
     reports = out / 'native-results'; reports.mkdir()
@@ -150,6 +154,10 @@ for case in cases:
     if case == 'missing-chat-tests': xml = good_xml.replace(chat_xml, '')
     if case == 'skipped-chat-test': xml = good_xml.replace('name="forbiddenSendKeepsDraftWithoutInventingAPersistedTurn"/>', 'name="forbiddenSendKeepsDraftWithoutInventingAPersistedTurn"><skipped/></testcase>')
     if case == 'failed-chat-test': xml = good_xml.replace('name="unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn"/>', 'name="unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn"><failure>lost draft</failure></testcase>')
+    if case == 'missing-recovery': xml = good_xml.replace(recovery_xml, '')
+    if case == 'failed-recovery': xml = good_xml.replace('name="rejectedDraftSurvivesSettingsRoundTrip"/>', 'name="rejectedDraftSurvivesSettingsRoundTrip"><failure>lost draft</failure></testcase>')
+    if case == 'skipped-recovery': xml = good_xml.replace('name="repairToAnotherWorkspaceDoesNotExposePreviousDraft"/>', 'name="repairToAnotherWorkspaceDoesNotExposePreviousDraft"><skipped/></testcase>')
+    if case == 'duplicate-recovery': xml = good_xml.replace('repairToAnotherServerDoesNotExposePreviousDraft', 'repairToAnotherWorkspaceDoesNotExposePreviousDraft')
     if case.startswith('missing-') and case[8:] in flags: n['nativeJourney'].pop(case[8:])
     if case != 'missing-xml': (reports/'TEST-paired.xml').write_text(xml)
     (out/'result.json').write_text(json.dumps(n)); (host/'result.json').write_text(json.dumps(r))
@@ -434,14 +442,17 @@ else:
     scope = '<testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"/>'
     chat = ('<testcase name="unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn"/>'
             '<testcase name="forbiddenSendKeepsDraftWithoutInventingAPersistedTurn"/>')
+    chat += ''.join('<testcase name="'+name+'"/>' for name in (
+        'rejectedDraftSurvivesSettingsRoundTrip', 'rejectedDraftSurvivesSameScopeRepairAndActivityRecreation',
+        'repairToAnotherWorkspaceDoesNotExposePreviousDraft', 'repairToAnotherServerDoesNotExposePreviousDraft'))
     if case == 'native-no-scope-test': scope = ''
     if case == 'native-duplicate-journey': scope = journey
     if case == 'native-wrong-scope-test': scope = '<testcase name="unrelatedTest"/>'
     if case == 'native-skipped-scope-test':
         scope = '<testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"><skipped/></testcase>'
     p.write_text('<testsuite tests="0"/>' if case == 'native-empty' else
-                 '<testsuite tests="4" failures="1"><testcase name="launcherActivityStarts"><failure>lifecycle failure</failure></testcase>' + scope + chat + '</testsuite>' if case == 'native-test-fail' else
-                 '<testsuite tests="4">' + journey + scope + chat + '</testsuite>')
+                 '<testsuite tests="8" failures="1"><testcase name="launcherActivityStarts"><failure>lifecycle failure</failure></testcase>' + scope + chat + '</testsuite>' if case == 'native-test-fail' else
+                 '<testsuite tests="8">' + journey + scope + chat + '</testsuite>')
     # AGP uninstalls both packages by default, deleting app-private proof.
     # Model that side effect so a missing retention option cannot pass here.
     if case == 'native-uninstalled' or '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true' not in sys.argv:
