@@ -17,6 +17,19 @@ aboutLibraries {
     }
 }
 
+// AboutLibraries 12.2.4 marks its resolved dependency data @Internal, so
+// Gradle otherwise reuses old notices when the runtime graph changes.
+tasks.matching { it.name == "prepareLibraryDefinitionsDebug" || it.name == "prepareLibraryDefinitionsRelease" }.configureEach {
+    val runtime = configurations.named(if (name.endsWith("Release")) "releaseRuntimeClasspath" else "debugRuntimeClasspath")
+    inputs.files(runtime).withPropertyName("papercupLibraryRuntimeArtifacts")
+    inputs.property("papercupLibraryRuntimeGraph", providers.provider {
+        runtime.get().incoming.resolutionResult.allComponents
+            .mapNotNull { it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier }
+            .map { "${it.group}:${it.module}:${it.version}" }
+            .sorted()
+    })
+}
+
 val generateUniFfiKotlin by
     tasks.registering(Exec::class) {
         val repositoryRoot =

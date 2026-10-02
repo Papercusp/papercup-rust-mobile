@@ -7,6 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -49,7 +52,8 @@ class LibraryNoticesScreenTest {
             compose.onNodeWithText("Third-party licenses").performClick()
             compose.waitUntil(15_000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(library.name))
-            compose.onNodeWithText(library.name).performClick()
+            // Multiplatform wrapper and Android artifacts can share a name.
+            compose.onAllNodes(hasText(library.name) and hasClickAction()).onFirst().performClick()
             compose.onNodeWithText(text).assertExists()
             compose.onNodeWithText("OK").performClick()
             compose.onNodeWithContentDescription("Back").performClick()
@@ -76,7 +80,7 @@ class LibraryNoticesScreenTest {
             compose.onNodeWithText("Fixture library").performClick()
             compose.onNodeWithText("First complete license text").assertExists()
             compose.onNodeWithText("Second complete license text").assertExists()
-            compose.onNodeWithText("Linked terms").assertExists()
+            compose.onNode(hasText("Linked terms") and hasAnyAncestor(isDialog())).assertExists()
             compose.onNodeWithText("Open license reference").assertExists()
         }
     }

@@ -13,8 +13,15 @@ cat > "$TMP/notices-test.gradle" <<'GRADLE'
 import groovy.json.JsonSlurper
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 
+def fixtureRepo = System.getProperty('papercup.notices.fixtureRepo')
+if (fixtureRepo) {
+    gradle.settingsEvaluated { settings ->
+        settings.dependencyResolutionManagement.repositories.maven { url = new File(fixtureRepo).toURI() }
+    }
+}
 gradle.projectsEvaluated {
     def app = gradle.rootProject.project(':app')
+    if (fixtureRepo) app.dependencies.add('implementation', 'fixture.notices:metadata-cache-probe:1.0')
     app.tasks.register('verifyReleaseLibraryMetadata') {
         dependsOn ':app:prepareLibraryDefinitionsRelease'
         doLast {
@@ -35,6 +42,8 @@ gradle.projectsEvaluated {
                 }
                 assert !rows.containsKey('junit:junit'): 'Test-only JUnit leaked into release notices'
                 assert !rows.containsKey('androidx.compose.ui:ui-tooling'): 'Debug tooling leaked into release notices'
+                assert rows.containsKey('fixture.notices:metadata-cache-probe') == !!fixtureRepo:
+                    'Cached notice resource retained or omitted the graph-transition fixture'
                 data.libraries.each { row ->
                     row.licenses.each { id ->
                         assert data.licenses.containsKey(id): "Unresolved license reference: $id"
@@ -65,3 +74,27 @@ GRADLE
 
 "$ROOT/android/gradlew" -p "$ROOT/android" --console=plain \
     --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
+
+# Exercise the actual producer's up-to-date behavior across an add/remove
+# transition. The Maven fixture stays private to this test's temporary repo;
+# no production dependency or network service is added.
+mkdir -p "$TMP/repository/fixture/notices/metadata-cache-probe/1.0"
+cat > "$TMP/repository/fixture/notices/metadata-cache-probe/1.0/metadata-cache-probe-1.0.pom" <<'POM'
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion><groupId>fixture.notices</groupId>
+  <artifactId>metadata-cache-probe</artifactId><version>1.0</version>
+  <name>Notice cache regression fixture</name>
+  <licenses><license><name>Apache-2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0.txt</url></license></licenses>
+</project>
+POM
+python3 - "$TMP/repository/fixture/notices/metadata-cache-probe/1.0/metadata-cache-probe-1.0.jar" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], 'w') as archive:
+    archive.writestr('META-INF/MANIFEST.MF', 'Manifest-Version: 1.0\n')
+PY
+"$ROOT/android/gradlew" -p "$ROOT/android" --console=plain \
+    "-Dpapercup.notices.fixtureRepo=$TMP/repository" \
+    --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
+"$ROOT/android/gradlew" -p "$ROOT/android" --console=plain \
+    --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
+echo 'Release notice collector cached add/remove graph transitions PASS'
