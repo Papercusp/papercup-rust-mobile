@@ -18,7 +18,9 @@ separate disclosure naming ElevenLabs and the configured AI provider; consent
 can be revoked in Settings.
 
 Camera access is used only for scanning the pair QR code. Microphone access is
-used only after starting voice. Notification permission is optional. Face ID is
+used for voice; configured Android builds also use it for continuous wake-word
+listening after microphone permission is granted, with a foreground-service
+notification. Notification permission is optional. Face ID is
 used only to confirm high-risk actions on supported devices.
 
 The privacy policy is available before pairing and in Settings:
@@ -121,6 +123,14 @@ not been provisioned or verified, and no Google Play submission is recorded.
   and exact-candidate checks pass. Include Firebase Messaging/Crashlytics,
   optional ElevenLabs processing, the merged permissions, and publicly
   reachable privacy/support/deletion guidance.
+- Record whether the exact Android build configures wake-word listening. When
+  enabled, verify idle/background microphone capture, the foreground-service
+  notification, permission-denied behavior and teardown. A dormant keyless build
+  does not prove configured behavior. Reconcile the microphone foreground-service
+  declaration and its demonstration with the actual candidate; do not describe
+  its microphone as active only after tapping voice. Before submitting, verify
+  the hosted policy includes the candidate's wake-word disclosure; the October 2
+  source-policy update alone does not prove the public page was updated.
 - Capture the candidate's Android phone screenshots and 1024 × 500 feature
   graphic specified in `store/LISTING.md`. Document distribution rights and
   required third-party notices; record the corresponding source location and

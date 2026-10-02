@@ -1,6 +1,6 @@
 # Papercusp Android — Google Play data-safety answers
 
-_Source draft reconciled October 1, 2026 against the Android manifest,
+_Source draft reconciled October 2, 2026 against the Android manifest,
 `VoicePrivacyConsent`, `PrivacyPolicyScreen`, `VoiceManager`,
 `DesktopVoiceSession`, `PushService`, `Credentials`, and Gradle dependencies._
 
@@ -17,6 +17,7 @@ and retain the submitted Console answers with its APK/AAB hashes.
 | Cloud voice is optional | `VoicePrivacyConsent.kt` defaults consent to false, supports revocation, and names ElevenLabs, audio, transcripts, replies and provider processing. `VoicePrivacyConsentTest.kt` checks the consent boundary and disclosure. | Verify consent blocks capture in the signed app, revocation prompts again, and desktop-local voice follows its declared route. |
 | Push and crash diagnostics remain included | `app/build.gradle.kts` includes Firebase Messaging and Crashlytics; `PrivacyPolicyScreen.kt` and the public policy disclose both. | Verify actual push delivery and crash behavior, including which identifiers and failure context leave the device. |
 | Analytics and advertising identifiers are disabled | The source manifest disables Firebase Analytics, ad-ID and SSAID collection and removes inherited advertising, attribution and install-referrer permissions. `android-privacy-permissions-test.sh` checks the merged release manifest. | Inspect the exact APK/AAB merged manifest and retain the executed privacy-check result. |
+| Configured Android wake-word builds continuously use the microphone | `MainActivity.kt` starts `WakeWordService` when a wake-word engine is configured and microphone permission is granted, including idle state. The service declares the microphone foreground-service type and displays an ongoing notification. | Record the candidate's effective wake-word configuration without exposing its key; test idle/background listening, notification, permission denial and teardown. Review Picovoice operational reporting, account terms and sharing declarations if activated. |
 | Android release connections require HTTPS | Release configuration disables cleartext; the release pairing boundary rejects non-HTTPS endpoints. | Exercise rejected HTTP and accepted production HTTPS pairing on the exact signed candidate. |
 | Public privacy and deletion contacts exist | The public privacy and support pages returned HTTP 200 with their privacy/deletion content during the October 1 review. The public policy includes the same shipped processors as the in-app policy. | Recheck both URLs immediately before submission and exercise the support/deletion process. |
 
@@ -84,6 +85,13 @@ Analytics, ad-ID collection, and Android-ID analytics collection are disabled.
    are not evidence of this account's configuration. Verify support can locate
    and delete developer-controlled records without promising that uninstall or
    consent revocation deletes previously retained provider records.
+8. Reconcile `RECORD_AUDIO`, `FOREGROUND_SERVICE` and
+   `FOREGROUND_SERVICE_MICROPHONE` with the candidate's actual wake-word use and
+   Play foreground-service declaration/demo. Microphone permission alone does
+   not establish that the listener is configured. If Picovoice is activated,
+   verify its reporting and applicable data types; the provisional table above
+   does not settle those transfers. Verify the hosted privacy page includes the
+   candidate's conditional wake-word disclosure before submission.
 
 ## Provider references checked October 1, 2026
 

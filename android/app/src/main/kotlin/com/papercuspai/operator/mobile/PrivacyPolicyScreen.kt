@@ -33,7 +33,7 @@ import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 internal data class PrivacySection(val title: String, val body: String)
 
 internal object MobilePrivacyPolicy {
-    const val UPDATED = "August 11, 2026"
+    const val UPDATED = "October 2, 2026"
     val sections = listOf(
         PrivacySection(
             "Overview",
@@ -46,6 +46,10 @@ internal object MobilePrivacyPolicy {
         PrivacySection(
             "Voice",
             "Desktop-local voice sends microphone audio to your paired operator for speech recognition and replies. Cloud voice is off until you explicitly agree. When enabled, microphone audio, transcripts, responses, and functional identifiers go to ElevenLabs and its service providers, including AI model providers. They may record, view, store, and share communications to provide and improve the service, train models, and comply with law. You can withdraw consent in Settings; a later cloud session will ask again.",
+        ),
+        PrivacySection(
+            "Wake-word listening",
+            "On Android builds with wake-word listening enabled, Picovoice Porcupine continuously uses the microphone to detect the activation word once microphone permission is granted, including while the app is in the background. A foreground-service notification indicates this listening. Builds without wake-word configuration do not start this listener. Cloud voice is separate and still requires your consent.",
         ),
         PrivacySection(
             "Push and crash diagnostics",

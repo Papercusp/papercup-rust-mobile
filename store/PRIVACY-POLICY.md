@@ -1,6 +1,6 @@
 # Papercusp mobile privacy policy
 
-_Effective August 11, 2026_
+_Source policy updated October 2, 2026; verify the hosted copy before submission_
 
 This policy covers the Papercusp iPhone app and Android app with bundle/package
 identifier `com.papercuspai.operator.mobile`. The public copy is available at
@@ -19,6 +19,7 @@ apps or websites. The mobile app does not require a Papercusp account.
 | Pairing credential, device ID, workspace ID, and operator address | Stored on the phone and sent to the paired operator to authenticate the device. The iPhone credential is stored in the Apple Keychain; Android uses encrypted app storage. |
 | Chat, commands, and operator replies | Sent to the paired operator. The operator may send prompts and replies to the AI provider configured by its administrator. |
 | Microphone audio and voice transcripts | Desktop-local voice sends data to the paired operator. Cloud voice is blocked until the user explicitly agrees; it sends audio, transcripts, replies, and functional identifiers to ElevenLabs and its service providers, including AI model providers. |
+| Android wake-word microphone input, when configured | Picovoice Porcupine continuously uses microphone input to detect the activation word once microphone permission is granted, including while the app is in the background. A foreground-service notification indicates listening. Builds without wake-word configuration do not start this listener. This listener is separate from consented cloud voice. |
 | Push token | Sent to Apple Push Notification service on iPhone, or Firebase Cloud Messaging on Android, and to the paired operator so notifications can reach the device. |
 | Android crash logs, device/OS details, and Crashlytics installation ID | Sent to Firebase Crashlytics to diagnose Android failures. The iPhone 1.0 app does not include a crash-reporting SDK and does not send crash diagnostics to Papercusp. |
 
@@ -36,6 +37,8 @@ you are not comfortable sending to those providers.
 - **Apple Push Notification service** delivers iPhone notifications.
 - **Firebase Cloud Messaging** delivers Android notifications.
 - **Firebase Crashlytics** collects Android crash diagnostics.
+- **Picovoice Porcupine**, on Android builds configured for wake-word listening,
+  detects the activation word. Cloud-voice consent still applies separately.
 - **Firebase Analytics is disabled.** Advertising-ID collection and Android-ID
   analytics collection are also disabled in the Android release manifest.
 - **The iPhone 1.0 app has no crash-reporting SDK.** If crash reporting is
@@ -47,7 +50,8 @@ websites.
 
 ## Permissions
 
-- Microphone: voice interaction.
+- Microphone: voice interaction and, on configured Android builds, continuous
+  wake-word listening with a foreground-service notification.
 - Camera: scan a pairing QR code.
 - Notifications: deliver messages from the paired operator.
 - Local network on iPhone: connect directly to the paired desktop when it is on

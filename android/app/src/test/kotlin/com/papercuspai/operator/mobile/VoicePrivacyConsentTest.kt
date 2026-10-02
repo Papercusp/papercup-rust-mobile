@@ -36,6 +36,8 @@ class VoicePrivacyConsentTest {
         assertTrue(policy.contains("firebase cloud messaging"))
         assertTrue(policy.contains("firebase crashlytics"))
         assertTrue(policy.contains("firebase analytics"))
+        assertTrue(policy.contains("picovoice porcupine"))
         assertTrue(policy.contains("withdraw consent"))
     }
+
 }
