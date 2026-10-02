@@ -177,7 +177,7 @@ jobs:
         working-directory: android-ci-attempt/operator
         run: |
           node scripts/npm-install-safe.mjs ci --legacy-peer-deps
-          bash apps/operator/bin/bundle-host.sh
+          PAPERCUSP_BUNDLE_REUSE_FRESH=1 bash apps/operator/bin/bundle-host.sh
           node apps/operator/bin/bundle-host-freshness.mjs check --repo-root "$PWD" --entry apps/operator/bin/hono-host.ts --outfile apps/operator/dist-host/hono-host.mjs --manifest apps/operator/dist-host/.bundle-fresh.json
           cp apps/operator/dist-host/.bundle-fresh.json ../operator-bundle-fresh.json
 

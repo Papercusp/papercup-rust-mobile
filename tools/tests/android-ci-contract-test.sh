@@ -22,6 +22,7 @@ assert android.index('Require private operator dependency access') < android.ind
 assert 'node-version: 25' in android, 'actual operator native dependencies require Node25'
 assert 'node scripts/npm-install-safe.mjs ci --legacy-peer-deps' in android and 'bash apps/operator/bin/bundle-host.sh' in android, 'reuse canonical dependency and host builders'
 assert 'node apps/operator/bin/bundle-host-freshness.mjs check' in android, 'stale counterpart bundle must be refused'
+assert 'PAPERCUSP_BUNDLE_REUSE_FRESH=1 bash apps/operator/bin/bundle-host.sh' in android, 'freshness validation requires the canonical builder to stamp its manifest'
 assert 'emulator-port: 5554' in android and 'ANDROID_SERIAL=emulator-5554 bash tools/run-android-checks.sh isolated-native android-ci-attempt/operator android-ci-attempt/paired' in android, 'automatic native leg must execute the owned paired journey'
 assert android.count('bash tools/run-android-checks.sh verify-isolated-native') == 2, 'fresh and cached paired proof must be validated'
 assert 'android-api36-16k-paired-v2-${{ env.PAPERCUP_OPERATOR_SHA }}-' in android, 'counterpart changes must invalidate old success'
@@ -109,6 +110,7 @@ text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 (out / 'wrong-operator-node.yml').write_text(text.replace('          node-version: 25\n', '          node-version: 22\n'))
 (out / 'missing-safe-install.yml').write_text(text.replace('node scripts/npm-install-safe.mjs ci --legacy-peer-deps', ': omitted'))
 (out / 'missing-host-builder.yml').write_text(text.replace('bash apps/operator/bin/bundle-host.sh', ': omitted'))
+(out / 'missing-host-freshness-stamp.yml').write_text(text.replace('PAPERCUSP_BUNDLE_REUSE_FRESH=1 ', ''))
 (out / 'missing-host-freshness.yml').write_text(text.replace('node apps/operator/bin/bundle-host-freshness.mjs check', ': omitted'))
 (out / 'unpaired-only.yml').write_text(text.replace('ANDROID_SERIAL=emulator-5554 bash tools/run-android-checks.sh isolated-native android-ci-attempt/operator android-ci-attempt/paired', ': omitted'))
 (out / 'missing-paired-validation.yml').write_text(text.replace('bash tools/run-android-checks.sh verify-isolated-native', ': omitted'))
@@ -137,7 +139,7 @@ PY
             exit 1
         fi
     done
-    echo 'Android CI bootstrap/storage/emulator/paired-provenance mutation controls: 31 rejected'
+    echo 'Android CI bootstrap/storage/emulator/paired-provenance mutation controls: 32 rejected'
 
     # A workflow invoking "host" is insufficient if the owned runner stops
     # executing one of its required phases. Keep each omission reproducible.
