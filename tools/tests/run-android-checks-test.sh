@@ -30,13 +30,19 @@ exit "$NATIVE_TEST_EXIT"
 ''')
 with tempfile.TemporaryDirectory(prefix='papercusp-test-runtime-') as runtime:
     home = Path(runtime) / 'home'; home.mkdir()
-    for case in ['pass', 'native-fail', 'host-fail', 'ambient', 'wrong-url', 'wrong-home', 'existing-evidence', 'interrupt']:
+    lifecycle_cases = ['pass', 'native-fail', 'host-fail', 'ambient', 'wrong-url',
+                       'wrong-home', 'existing-evidence', 'interrupt', 'wrong-counterpart']
+    for case in lifecycle_cases:
         evidence = temp / case
         env = dict(os.environ, HOME=str(home), PAPERCUSP_WORKSPACE_ID='test-runtime-fixture',
             PAPERCUSP_BACKGROUND_WORKERS='0', PAPERCUSP_DBOS_ENABLE='0', PAPERCUSP_CLUSTER='0',
             PAPERCUSP_SKIP_PG_DISCOVERY='1', PAPERCUSP_BIND_HOST='127.0.0.1',
             PAPERCUP_OPERATOR_ROOT=str(operator), PAPERCUP_ANDROID_RUNNER=str(native),
             PAPERCUP_ANDROID_EVIDENCE=str(evidence), NATIVE_TEST_EXIT='17' if case=='native-fail' else '0')
+        # The fake host has its own identity. An outer real-build pin must
+        # not contaminate controls; test explicit pin refusal separately.
+        env.pop('PAPERCUP_OPERATOR_SHA', None)
+        if case == 'wrong-counterpart': env['PAPERCUP_OPERATOR_SHA'] = 'a' * 40
         import socket
         with socket.socket() as sock:
             sock.bind(('127.0.0.1',0)); port=sock.getsockname()[1]
@@ -79,7 +85,7 @@ http.createServer((req,res)=>{
             with socket.socket() as sock:
                 assert sock.connect_ex(('127.0.0.1',port))!=0, 'owned host survived cleanup'
         if case=='existing-evidence': assert (evidence/'owned').read_text()=='preserve'
-print('Android private operator lifecycle: 8 launch/cleanup/refusal controls passed (native stub only)')
+print(f'Android private operator lifecycle: {len(lifecycle_cases)} launch/cleanup/refusal controls passed (native stub only)')
 PY
 python3 - "$runner" "$TMP_ROOT" <<'PY'
 import copy
