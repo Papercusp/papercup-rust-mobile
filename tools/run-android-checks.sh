@@ -91,11 +91,13 @@ fixture_name = f'android-live-scope-{attempt}'
 command = ['cargo', 'test', '-p', 'papercup-core', '--test', 'live_smoke',
            'live_p0_contract_smoke', '--', '--ignored', '--nocapture']
 result = {'command': command, 'startedAt': now(), 'runtime': base,
+          'runId': attempt, 'checkKind': kind, 'ownedWorkspace': None, 'ownedDeviceIds': [],
           'sourceCommit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
           'sourceDirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], text=True)),
           'sourceFingerprints': {path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
               for path in ['tools/run-android-checks.sh', 'crates/papercup-core/tests/live_smoke.rs']},
-          'scope': 'Rust API contract on current operator; no native or release-candidate acceptance',
+          'scope': ('Owned local debug native pairing/JNI/navigation; no signed-candidate, mesh, phone or Play acceptance'
+                    if kind == 'native' else 'Rust API contract on current operator; no native or release-candidate acceptance'),
           'log': str(log_path), 'exitCode': 1, 'cleanupVerified': False}
 fixture_id = None
 token = None
@@ -154,6 +156,8 @@ try:
     if fixture_id in existing or fixture.get('name') != fixture_name:
         fixture_id = None
         raise RuntimeError('workspace creation did not return an owned private fixture')
+    result['ownedWorkspace'] = {'id': fixture_id, 'name': fixture_name}
+    (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
     ready = api('/api/workspaces')
     if (ready.get('current') != before['current'] or not any(
             row['id'] == fixture_id and row['name'] == fixture_name for row in ready['workspaces'])):
@@ -262,7 +266,9 @@ finally:
             # A completed native redemption instead returns the expected401.
             if token is not None:
                 try:
-                    api('/api/device/pair', 'POST', {'pairToken': token['qrPayload']['pairToken']})
+                    burned = api('/api/device/pair', 'POST', {'pairToken': token['qrPayload']['pairToken']})
+                    if burned.get('deviceId') and burned['deviceId'] not in existing_devices:
+                        result['ownedDeviceIds'].append(burned['deviceId'])
                 except HTTPError as error:
                     if error.code != 401 or json.load(error).get('error') != 'invalid_or_expired_token':
                         raise
@@ -272,6 +278,8 @@ finally:
                 if row.get('workspace_id') == fixture_id:
                     if row['device_id'] in existing_devices:
                         raise RuntimeError('refusing to revoke a pre-existing device identity')
+                    if row['device_id'] not in result['ownedDeviceIds']:
+                        result['ownedDeviceIds'].append(row['device_id'])
                     api('/api/device/desktop/devices/' + row['device_id'], 'DELETE')
             if any(row.get('workspace_id') == fixture_id
                    for row in api('/api/device/desktop/devices')['devices']):
@@ -279,6 +287,7 @@ finally:
         paired = re.search(r'^paired: device=([0-9a-f-]{36}) workspace=', text, re.MULTILINE) if kind == 'rust' else None
         if paired:
             device = paired.group(1)
+            result['ownedDeviceIds'].append(device)
             api('/api/device/desktop/devices/' + device, 'DELETE')
             if any(row['device_id'] == device for row in api('/api/device/desktop/devices')['devices']):
                 raise RuntimeError('private live pairing remained after revocation')

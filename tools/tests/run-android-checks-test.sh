@@ -249,6 +249,12 @@ else:
         result = json.loads((evidence / 'result.json').read_text())
         assert (run.returncode == 0) == (case in ('pass', 'native-pass')), (case, run.stdout, run.stderr, result)
         assert state['current'] == 'original'
+        assert result['checkKind'] == ('native' if native_mode else 'rust')
+        assert len(result['runId']) == 32
+        if case not in ('native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
+            assert result['ownedWorkspace']['name'].startswith('android-live-scope-')
+        else:
+            assert result['ownedWorkspace'] is None
         assert state['devices'] == [{'device_id': original_device}], state
         if case in ('cleanup-fail', 'native-cleanup-fail'):
             assert not result['cleanupVerified'] and len(state['workspaces']) == 2
@@ -265,6 +271,7 @@ else:
         if case == 'native-pass':
             assert result['nativeJourney']['journeyCompleted'] is True
             assert len(result['artifacts']) == 2
+            assert result['ownedDeviceIds'] == [device]
         assert 'private-test-token' not in run.stdout + run.stderr + (evidence / 'result.json').read_text()
     finally:
         server.shutdown()
