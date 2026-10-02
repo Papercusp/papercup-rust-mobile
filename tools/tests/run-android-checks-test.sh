@@ -34,6 +34,134 @@ if bash "$runner" verify-results "$TMP_ROOT" connected > "$TMP_ROOT/output" 2>&1
     echo 'FAIL: missing instrumentation result was accepted' >&2
     exit 1
 fi
+
+# Exercise the live runner through actual HTTP and subprocess boundaries.
+# The fake Cargo process is deliberately separate from the fixture server:
+# skipped/empty exits, failed tests and interruption must all clean only the
+# resources created for this attempt, without changing desktop selection.
+python3 - "$runner" "$TMP_ROOT" <<'PY'
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+runner, root = sys.argv[1], Path(sys.argv[2])
+device = '12345678-1234-1234-1234-123456789abc'
+original_device = '87654321-4321-4321-4321-cba987654321'
+
+for case in ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail']:
+    state = {'workspaces': [{'id': 'original', 'name': 'Original'}], 'current': 'original',
+             'devices': [{'device_id': original_device}], 'minted': False, 'removed': [], 'hidden': False}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def reply(self, body, status=200):
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(body).encode())
+
+        def do_GET(self):
+            if self.path == '/api/workspaces':
+                rows = state['workspaces']
+                if case == 'preflight-fail' and len(rows) == 2 and not state['hidden']:
+                    rows = rows[:1]
+                    state['hidden'] = True
+                self.reply({'workspaces': rows, 'current': state['current']})
+            elif self.path == '/api/device/desktop/devices':
+                self.reply({'devices': state['devices']})
+            else:
+                self.reply({'error': 'unexpected read'}, 404)
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            if self.path == '/api/workspaces':
+                row = {'id': body['name'], 'name': body['name']}
+                state['workspaces'].append(row)
+                self.reply(row)
+            elif self.path == '/api/device/desktop/mint-pair-token':
+                assert len(state['workspaces']) == 2, 'mint before scope fixture exists'
+                assert body['workspaceId'] == 'original'
+                state['minted'] = True
+                state['devices'].append({'device_id': device})
+                self.reply({'qrPayload': {'pairToken': 'private-test-token'}})
+            else:
+                self.reply({'error': 'unexpected write'}, 404)
+
+        def do_DELETE(self):
+            if self.path.startswith('/api/device/desktop/devices/'):
+                owned = self.path.rsplit('/', 1)[1]
+                assert owned == device, 'attempt to revoke pre-existing device'
+                state['devices'] = [row for row in state['devices'] if row['device_id'] != owned]
+                self.reply({'ok': True})
+            elif self.path.startswith('/api/workspaces/'):
+                owned = self.path.rsplit('/', 1)[1]
+                assert owned != 'original', 'attempt to remove pre-existing workspace'
+                if case == 'cleanup-fail':
+                    self.reply({'error': 'cleanup rejected'}, 503)
+                else:
+                    state['removed'].append(owned)
+                    state['workspaces'] = [row for row in state['workspaces'] if row['id'] != owned]
+                    self.reply({'ok': True})
+            else:
+                self.reply({'error': 'unexpected deletion'}, 404)
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    bin_dir = root / ('live-bin-' + case)
+    bin_dir.mkdir()
+    cargo = bin_dir / 'cargo'
+    cargo.write_text('''#!/usr/bin/env python3
+import os, sys, time
+assert sys.argv[1:] == ['test', '-p', 'papercup-core', '--test', 'live_smoke', 'live_p0_contract_smoke', '--', '--ignored', '--nocapture']
+assert os.environ['PAPERCUP_LIVE_PAIR_TOKEN'] == 'private-test-token'
+assert os.environ['PAPERCUP_LIVE_SECOND_WORKSPACE'].startswith('android-live-scope-')
+assert 'PAPERCUP_LIVE_CONVERSE' not in os.environ
+print('paired: device=12345678-1234-1234-1234-123456789abc workspace=original', flush=True)
+case = os.environ['TEST_LIVE_CASE']
+if case == 'timeout': time.sleep(5)
+if case == 'empty': sys.exit(0)
+if case == 'skipped':
+    print('test result: ok. 0 passed; 0 failed; 1 ignored;')
+else:
+    print('test result: ok. 1 passed; 0 failed; 0 ignored;')
+sys.exit(101 if case == 'test-fail' else 0)
+''')
+    cargo.chmod(0o755)
+    env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
+               PAPERCUP_LIVE_BASE=f'http://127.0.0.1:{server.server_port}',
+               PAPERCUP_LIVE_CONVERSE='1', PAPERCUP_LIVE_TIMEOUT_SEC='1', TEST_LIVE_CASE=case)
+    evidence = root / ('live-evidence-' + case)
+    try:
+        run = subprocess.run(['bash', runner, 'live', str(evidence)], env=env,
+                             capture_output=True, text=True, timeout=15)
+        result = json.loads((evidence / 'result.json').read_text())
+        assert (run.returncode == 0) == (case == 'pass'), (case, run.stdout, run.stderr)
+        assert state['current'] == 'original'
+        assert state['devices'] == [{'device_id': original_device}], state
+        if case == 'cleanup-fail':
+            assert not result['cleanupVerified'] and len(state['workspaces']) == 2
+        else:
+            assert result['cleanupVerified'] and state['workspaces'] == [{'id': 'original', 'name': 'Original'}], (case, result, state)
+        if case == 'preflight-fail':
+            assert not state['minted'], 'failed fixture preflight still minted credentials'
+        assert 'private-test-token' not in run.stdout + run.stderr + (evidence / 'result.json').read_text()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+remote = subprocess.run(['bash', runner, 'live', str(root / 'remote-refused')],
+    env=dict(os.environ, PAPERCUP_LIVE_BASE='https://public.example'), capture_output=True, text=True)
+assert remote.returncode != 0 and not (root / 'remote-refused').exists()
+print('Android live fixture guards: 8 passed; owned scope, executed result and failure cleanup verified')
+PY
 echo 'Android result guard tests: 10 passed'
 
 # The CI preparation phase must refuse a real developer/self-hosted machine.

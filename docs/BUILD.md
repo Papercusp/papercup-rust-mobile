@@ -87,6 +87,21 @@ xcrun simctl launch $PAPERCUP_IOS_SIM_UDID com.papercuspai.operator.mobile
 
 ### Iterate on Rust core only
 
+Run the maintained device API smoke against the supported current-build operator:
+
+```sh
+PAPERCUP_LIVE_BASE=http://127.0.0.1:3170 bash tools/run-android-checks.sh live
+```
+
+This mode verifies the current workspace selection, creates an empty private
+second workspace, mints a fresh pairing, and runs the canonical Cargo smoke
+with that explicit second scope. It revokes its pairing and removes only its
+own fixture on success or failure, preserving the desktop selection. It also
+retains the command, source fingerprints, executed result and cleanup evidence
+under `android/app/build/ci-evidence`. Only loopback operators are accepted;
+the containing runtime must be measured before invocation. API proof does not
+establish native, signed-candidate, physical-phone or Play acceptance.
+
 ```sh
 cargo watch -x 'test --workspace'
 ```

@@ -179,9 +179,16 @@ async fn live_p0_contract_smoke() {
             Err(ApiError::Unauthorized)
         ));
         let workspaces = client.list_workspaces().await.expect("workspace list");
+        let private_scope = std::env::var("PAPERCUP_LIVE_SECOND_WORKSPACE").ok();
         let target = workspaces
             .iter()
-            .find(|workspace| workspace.id != pair.workspace_id)
+            .find(|workspace| {
+                workspace.id != pair.workspace_id
+                    && match private_scope.as_deref() {
+                        Some(id) => workspace.id == id,
+                        None => true,
+                    }
+            })
             .expect("scope acceptance requires two registered workspaces");
         let switched = client
             .workspace_switch(&target.id)

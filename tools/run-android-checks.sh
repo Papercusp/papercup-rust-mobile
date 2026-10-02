@@ -36,6 +36,125 @@ PY
 }
 
 mode="${1:-full}"
+if [[ "$mode" == live ]]; then
+    # Reuse the canonical Cargo smoke, with owned fixtures rather than a
+    # manually registered second workspace that disappears between sessions.
+    python3 - "${2:-}" <<'PY'
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+import uuid
+
+base = os.environ.get('PAPERCUP_LIVE_BASE', '').rstrip('/')
+url = urllib.parse.urlsplit(base)
+if (url.scheme != 'http' or url.hostname not in ('127.0.0.1', 'localhost', '::1')
+        or url.path or url.query or url.fragment or url.username or url.password):
+    raise SystemExit('live checks require an explicit loopback PAPERCUP_LIVE_BASE')
+timeout = int(os.environ.get('PAPERCUP_LIVE_TIMEOUT_SEC', '240'))
+if not 1 <= timeout <= 600:
+    raise SystemExit('live timeout must be between 1 and 600 seconds')
+attempt = uuid.uuid4().hex
+out = Path(sys.argv[1] or f'android/app/build/ci-evidence/live-{attempt}')
+out.mkdir(parents=True, exist_ok=False, mode=0o700)
+log_path = out / 'cargo-test.log'
+
+def api(path, method='GET', body=None):
+    request = urllib.request.Request(base + path, method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+before = api('/api/workspaces')
+workspace = os.environ.get('PAPERCUP_LIVE_WORKSPACE', before.get('current'))
+existing = {row['id'] for row in before['workspaces']}
+if not before.get('current') or workspace not in existing:
+    raise SystemExit('live checks require an existing workspace and current selection')
+fixture_name = f'android-live-scope-{attempt}'
+command = ['cargo', 'test', '-p', 'papercup-core', '--test', 'live_smoke',
+           'live_p0_contract_smoke', '--', '--ignored', '--nocapture']
+result = {'command': command, 'startedAt': now(), 'runtime': base,
+          'sourceCommit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+          'sourceDirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], text=True)),
+          'sourceFingerprints': {path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+              for path in ['tools/run-android-checks.sh', 'crates/papercup-core/tests/live_smoke.rs']},
+          'scope': 'Rust API contract on current operator; no native or release-candidate acceptance',
+          'log': str(log_path), 'exitCode': 1, 'cleanupVerified': False}
+fixture_id = None
+errors = []
+try:
+    fixture = api('/api/workspaces', 'POST', {'name': fixture_name})
+    fixture_id = fixture['id']
+    if fixture_id in existing or fixture.get('name') != fixture_name:
+        fixture_id = None
+        raise RuntimeError('workspace creation did not return an owned private fixture')
+    ready = api('/api/workspaces')
+    if (ready.get('current') != before['current'] or not any(
+            row['id'] == fixture_id and row['name'] == fixture_name for row in ready['workspaces'])):
+        raise RuntimeError('second-workspace prerequisite was not established')
+    token = api('/api/device/desktop/mint-pair-token', 'POST', {'workspaceId': workspace})
+    env = os.environ.copy()
+    env.update(PAPERCUP_LIVE_BASE=base, PAPERCUP_LIVE_PAIR_TOKEN=token['qrPayload']['pairToken'],
+               PAPERCUP_LIVE_SECOND_WORKSPACE=fixture_id)
+    env.pop('PAPERCUP_LIVE_CONVERSE', None)
+    with log_path.open('w') as log:
+        try:
+            completed = subprocess.run(command, env=env, stdout=log,
+                                       stderr=subprocess.STDOUT, timeout=timeout)
+            result['exitCode'] = completed.returncode
+        except subprocess.TimeoutExpired:
+            result['exitCode'] = 124
+            errors.append('canonical live smoke exceeded its execution deadline')
+    text = log_path.read_text()
+    if result['exitCode'] == 0 and not re.search(
+            r'test result: ok\. 1 passed; 0 failed; 0 ignored;', text):
+        result['exitCode'] = 1
+        errors.append('canonical live test did not execute exactly once without failures or skips')
+except Exception as error:
+    errors.append(str(error))
+finally:
+    try:
+        # A timeout can kill Cargo before its Rust panic cleanup. Only revoke
+        # the fresh identity printed by this canonical, privately minted run.
+        text = log_path.read_text() if log_path.exists() else ''
+        paired = re.search(r'^paired: device=([0-9a-f-]{36}) workspace=', text, re.MULTILINE)
+        if paired:
+            device = paired.group(1)
+            api('/api/device/desktop/devices/' + device, 'DELETE')
+            if any(row['device_id'] == device for row in api('/api/device/desktop/devices')['devices']):
+                raise RuntimeError('private live pairing remained after revocation')
+        if fixture_id:
+            registered = api('/api/workspaces')
+            row = next((row for row in registered['workspaces'] if row['id'] == fixture_id), None)
+            if row and row['name'] != fixture_name:
+                raise RuntimeError('private workspace changed identity; refusing removal')
+            if row:
+                api('/api/workspaces/' + urllib.parse.quote(fixture_id, safe=''), 'DELETE')
+        after = api('/api/workspaces')
+        if (after.get('current') != before['current'] or
+                fixture_id and any(row['id'] == fixture_id for row in after['workspaces'])):
+            raise RuntimeError('workspace cleanup or current-selection preservation failed')
+        result['cleanupVerified'] = True
+    except Exception as error:
+        errors.append('cleanup: ' + str(error))
+        result['exitCode'] = result['exitCode'] or 1
+result.update(finishedAt=now(), errors=errors)
+(out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
+print(json.dumps(result))
+raise SystemExit(result['exitCode'])
+PY
+    exit
+fi
 if [[ "$mode" == verify-avd-space ]]; then
     partition="${2:?explicit AVD disk-size is required}"
     avd_root="${ANDROID_AVD_HOME:-$HOME/.android/avd}"
@@ -147,7 +266,7 @@ if [[ "$mode" == verify-results ]]; then
     exit
 fi
 [[ "$mode" == host || "$mode" == connected || "$mode" == full ]] || {
-    echo 'usage: run-android-checks.sh [host|connected|full|prepare-ci|verify-emulator|verify-avd-space DISK_SIZE|verify-results ROOT host|connected]' >&2
+    echo 'usage: run-android-checks.sh [host|connected|full|live [EVIDENCE_DIR]|prepare-ci|verify-emulator|verify-avd-space DISK_SIZE|verify-results ROOT host|connected]' >&2
     exit 2
 }
 
