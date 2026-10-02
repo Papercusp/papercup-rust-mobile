@@ -210,12 +210,15 @@ try:
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/SettingsScreen.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/DiagnosticsScreen.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/MainActivity.kt',
+                            'android/app/src/main/AndroidManifest.xml',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/PapercupApplication.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/InboxScreen.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/CompanionFeed.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/HumanError.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt',
-                            'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']})
+                            'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt',
+                            'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/UniffiCallbackTest.kt']})
     with log_path.open('a' if kind == 'native' else 'w') as log:
         result['executionStarted'] = True
         native_execution_started = kind == 'native'
