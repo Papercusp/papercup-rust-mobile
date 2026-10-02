@@ -129,3 +129,27 @@ not been provisioned or verified, and no Google Play submission is recorded.
 Candidate bytes, reviewer access, provider settings, final disclosures, assets
 and licensing evidence remain acceptance requirements. A launcher smoke test
 does not verify this reviewer journey or the physical-phone/Play-install matrix.
+
+### Android license and source evidence
+
+This is a source-based inventory, not distribution clearance. Resolve the
+actual release runtime graph and packaged native libraries before finalizing
+it; direct dependencies alone omit transitive and native components.
+
+| Component | Existing source evidence | Evidence still required for the shipped candidate |
+|---|---|---|
+| Papercusp mobile and Rust core | Root `LICENSE` and workspace `Cargo.toml` declare GPL-3.0-or-later. | Exact corresponding source, build instructions, copyright/license notices and a recipient-accessible source delivery path bound to the candidate commit. A private repository URL alone does not establish recipient access. |
+| ElevenLabs Android 0.9.0 and its voice transport dependencies | `android/app/build.gradle.kts` includes `io.elevenlabs:elevenlabs-android:0.9.0`; the [official SDK repository license](https://github.com/elevenlabs/elevenlabs-android/blob/main/LICENSE) currently identifies MIT terms. | License/copyright notices from the resolved 0.9.0 artifact and every included transport/native dependency. SDK licensing does not verify account service terms, retention or privacy settings. |
+| Picovoice Porcupine Android 4.0.0 | Gradle includes the SDK; `WakeWordEngine.kt` initializes it only when configured. The [public repository license](https://github.com/Picovoice/porcupine/blob/master/LICENSE) and [current service terms](https://picovoice.ai/docs/terms-of-use/) are separate evidence surfaces. | Exact artifact/model/engine license terms and the applicable account agreement/entitlement. Do not infer clearance for packaged binaries or configured service use from the public wrapper license or a working AccessKey. |
+| Firebase, ML Kit, AndroidX, Compose, OkHttp, JNA and Rust dependencies | Android Gradle declarations, `Cargo.lock`, and the packaged library/notice inventory. | Complete resolved release graph, license texts and required notices, including native payloads. Verify accessibility of the final notices and any source delivery required by the applicable licenses. |
+
+The inspected local debug and historical release APKs contain several AndroidX
+license entries and OkHttp's public-suffix notice. This limited filename-based
+inspection does not prove completeness or apply to a new candidate. Re-inspect
+the exact signed APK/AAB, and retain the complete inventory with its hashes.
+
+Picovoice's current terms also describe operational usage reporting. If the
+candidate activates its engine, review the provider's privacy policy, actual
+runtime behavior, and corresponding public/in-app/Data Safety disclosures.
+An unconfigured dormant engine is not evidence of the configured behavior.
+The existing candidate/provider checklist remains open until this is measured.
