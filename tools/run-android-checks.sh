@@ -238,6 +238,7 @@ try:
             raise RuntimeError('native live test must execute exactly once without failures or skips')
         proof = json.loads(app_shell('cat files/native-pairing-result.json').stdout)
         if (proof.get('runId') != attempt or proof.get('workspaceId') != fixture_id
+                or proof.get('currentStage') != 'completed'
                 or not all(proof.get(k) is True for k in
                     ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
                      'activityRecreated', 'valueRowLabelsPassed', 'enrollmentBrowserStubbed',

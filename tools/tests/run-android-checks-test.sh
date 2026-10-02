@@ -57,7 +57,7 @@ cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', '
          'setup-unavailable', 'setup-no-selection',
          'native-pass', 'native-empty', 'native-no-proof', 'native-no-label-proof', 'native-no-browser-boundary',
          'native-no-inbox-scope', 'native-no-inbox-rendering', 'native-no-inbox-unauthorized', 'native-no-inbox-recovery',
-         'native-no-pairing-trace',
+         'native-no-pairing-trace', 'native-no-progress',
          'native-timeout', 'native-test-fail', 'native-uninstalled',
          'native-preflight-fail', 'native-local-cleanup-fail', 'native-cleanup-fail',
          'native-unused-token', 'native-wrong-device', 'native-existing-files', 'native-missing-serial']
@@ -223,7 +223,7 @@ elif args[0] == 'shell':
         fixture = json.loads(private.read_text())
         proof = {'runId': fixture['runId'], 'workspaceId': fixture['workspaceId'],
                  'deviceId': '12345678-1234-1234-1234-123456789abc',
-                 'journeyCompleted': True, 'authenticatedRequestPassed': True,
+                 'journeyCompleted': True, 'currentStage': 'completed', 'authenticatedRequestPassed': True,
                  'returnedToPairedShell': True, 'activityRecreated': True,
                  'valueRowLabelsPassed': True, 'enrollmentBrowserStubbed': True,
                  'inboxScopedReadPassed': True, 'inboxRenderingPassed': True,
@@ -232,6 +232,9 @@ elif args[0] == 'shell':
         if case == 'native-wrong-device': proof['deviceId'] = '87654321-4321-4321-4321-cba987654321'
         if case == 'native-no-label-proof': proof.pop('valueRowLabelsPassed')
         if case == 'native-no-browser-boundary': proof.pop('enrollmentBrowserStubbed')
+        if case == 'native-no-progress': proof.pop('currentStage')
+        if case == 'native-timeout':
+            proof.update(journeyCompleted=False, currentStage='authenticated-jni-request')
         for suffix, flag in [('scope', 'inboxScopedReadPassed'), ('rendering', 'inboxRenderingPassed'),
                              ('unauthorized', 'inboxUnauthorizedPassed'), ('recovery', 'inboxRecoveryPassed')]:
             if case == 'native-no-inbox-' + suffix: proof.pop(flag)
@@ -321,6 +324,11 @@ else:
             assert '<failure>lifecycle failure</failure>' in xml.read_text(), 'failed native evidence was discarded'
             assert len(result['artifacts']) == 2, 'failed run lost its exact APKs'
             assert result['nativeObservedProof']['failedStage'] == 'persisted-credentials', 'failure-stage witness was discarded'
+        if case == 'native-timeout':
+            assert result['exitCode'] == 124 and 'nativeJourney' not in result
+            assert result['nativeObservedProof']['currentStage'] == 'authenticated-jni-request'
+            assert not result['nativeObservedProof']['journeyCompleted']
+            assert len(result['artifacts']) == 2, 'interrupted native run lost its exact APKs'
         if case == 'native-uninstalled':
             assert not result['cleanupVerified'] and result['ownedDeviceIds'] == [device]
             assert len(result['artifacts']) == 2, 'AGP teardown lost the immutable artifacts'

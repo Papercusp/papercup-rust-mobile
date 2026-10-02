@@ -102,11 +102,19 @@ class PapercupAppSmokeTest {
             .put("enrollmentBrowserStubbed", enrollmentIntentFixture)
         var ownedDevice: String? = null
         var stage = "pair-form"
+        fun beginStage(value: String) {
+            stage = value
+            // A host deadline can interrupt JUnit before finally runs. Keep
+            // the last operation on disk without treating progress as a pass.
+            result.put("currentStage", value)
+            resultFile.writeText(result.toString())
+        }
         try {
+            beginStage("pair-form")
             compose.onNodeWithText("Paste manually").performClick()
             compose.onNode(hasSetTextAction()).performTextInput(fixture.getJSONObject("pairPayload").toString())
             compose.onNodeWithText("Pair").performClick()
-            stage = "persisted-credentials"
+            beginStage("persisted-credentials")
             compose.waitUntil(30_000) { store.load() != null }
             val paired = requireNotNull(store.load())
             ownedDevice = paired.deviceId
@@ -115,19 +123,20 @@ class PapercupAppSmokeTest {
             assertEquals(expectedWorkspace, paired.workspaceId)
             assertTrue(paired.deviceToken.isNotBlank())
             paired.defguardEnrollmentUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                beginStage("enrollment-intent")
                 Intents.intended(allOf(hasAction(Intent.ACTION_VIEW), hasData(android.net.Uri.parse(url))))
                 result.put("enrollmentIntentObserved", true)
             }
             // This device-JWT endpoint verifies the persisted token through
             // real JNI and HTTP, independently of the rendered paired shell.
-            stage = "authenticated-jni-request"
+            beginStage("authenticated-jni-request")
             val devices = runBlocking { paired.client().listDesktopDevices() }
             assertTrue("Paired device must be returned by its authenticated scope", devices.any { it.deviceId == paired.deviceId })
             result.put("authenticatedRequestPassed", true)
 
             // Pairing may hand off to mesh enrollment. Return to the native
             // app as a user would, then prove credentials survive recreation.
-            stage = "return-to-paired-shell"
+            beginStage("return-to-paired-shell")
             instrumentation.runOnMainSync {
                 context.startActivity(Intent(context, MainActivity::class.java).addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
@@ -135,7 +144,7 @@ class PapercupAppSmokeTest {
             }
             waitForPairedShell()
             result.put("returnedToPairedShell", true)
-            stage = "activity-recreation"
+            beginStage("activity-recreation")
             scenario.recreate()
             val restored = requireNotNull(store.load())
             assertEquals(paired.deviceId, restored.deviceId)
@@ -143,17 +152,17 @@ class PapercupAppSmokeTest {
             assertTrue("Pairing token must survive recreation", paired.deviceToken == restored.deviceToken)
             waitForPairedShell()
             result.put("activityRecreated", true)
-            stage = "scoped-inbox"
-            verifyOwnedInbox(paired, result)
+            verifyOwnedInbox(paired, result) { beginStage("inbox-initial-$it") }
             result.put("inboxRenderingPassed", true)
 
             // Exercise the real JNI/HTTP authorization boundary without
             // revoking any other device or changing the desktop selection.
             // This is an invalid-JWT fixture, not proof of expiry/revocation.
-            stage = "inbox-invalid-session"
+            beginStage("inbox-invalid-session")
             val invalid = paired.copy(deviceToken = "native-invalid-device-jwt")
             val rejected = runCatching { runBlocking { invalid.client().attention() } }.exceptionOrNull()
             assertTrue("Invalid device JWT must be rejected by the real Inbox endpoint", rejected is ApiException.Unauthorized)
+            beginStage("inbox-invalid-rendering")
             store.save(invalid)
             scenario.recreate()
             waitForPairedShell()
@@ -166,16 +175,17 @@ class PapercupAppSmokeTest {
             compose.onNodeWithText("Inbox zero — nothing needs you right now.").assertDoesNotExist()
             result.put("inboxUnauthorizedPassed", true)
 
-            stage = "inbox-session-recovery"
+            beginStage("inbox-session-recovery")
             store.save(paired)
             scenario.recreate()
             waitForPairedShell()
-            verifyOwnedInbox(paired, result)
+            verifyOwnedInbox(paired, result) { beginStage("inbox-recovery-$it") }
             result.put("inboxRecoveryPassed", true)
-            stage = "paired-navigation"
+            beginStage("paired-navigation")
             for (tab in listOf("Inbox", "Operator", "Plans", "Fleet", "Settings")) {
                 compose.onNodeWithContentDescription(tab).assertIsDisplayed()
             }
+            beginStage("settings-labels")
             compose.onNodeWithContentDescription("Settings").performClick()
             compose.onNodeWithText("Workspace").assertIsDisplayed()
             compose.onNode(hasText(expectedWorkspace) and hasAnySibling(hasText("Workspace")))
@@ -185,6 +195,7 @@ class PapercupAppSmokeTest {
                 result.put("meshEnrollmentClaimCorrect", true)
             }
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Diagnostics"))
+            beginStage("diagnostics-labels")
             compose.onNodeWithText("Diagnostics").assertIsDisplayed().performClick()
             compose.onNodeWithText("Ping desktop").assertIsDisplayed()
             compose.onNodeWithText("Workspace").performScrollTo().assertIsDisplayed()
@@ -210,6 +221,9 @@ class PapercupAppSmokeTest {
                 store.clear()
             }
             result.put("credentialsCleared", store.load() == null)
+            if (result.optBoolean("journeyCompleted") && result.optBoolean("credentialsCleared")) {
+                result.put("currentStage", "completed")
+            }
             resultFile.writeText(result.toString())
         }
     }
@@ -224,7 +238,8 @@ class PapercupAppSmokeTest {
         }
     }
 
-    private fun verifyOwnedInbox(paired: DeviceCredentials, result: JSONObject) {
+    private fun verifyOwnedInbox(paired: DeviceCredentials, result: JSONObject, beginStage: (String) -> Unit) {
+        beginStage("jni-request")
         val feed = runBlocking { paired.client().attention() }
         // This runner creates a fresh private workspace with no harness or
         // work-item fixtures. Global system alerts may still be present.
@@ -235,6 +250,7 @@ class PapercupAppSmokeTest {
             else JSONObject(feed.groupsJson).getJSONArray("groups")
         assertEquals(0, groups.length())
         result.put("inboxScopedReadPassed", true).put("inboxSystemAlertCount", feed.systemAlerts.size)
+        beginStage("rendering")
         compose.onNodeWithContentDescription("Inbox").performClick()
         if (feed.systemAlerts.isEmpty()) {
             waitForText("Inbox zero — nothing needs you right now.")
