@@ -191,3 +191,43 @@ candidate activates its engine, review the provider's privacy policy, actual
 runtime behavior, and corresponding public/in-app/Data Safety disclosures.
 An unconfigured dormant engine is not evidence of the configured behavior.
 The existing candidate/provider checklist remains open until this is measured.
+
+### Retained voice/native dependency references
+
+The following October 2 preparation read inspects the cached AARs named in the
+retained release-runtime graph above and their version-specific Maven Central
+POMs. These are dependency references, not proof of the final APK/AAB contents
+or a complete notice bundle. POM license labels describe published metadata;
+they do not establish rights for every binary, model or bundled dependency.
+
+| Resolved module | Cached AAR SHA-256 | Version-specific metadata license label |
+|---|---|---|
+| `ai.picovoice:porcupine-android:4.0.0` | `be02724bde227b0f5f0c87da239065f77651051b3e81356dc7b3866c0d7882ff` | [Apache License - v2.0](https://repo.maven.apache.org/maven2/ai/picovoice/porcupine-android/4.0.0/porcupine-android-4.0.0.pom) |
+| `ai.picovoice:android-voice-processor:1.0.2` | `6f225a9758bfdbaa7192a8297925be66a673b1b32eaaa4ed6ee0aeaa57746305` | [Apache License - v2.0](https://repo.maven.apache.org/maven2/ai/picovoice/android-voice-processor/1.0.2/android-voice-processor-1.0.2.pom) |
+| `io.elevenlabs:elevenlabs-android:0.9.0` | `820281847cae389ee07c8414449d8c54f508bd172e87860c036e480652745054` | [MIT License](https://repo.maven.apache.org/maven2/io/elevenlabs/elevenlabs-android/0.9.0/elevenlabs-android-0.9.0.pom) |
+| `io.livekit:livekit-android:2.22.0` | `021b060f5a9cc3a2efc088b212836194c162b87a99b6ac7c42b8f646b0dedae7` | [Apache Software License, Version 2.0](https://repo.maven.apache.org/maven2/io/livekit/livekit-android/2.22.0/livekit-android-2.22.0.pom) |
+| `io.github.webrtc-sdk:android-prefixed:137.7151.04` | `07934f87e0c3897fd8107f9193eda0f35007c3aee92b4e085b909ed0fe3fd66c` | [3-Clause BSD License](https://repo.maven.apache.org/maven2/io/github/webrtc-sdk/android-prefixed/137.7151.04/android-prefixed-137.7151.04.pom) |
+| `net.java.dev.jna:jna:5.19.1` | `b57125cb7d16253f0d65a80f7d3a4c3664effa711b8bdbb7f87fb572ce1624ed` | [LGPL-2.1-or-later and Apache-2.0](https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.pom) |
+
+The inspected AARs contain `libpv_porcupine.so`,
+`liblkjingle_peerconnection_so.so`, and `libjnidispatch.so` respectively for
+Porcupine, WebRTC and JNA. JNA's cached AAR also includes obsolete `armeabi`,
+`mips` and `mips64` payloads; the existing release ABI filter must continue to
+exclude those from the shipped artifacts. Inspect the final native payloads
+and their notice/source requirements separately from Java wrapper licensing.
+
+A filename scan of these six AARs and their nested JARs found
+`classes.jar!/META-INF/LICENSE` in JNA. The other five returned no filename
+containing `license`, `notice` or `copying` in this bounded inspection. This
+does not establish absence of license text in every resource, prove a license
+violation, or satisfy notice delivery. Obtain the version-specific upstream
+copyright/license texts and reconcile them with the candidate's notice bundle.
+
+Corresponding source must also include the source used from the `libs/token-kit`
+submodule. At preparation commit `2625dab7e39dd5e093922a4ddd0610ea384b4c4c`,
+the gitlink and checked-out submodule both identify
+`0a2c7214d928c8b330a7ae9584876089e2781634`; its `LICENSE` contains Apache 2.0
+terms. A root-only Git archive omits submodule contents, and a private clone URL
+does not give a recipient access. Bind the final source delivery to the
+candidate's actual gitlink, include build instructions and applicable notices,
+and verify retrieval as a recipient before claiming source delivery complete.
