@@ -81,6 +81,72 @@ http.createServer((req,res)=>{
         if case=='existing-evidence': assert (evidence/'owned').read_text()=='preserve'
 print('Android private operator lifecycle: 8 launch/cleanup/refusal controls passed (native stub only)')
 PY
+python3 - "$runner" "$TMP_ROOT" <<'PY'
+import copy
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+runner, temp = Path(sys.argv[1]), Path(sys.argv[2])
+expected = 'a' * 40
+native = {'checkKind': 'native', 'exitCode': 0, 'executionStarted': True,
+          'cleanupVerified': True, 'runId': 'this-attempt', 'runtime': 'http://127.0.0.1:34567',
+          'ownedWorkspace': {'id': 'fixture-workspace'}, 'ownedDeviceIds': ['fixture-device'],
+          'sourceFingerprints': {'tools/run-android-checks.sh': hashlib.sha256(runner.read_bytes()).hexdigest()}}
+flags = ['journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
+         'activityRecreated', 'valueRowLabelsPassed', 'enrollmentBrowserStubbed',
+         'inboxScopedReadPassed', 'inboxRenderingPassed', 'inboxUnauthorizedPassed',
+         'inboxRecoveryPassed', 'navigationPassed', 'credentialsCleared']
+native['nativeJourney'] = dict(runId='this-attempt', workspaceId='fixture-workspace',
+                             deviceId='fixture-device', currentStage='completed', **{k: True for k in flags})
+runtime = dict(exitCode=0, executionStarted=True, hostCleanupVerified=True,
+               nativeProcessCleanupVerified=True, runtime=native['runtime'],
+               workspaceId='test-runtime-fixture', operatorSourceCommit=expected, bundleSha256='b'*64)
+good_xml = '<testsuite tests="2"><testcase name="launcherActivityStarts"/><testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"/></testsuite>'
+cases = ['pass', 'stale-counterpart', 'missing-bundle', 'native-failed', 'host-failed',
+         'native-not-executed', 'host-not-executed', 'native-cleanup', 'host-cleanup',
+         'native-process-cleanup', 'ambient-runtime', 'runtime-mismatch', 'other-attempt',
+         'other-workspace', 'other-device', 'stale-source', 'missing-fingerprints',
+         'changed-apk', 'missing-apk', 'missing-xml', 'skipped-xml', 'duplicate-test'] + ['missing-'+f for f in flags]
+for case in cases:
+    out = temp / ('paired-proof-' + case); out.mkdir()
+    reports = out / 'native-results'; reports.mkdir()
+    host = Path(str(out)+'-runtime'); host.mkdir()
+    n, r = copy.deepcopy(native), dict(runtime)
+    n['artifacts'] = []
+    for name in ('app-debug.apk', 'app-debug-androidTest.apk'):
+        (out / name).write_bytes(b'tested fixture APK')
+        n['artifacts'].append({'path': str(out/name), 'sha256': hashlib.sha256((out/name).read_bytes()).hexdigest()})
+    xml = good_xml
+    if case == 'stale-counterpart': r['operatorSourceCommit'] = 'c'*40
+    if case == 'missing-bundle': r.pop('bundleSha256')
+    if case == 'native-failed': n['exitCode'] = 1
+    if case == 'host-failed': r['exitCode'] = 1
+    if case == 'native-not-executed': n['executionStarted'] = False
+    if case == 'host-not-executed': r['executionStarted'] = False
+    if case == 'native-cleanup': n['cleanupVerified'] = False
+    if case == 'host-cleanup': r['hostCleanupVerified'] = False
+    if case == 'native-process-cleanup': r['nativeProcessCleanupVerified'] = False
+    if case == 'ambient-runtime': r['workspaceId'] = 'ambient'
+    if case == 'runtime-mismatch': r['runtime'] = 'http://127.0.0.1:9999'
+    if case == 'other-attempt': n['nativeJourney']['runId'] = 'old-attempt'
+    if case == 'other-workspace': n['nativeJourney']['workspaceId'] = 'other'
+    if case == 'other-device': n['nativeJourney']['deviceId'] = 'other'
+    if case == 'stale-source': n['sourceFingerprints']['tools/run-android-checks.sh'] = 'd'*64
+    if case == 'missing-fingerprints': n['sourceFingerprints'] = {}
+    if case == 'changed-apk': (out/'app-debug.apk').write_bytes(b'other APK')
+    if case == 'missing-apk': (out/'app-debug.apk').unlink()
+    if case == 'skipped-xml': xml = good_xml.replace('name="launcherActivityStarts"/>', 'name="launcherActivityStarts"><skipped/></testcase>')
+    if case == 'duplicate-test': xml = good_xml.replace('privateInboxScopeAcceptsOnlyDocumentedGlobalControls', 'launcherActivityStarts')
+    if case.startswith('missing-') and case[8:] in flags: n['nativeJourney'].pop(case[8:])
+    if case != 'missing-xml': (reports/'TEST-paired.xml').write_text(xml)
+    (out/'result.json').write_text(json.dumps(n)); (host/'result.json').write_text(json.dumps(r))
+    run = subprocess.run(['bash',str(runner),'verify-isolated-native',str(out),expected],capture_output=True,text=True,timeout=5)
+    assert (run.returncode == 0) == (case == 'pass'), (case, run.stdout, run.stderr)
+print(f'Android paired proof barrier: {len(cases)} acceptance/refusal controls passed (evidence fixtures only)')
+PY
 mkdir -p "$TMP_ROOT/test-results/testDebugUnitTest" "$TMP_ROOT/test-results/testReleaseUnitTest" \
     "$TMP_ROOT/outputs/androidTest-results/connected/debug/device"
 debug="$TMP_ROOT/test-results/testDebugUnitTest/TEST-unit.xml"

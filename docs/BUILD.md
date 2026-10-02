@@ -118,9 +118,21 @@ revokes its device and removes its workspace and private app inputs; the wrapper
 stops its host even on interruption, then the canonical bootstrap disposes its
 database and private runtime. Runtime and native evidence use separate attempt
 directories. Prepare the operator dependencies/bundle before invocation; a
-missing bundle or an ambient runtime is refused. Scheduled CI still needs this
-prepared counterpart wired into its job before it establishes automatic paired
-coverage. This debug integration route preserves the signed-candidate, physical
+missing bundle or an ambient runtime is refused. Scheduled CI now checks out the
+exact operator commit pinned in `ci.yml`, recursively obtains its private
+submodules with the existing canonical `SUBMODULES_PAT` read credential, and
+uses `npm-install-safe.mjs` plus `bundle-host.sh` and its freshness check. The
+root-only `PAPERCUP_DEPLOY_KEY` cannot supply those private submodules; missing
+`SUBMODULES_PAT` fails before the expensive build. Provision that secret in this
+repository from the authorized credential store, outside source files.
+
+The automatic emulator leg runs this paired route. Its cache key includes both
+mobile content and the pinned operator commit; restored proof is revalidated.
+Only successful exact-source, APK, two-test JUnit, journey and cleanup evidence
+can become a success cache. The artifact retains counterpart provenance and
+paired diagnostics, without uploading the operator checkout or dependency tree.
+An actual hosted run still must pass before claiming automatic paired coverage.
+This debug integration route preserves the signed-candidate, physical
 phone, external mesh and Play acceptance requirements.
 
 ```sh

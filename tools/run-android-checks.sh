@@ -36,6 +36,63 @@ PY
 }
 
 mode="${1:-full}"
+if [[ "$mode" == verify-isolated-native ]]; then
+    python3 - "${2:?paired evidence directory required}" "${3:?exact operator source SHA required}" <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+out, expected = Path(sys.argv[1]), sys.argv[2]
+if not re.fullmatch('[0-9a-f]{40}', expected):
+    raise SystemExit('Exact operator commit required')
+native = json.loads((out / 'result.json').read_text())
+runtime = json.loads((Path(str(out) + '-runtime') / 'result.json').read_text())
+if (native.get('checkKind') != 'native' or native.get('exitCode') != 0
+        or not all(native.get(k) is True for k in ('executionStarted', 'cleanupVerified'))
+        or runtime.get('exitCode') != 0
+        or not all(runtime.get(k) is True for k in ('executionStarted', 'hostCleanupVerified', 'nativeProcessCleanupVerified'))
+        or runtime.get('operatorSourceCommit') != expected
+        or not re.fullmatch('[0-9a-f]{64}', runtime.get('bundleSha256', ''))
+        or native.get('runtime') != runtime.get('runtime')
+        or not runtime.get('workspaceId', '').startswith('test-runtime-')):
+    raise SystemExit('Paired proof lacks successful isolated execution, cleanup or exact counterpart')
+journey = native.get('nativeJourney', {})
+required = ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
+            'activityRecreated', 'valueRowLabelsPassed', 'enrollmentBrowserStubbed',
+            'inboxScopedReadPassed', 'inboxRenderingPassed', 'inboxUnauthorizedPassed',
+            'inboxRecoveryPassed', 'navigationPassed', 'credentialsCleared')
+if (journey.get('runId') != native.get('runId')
+        or journey.get('workspaceId') != native.get('ownedWorkspace', {}).get('id')
+        or not journey.get('deviceId') in native.get('ownedDeviceIds', [])
+        or journey.get('currentStage') != 'completed'
+        or not all(journey.get(k) is True for k in required)):
+    raise SystemExit('Paired journey is missing, incomplete or belongs to another attempt')
+fingerprints = native.get('sourceFingerprints', {})
+if not fingerprints or 'tools/run-android-checks.sh' not in fingerprints:
+    raise SystemExit('Native source fingerprints required')
+for path, digest in fingerprints.items():
+    if hashlib.sha256(Path(path).read_bytes()).hexdigest() != digest:
+        raise SystemExit('Paired source is stale: ' + path)
+artifacts = {Path(a['path']).name: a['sha256'] for a in native.get('artifacts', [])}
+for name in ('app-debug.apk', 'app-debug-androidTest.apk'):
+    if hashlib.sha256((out / name).read_bytes()).hexdigest() != artifacts.get(name):
+        raise SystemExit('Missing or changed tested APK: ' + name)
+reports = list((out / 'native-results').rglob('TEST-*.xml'))
+cases = [case for report in reports for case in ET.parse(report).getroot().iter('testcase')]
+if (len(cases) != 2 or {c.get('name') for c in cases} !=
+        {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls'}
+        or any(c.find(tag) is not None for c in cases for tag in ('failure', 'error', 'skipped'))
+        or any(int(suite.get(tag, '0')) for report in reports
+               for suite in ET.parse(report).getroot().iter('testsuite')
+               for tag in ('failures', 'errors', 'skipped'))):
+    raise SystemExit('Exactly two successful paired native tests required')
+print('Isolated paired native proof: source/counterpart/APK/JUnit/journey/cleanup verified')
+PY
+    exit $?
+fi
 if [[ "$mode" == isolated-native ]]; then
     # Reuse the operator's migrated-PG/profile owner; never reproduce its
     # isolation setup here or connect this journey to the shared operator.
@@ -91,7 +148,10 @@ if evidence.exists():
     raise SystemExit('isolated-native refuses existing native evidence')
 runtime_evidence = Path(str(evidence) + '-runtime')
 runtime_evidence.mkdir(mode=0o700, parents=True, exist_ok=False)
+source = subprocess.run(['git', '-C', str(operator), 'rev-parse', 'HEAD'],
+                        capture_output=True, text=True)
 proof = {'schemaVersion': 1, 'runtime': base, 'workspaceId': workspace,
+         'operatorSourceCommit': source.stdout.strip() if source.returncode == 0 else None,
          'bundleSha256': hashlib.sha256(bundle.read_bytes()).hexdigest(),
          'profile': 'with-test-pg --isolated-runtime=operator-api',
          'backgroundDisabled': True, 'dbosDisabled': True,
