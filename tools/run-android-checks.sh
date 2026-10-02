@@ -206,6 +206,7 @@ try:
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/CompanionFeed.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt',
                             'android/app/src/main/kotlin/com/papercuspai/operator/mobile/HumanError.kt',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt',
                             'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']})
     with log_path.open('a' if kind == 'native' else 'w') as log:
         native_execution_started = kind == 'native'
@@ -251,6 +252,17 @@ except Exception as error:
 finally:
     if native_execution_started:
         try:
+            diagnostics = adb('logcat', '-d', '-v', 'epoch', '-s', 'PapercupPairing:I', '*:S').stdout
+            trace = out / 'pairing-stages.log'
+            trace.write_text(diagnostics)
+            trace.chmod(0o600)
+            stages = re.findall(r'\bstage=([a-z-]+)', diagnostics)
+            result['pairingDiagnostics'] = {'path': str(trace), 'stages': stages,
+                'sha256': hashlib.sha256(trace.read_bytes()).hexdigest()}
+            if result['exitCode'] == 0 and not all(stage in stages for stage in
+                    ['client-start', 'client-ready', 'request-start', 'response-received', 'credentials-saved']):
+                result['exitCode'] = 1
+                errors.append('successful native journey lacks pairing-stage diagnostics')
             if result['exitCode'] != 0:
                 # A failing JUnit verdict is never admitted as a journey,
                 # but its bounded private witness identifies the failed stage.
@@ -307,11 +319,13 @@ finally:
             if token is not None:
                 try:
                     burned = api('/api/device/pair', 'POST', {'pairToken': token['qrPayload']['pairToken']})
+                    result['nativePairTokenDisposition'] = 'redeemed-by-cleanup'
                     if burned.get('deviceId') and burned['deviceId'] not in existing_devices:
                         result['ownedDeviceIds'].append(burned['deviceId'])
                 except HTTPError as error:
                     if error.code != 401 or json.load(error).get('error') != 'invalid_or_expired_token':
                         raise
+                    result['nativePairTokenDisposition'] = 'redeemed-before-cleanup'
             # The random new workspace had no devices before this attempt.
             # Discover failed/late pairings even when JUnit did not emit proof.
             for row in api('/api/device/desktop/devices')['devices']:

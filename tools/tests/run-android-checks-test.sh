@@ -56,6 +56,7 @@ original_device = '87654321-4321-4321-4321-cba987654321'
 cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail',
          'native-pass', 'native-empty', 'native-no-proof', 'native-no-label-proof', 'native-no-browser-boundary',
          'native-no-inbox-scope', 'native-no-inbox-rendering', 'native-no-inbox-unauthorized', 'native-no-inbox-recovery',
+         'native-no-pairing-trace',
          'native-timeout', 'native-test-fail', 'native-uninstalled',
          'native-preflight-fail', 'native-local-cleanup-fail', 'native-cleanup-fail',
          'native-unused-token', 'native-wrong-device', 'native-existing-files', 'native-missing-serial']
@@ -169,6 +170,7 @@ sys.exit(101 if case == 'test-fail' else 0)
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/CompanionFeed.kt',
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt',
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/HumanError.kt',
+                         'android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt',
                          'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']:
             target = native_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -195,6 +197,10 @@ private = Path('private-fixture.json')
 if args == ['shell', 'getprop', 'sys.boot_completed']: print('1')
 elif args == ['shell', 'getprop', 'ro.build.version.sdk']: print('36')
 elif args == ['shell', 'getconf', 'PAGE_SIZE']: print('4096' if case == 'native-preflight-fail' else '16384')
+elif args[:2] == ['logcat', '-d']:
+    if case != 'native-no-pairing-trace':
+        for stage in ['client-start', 'client-ready', 'request-start', 'response-received', 'credentials-saved']:
+            print('1.0 I PapercupPairing: stage=' + stage)
 elif args[:2] == ['reverse', '--list']: pass
 elif args[:2] == ['reverse', '--remove']:
     if case == 'native-local-cleanup-fail': sys.exit(1)
@@ -294,6 +300,8 @@ else:
         if case in ('preflight-fail', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
             assert not state['minted'], 'failed fixture preflight still minted credentials'
         if native_mode:
+            if state['minted']:
+                assert result['nativePairTokenDisposition'] == ('redeemed-by-cleanup' if case == 'native-unused-token' else 'redeemed-before-cleanup'), (case, result)
             if case == 'native-existing-files':
                 assert (native_root / 'private-fixture.json').read_text() == '{"owner":"pre-existing"}'
             else:

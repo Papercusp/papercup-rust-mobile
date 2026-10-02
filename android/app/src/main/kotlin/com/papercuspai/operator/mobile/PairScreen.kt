@@ -2,6 +2,7 @@
 package com.papercuspai.operator.mobile
 
 import android.Manifest
+import android.util.Log
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -77,8 +78,15 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                 // pair() just exchanges the token; the outcome carries a
                 // defguardEnrollmentUrl we open once so the phone joins the mesh.
                 // No WireGuard keypair / wg-config at pair time anymore.
+                // Stage-only diagnostics never include payloads or tokens.
+                // They distinguish native client setup from a pending HTTP
+                // exchange and persistence when pairing cannot finish.
+                Log.i("PapercupPairing", "stage=client-start")
                 val client = OperatorClient(payload.server, null)
+                Log.i("PapercupPairing", "stage=client-ready")
+                Log.i("PapercupPairing", "stage=request-start")
                 val outcome: PairOutcome = client.pair(payload.pairToken)
+                Log.i("PapercupPairing", "stage=response-received")
                 outcome.defguardEnrollmentUrl?.takeIf { it.isNotBlank() }?.let { url ->
                     runCatching {
                         val intent = android.content.Intent(
@@ -98,9 +106,12 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                         defguardEnrollmentUrl = outcome.defguardEnrollmentUrl,
                     ),
                 )
+                Log.i("PapercupPairing", "stage=credentials-saved")
             } catch (e: PairException) {
+                Log.i("PapercupPairing", "stage=pair-failed class=${e.javaClass.simpleName}")
                 error = HumanError.describe(e, "Pairing")
             } catch (t: Throwable) {
+                Log.i("PapercupPairing", "stage=pair-failed class=${t.javaClass.simpleName}")
                 error = HumanError.describe(t, "Pairing")
             } finally {
                 redeeming = false
