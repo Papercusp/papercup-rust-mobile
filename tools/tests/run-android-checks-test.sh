@@ -54,7 +54,8 @@ device = '12345678-1234-1234-1234-123456789abc'
 original_device = '87654321-4321-4321-4321-cba987654321'
 
 cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail',
-         'native-pass', 'native-empty', 'native-no-proof', 'native-timeout', 'native-test-fail', 'native-uninstalled',
+         'native-pass', 'native-empty', 'native-no-proof', 'native-no-label-proof', 'native-no-browser-boundary',
+         'native-timeout', 'native-test-fail', 'native-uninstalled',
          'native-preflight-fail', 'native-local-cleanup-fail', 'native-cleanup-fail',
          'native-unused-token', 'native-wrong-device', 'native-existing-files', 'native-missing-serial']
 for case in cases:
@@ -159,6 +160,9 @@ sys.exit(101 if case == 'test-fail' else 0)
         # connected devices, credentials or working-tree files are touched.
         native_root = root / ('native-root-' + case)
         for relative in ['tools/run-android-checks.sh', 'crates/papercup-core/tests/live_smoke.rs',
+                         'android/app/build.gradle.kts',
+                         'android/app/src/main/kotlin/com/papercuspai/operator/mobile/SettingsScreen.kt',
+                         'android/app/src/main/kotlin/com/papercuspai/operator/mobile/DiagnosticsScreen.kt',
                          'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']:
             target = native_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -205,8 +209,11 @@ elif args[0] == 'shell':
                  'deviceId': '12345678-1234-1234-1234-123456789abc',
                  'journeyCompleted': True, 'authenticatedRequestPassed': True,
                  'returnedToPairedShell': True, 'activityRecreated': True,
+                 'valueRowLabelsPassed': True, 'enrollmentBrowserStubbed': True,
                  'navigationPassed': True, 'credentialsCleared': True}
         if case == 'native-wrong-device': proof['deviceId'] = '87654321-4321-4321-4321-cba987654321'
+        if case == 'native-no-label-proof': proof.pop('valueRowLabelsPassed')
+        if case == 'native-no-browser-boundary': proof.pop('enrollmentBrowserStubbed')
         if case == 'native-test-fail':
             proof.update(journeyCompleted=False, failedStage='persisted-credentials', failureClass='FixtureFailure')
         print(json.dumps({} if case == 'native-no-proof' else proof))

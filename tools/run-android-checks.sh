@@ -96,7 +96,7 @@ result = {'command': command, 'startedAt': now(), 'runtime': base,
           'sourceDirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], text=True)),
           'sourceFingerprints': {path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
               for path in ['tools/run-android-checks.sh', 'crates/papercup-core/tests/live_smoke.rs']},
-          'scope': ('Owned local debug native pairing/JNI/navigation; no signed-candidate, mesh, phone or Play acceptance'
+          'scope': ('Owned local debug native pairing/JNI/navigation with external browser intent fixture; no signed-candidate, mesh, phone or Play acceptance'
                     if kind == 'native' else 'Rust API contract on current operator; no native or release-candidate acceptance'),
           'log': str(log_path), 'exitCode': 1, 'cleanupVerified': False}
 fixture_id = None
@@ -194,10 +194,13 @@ try:
         if not env.get('JAVA_HOME'):
             env['JAVA_HOME'] = subprocess.check_output(
                 ['bash', 'tools/build-scripts/resolve-java-home.sh'], text=True).strip()
-        result.update(command=command, scope='Owned local debug native pairing/JNI/navigation; no signed-candidate, mesh, phone or Play acceptance',
+        result.update(command=command, scope='Owned local debug native pairing/JNI/navigation with external browser intent fixture; no signed-candidate, mesh, phone or Play acceptance',
                       sourceFingerprints={path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
                           for path in ['tools/run-android-checks.sh',
                             'tools/build-scripts/build-android.sh',
+                            'android/app/build.gradle.kts',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/SettingsScreen.kt',
+                            'android/app/src/main/kotlin/com/papercuspai/operator/mobile/DiagnosticsScreen.kt',
                             'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']})
     with log_path.open('a' if kind == 'native' else 'w') as log:
         native_execution_started = kind == 'native'
@@ -222,7 +225,8 @@ try:
         if (proof.get('runId') != attempt or proof.get('workspaceId') != fixture_id
                 or not all(proof.get(k) is True for k in
                     ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
-                     'activityRecreated', 'navigationPassed', 'credentialsCleared'))):
+                     'activityRecreated', 'valueRowLabelsPassed', 'enrollmentBrowserStubbed',
+                     'navigationPassed', 'credentialsCleared'))):
             raise RuntimeError('native live journey proof is missing, mismatched or incomplete')
         registered = api('/api/device/desktop/devices')['devices']
         if (proof.get('deviceId') in existing_devices or not any(
