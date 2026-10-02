@@ -54,7 +54,7 @@ device = '12345678-1234-1234-1234-123456789abc'
 original_device = '87654321-4321-4321-4321-cba987654321'
 
 cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail',
-         'native-pass', 'native-empty', 'native-no-proof', 'native-timeout',
+         'native-pass', 'native-empty', 'native-no-proof', 'native-timeout', 'native-test-fail',
          'native-preflight-fail', 'native-local-cleanup-fail', 'native-cleanup-fail',
          'native-unused-token', 'native-wrong-device', 'native-existing-files', 'native-missing-serial']
 for case in cases:
@@ -192,6 +192,7 @@ elif args and args[0] in ['reverse', 'install']: pass
 elif args == ['shell', 'am', 'force-stop', 'com.papercuspai.operator.mobile']: pass
 elif args[0] == 'shell':
     command = args[1]
+    if 'run-as ' in command and Path('app-uninstalled').exists(): sys.exit(1)
     if 'cat > files/native-pairing-fixture.json' in command:
         fixture = json.load(sys.stdin)
         assert fixture['pairPayload']['pairToken'] == 'private-test-token'
@@ -203,6 +204,7 @@ elif args[0] == 'shell':
         proof = {'runId': fixture['runId'], 'workspaceId': fixture['workspaceId'],
                  'deviceId': '12345678-1234-1234-1234-123456789abc',
                  'journeyCompleted': True, 'authenticatedRequestPassed': True,
+                 'returnedToPairedShell': True, 'activityRecreated': True,
                  'navigationPassed': True, 'credentialsCleared': True}
         if case == 'native-wrong-device': proof['deviceId'] = '87654321-4321-4321-4321-cba987654321'
         print(json.dumps({} if case == 'native-no-proof' else proof))
@@ -233,8 +235,14 @@ else:
     p = Path('android/app/build/outputs/androidTest-results/connected/debug/TEST-native.xml')
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text('<testsuite tests="0"/>' if case == 'native-empty' else
+                 '<testsuite tests="1" failures="1"><testcase name="launcherActivityStarts"><failure>lifecycle failure</failure></testcase></testsuite>' if case == 'native-test-fail' else
                  '<testsuite tests="1"><testcase name="launcherActivityStarts"/></testsuite>')
-    if case == 'native-unused-token': sys.exit(1)
+    # AGP uninstalls both packages by default, deleting app-private proof.
+    # Model that side effect so a missing retention option cannot pass here.
+    if '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true' not in sys.argv:
+        Path('app-uninstalled').touch()
+        Path('private-fixture.json').unlink()
+    if case in ('native-unused-token', 'native-test-fail'): sys.exit(1)
 ''')
         gradle.chmod(0o755)
         env.update(JAVA_HOME=str(native_root / 'jdk'), ANDROID_SERIAL='emulator-5556')
@@ -272,6 +280,10 @@ else:
             assert result['nativeJourney']['journeyCompleted'] is True
             assert len(result['artifacts']) == 2
             assert result['ownedDeviceIds'] == [device]
+        if case == 'native-test-fail':
+            xml = evidence / 'native-results/TEST-native.xml'
+            assert '<failure>lifecycle failure</failure>' in xml.read_text(), 'failed native evidence was discarded'
+            assert len(result['artifacts']) == 2, 'failed run lost its exact APKs'
         assert 'private-test-token' not in run.stdout + run.stderr + (evidence / 'result.json').read_text()
     finally:
         server.shutdown()

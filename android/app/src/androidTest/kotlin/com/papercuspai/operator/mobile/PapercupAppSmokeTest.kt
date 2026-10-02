@@ -96,14 +96,15 @@ class PapercupAppSmokeTest {
                     Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
                 ))
             }
+            waitForPairedShell()
+            result.put("returnedToPairedShell", true)
             scenario.recreate()
             val restored = requireNotNull(store.load())
             assertEquals(paired.deviceId, restored.deviceId)
             assertEquals(paired.workspaceId, restored.workspaceId)
             assertTrue("Pairing token must survive recreation", paired.deviceToken == restored.deviceToken)
-            compose.waitUntil(30_000) {
-                compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Inbox")).fetchSemanticsNodes().isNotEmpty()
-            }
+            waitForPairedShell()
+            result.put("activityRecreated", true)
             for (tab in listOf("Inbox", "Operator", "Plans", "Fleet", "Settings")) {
                 compose.onNodeWithContentDescription(tab).assertIsDisplayed()
             }
@@ -120,6 +121,16 @@ class PapercupAppSmokeTest {
             }
             result.put("credentialsCleared", store.load() == null)
             resultFile.writeText(result.toString())
+        }
+    }
+
+    private fun waitForPairedShell() {
+        // Enrollment handoff and recreation can temporarily detach every
+        // Compose root. Wait for the actual shell within the same deadline;
+        // an absent root is a pending transition, not an immediate exception.
+        compose.waitUntil(30_000) {
+            compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Inbox"))
+                .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
         }
     }
 

@@ -104,6 +104,7 @@ token = None
 errors = []
 native_device = None
 native_payload_created = False
+native_execution_started = False
 reverse_created = False
 existing_devices = set()
 app = 'com.papercuspai.operator.mobile'
@@ -185,6 +186,7 @@ try:
         shutil.rmtree(connected, ignore_errors=True)
         command = ['android/gradlew', '-p', 'android', ':app:connectedDebugAndroidTest',
                    '--rerun-tasks', '--console=plain',
+                   '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true',
                    '-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.PapercupAppSmokeTest#launcherActivityStarts',
                    '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true']
         env['ANDROID_SERIAL'] = native_device
@@ -197,6 +199,7 @@ try:
                             'tools/build-scripts/build-android.sh',
                             'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']})
     with log_path.open('a' if kind == 'native' else 'w') as log:
+        native_execution_started = kind == 'native'
         try:
             completed = subprocess.run(command, env=env, stdout=log,
                                        stderr=subprocess.STDOUT, timeout=timeout)
@@ -217,7 +220,8 @@ try:
         proof = json.loads(app_shell('cat files/native-pairing-result.json').stdout)
         if (proof.get('runId') != attempt or proof.get('workspaceId') != fixture_id
                 or not all(proof.get(k) is True for k in
-                    ('journeyCompleted', 'authenticatedRequestPassed', 'navigationPassed', 'credentialsCleared'))):
+                    ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
+                     'activityRecreated', 'navigationPassed', 'credentialsCleared'))):
             raise RuntimeError('native live journey proof is missing, mismatched or incomplete')
         registered = api('/api/device/desktop/devices')['devices']
         if (proof.get('deviceId') in existing_devices or not any(
@@ -225,13 +229,6 @@ try:
                 for row in registered)):
             raise RuntimeError('native proof must name a newly paired device in the owned workspace')
         result['nativeJourney'] = proof
-        shutil.copytree(connected, out / 'native-results')
-        result['artifacts'] = []
-        for source in [Path('android/app/build/outputs/apk/debug/app-debug.apk'),
-                       Path('android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]:
-            target = out / source.name
-            shutil.copy2(source, target)
-            result['artifacts'].append({'path': str(target), 'sha256': hashlib.sha256(target.read_bytes()).hexdigest()})
     if kind == 'rust' and result['exitCode'] == 0 and not re.search(
             r'test result: ok\. 1 passed; 0 failed; 0 ignored;', text):
         result['exitCode'] = 1
@@ -240,6 +237,21 @@ except Exception as error:
     errors.append(str(error))
     result['exitCode'] = result['exitCode'] or 1
 finally:
+    if native_execution_started:
+        try:
+            # Failed journeys need the same immutable APK/XML evidence as
+            # passing ones; the next connected run replaces Gradle reports.
+            if connected.is_dir():
+                shutil.copytree(connected, out / 'native-results')
+            result['artifacts'] = []
+            for source in [Path('android/app/build/outputs/apk/debug/app-debug.apk'),
+                           Path('android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]:
+                target = out / source.name
+                shutil.copy2(source, target)
+                result['artifacts'].append({'path': str(target), 'sha256': hashlib.sha256(target.read_bytes()).hexdigest()})
+        except Exception as error:
+            errors.append('retain native evidence: ' + str(error))
+            result['exitCode'] = result['exitCode'] or 1
     # A local cleanup failure must not strand the remote fixture as well.
     local_cleanup = []
     local_cleanup_ok = True
