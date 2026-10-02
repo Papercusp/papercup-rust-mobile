@@ -268,6 +268,7 @@ dependencies {
     // /api/harness/{slug}/log/stream.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
+    androidTestImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
     // Phase 8: BiometricPrompt for high-risk action gating.
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
