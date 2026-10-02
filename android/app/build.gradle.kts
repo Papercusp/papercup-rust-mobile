@@ -284,6 +284,8 @@ dependencies {
     // WI-4967/WI-4966: JVM unit tests (src/test) — UX-contract tests pinning
     // voice failure copy (mic-denial + transport-failure messages).
     testImplementation("junit:junit:4.13.2")
+    // Use the real JSON parser in JVM feed-contract tests, rather than Android stubs.
+    testImplementation("org.json:json:20250517")
 
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

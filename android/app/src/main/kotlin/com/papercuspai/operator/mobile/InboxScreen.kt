@@ -18,51 +18,9 @@ import com.papercuspai.operator.mobile.theme.PapercupColors
 import com.papercuspai.operator.mobile.theme.PapercupMetaText
 import com.papercuspai.operator.mobile.theme.PapercupScreenHeader
 import com.papercuspai.operator.mobile.theme.PapercupStatusChip
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.coroutines.CancellationException
 import uniffi.papercup.AttentionFeed
 import uniffi.papercup.AttentionWorkItem
-
-private fun parseAttentionRows(json: String?): List<AttentionRow> {
-    if (json.isNullOrBlank()) return emptyList()
-    return try {
-        val groups: JSONArray = run {
-            val trimmed = json.trim()
-            when {
-                trimmed.startsWith("[") -> JSONArray(trimmed)
-                else -> {
-                    val obj = JSONObject(trimmed)
-                    obj.optJSONArray("groups") ?: JSONArray()
-                }
-            }
-        }
-        val rows = mutableListOf<AttentionRow>()
-        for (g in 0 until groups.length()) {
-            val group = groups.optJSONObject(g) ?: continue
-            val items = group.optJSONArray("items") ?: continue
-            for (i in 0 until items.length()) {
-                val item = items.optJSONObject(i) ?: continue
-                val title = item.optString("title", "").trim()
-                if (title.isEmpty()) continue
-                val slug = item.optString("harnessSlug", "")
-                    .ifBlank { group.optString("harnessSlug", "") }
-                    .trim()
-                rows += AttentionRow(
-                    title = title,
-                    body = item.optString("body", "").trim(),
-                    status = item.optString("status", "open").trim().ifEmpty { "open" },
-                    importance = item.optString("importance", "normal").trim().lowercase()
-                        .ifEmpty { "normal" },
-                    harnessSlug = slug.ifBlank { null },
-                    needsHuman = item.optBoolean("needsHuman", false),
-                )
-            }
-        }
-        rows
-    } catch (t: Throwable) {
-        emptyList()
-    }
-}
 
 /** Container/content color pair for an importance level. */
 private fun importanceColors(importance: String): Pair<Color, Color> = when (importance) {
@@ -80,23 +38,28 @@ fun InboxScreen(
     liveTick: Int,
     onSelectHarness: (String) -> Unit,
 ) {
-    var loading by remember { mutableStateOf(true) }
-    var feed by remember { mutableStateOf<AttentionFeed?>(null) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember(creds.deviceToken) { mutableStateOf(true) }
+    var feed by remember(creds.deviceToken) { mutableStateOf<AttentionFeed?>(null) }
+    var error by remember(creds.deviceToken) { mutableStateOf<String?>(null) }
     LaunchedEffect(creds.deviceToken, liveTick) {
         loading = true
         try { feed = creds.client().attention(); error = null }
+        catch (cancelled: CancellationException) { throw cancelled }
         catch (t: Throwable) { error = HumanError.describe(t, "Loading the inbox") }
         finally { loading = false }
     }
 
-    val attentionRows = remember(feed) { parseAttentionRows(feed?.groupsJson) }
+    val parsed = remember(feed) { feed?.let(::decodeAttentionFeed) }
+    val attentionRows = parsed?.rows ?: emptyList()
     val workItems: List<AttentionWorkItem> = feed?.workItems ?: emptyList()
     val systemRows = remember(feed) { feed?.systemAlerts?.map(::systemAlertRow) ?: emptyList() }
-    val presentation = remember(feed, attentionRows) { inboxPresentation(feed, attentionRows.size) }
+    val presentation = remember(feed, parsed) {
+        inboxPresentation(feed, attentionRows.size, parsed?.contentUnavailable ?: false)
+    }
 
     val subtitle = when {
         loading && feed == null -> "Loading…"
+        error != null || presentation.contentUnavailable -> "Inbox status unavailable"
         else -> presentation.subtitle
     }
 

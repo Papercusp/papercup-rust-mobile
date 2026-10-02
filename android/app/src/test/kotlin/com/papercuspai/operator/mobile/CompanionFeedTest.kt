@@ -43,4 +43,43 @@ class CompanionFeedTest {
         assertEquals("4 available · 12 agents", text)
         assertFalse(text.contains("running", ignoreCase = true))
     }
+
+    @Test fun badgeCountsSystemAlertsWithoutNotificationHistory() {
+        assertEquals(1, inboxBadgeCount(AttentionFeed("[]", emptyList(), listOf(alert), 0, 0)))
+        assertEquals(0, inboxBadgeCount(AttentionFeed("[]", emptyList(), emptyList(), 0, 0)))
+        assertNull(inboxBadgeCount(null))
+    }
+
+    @Test fun badgeCountsItemsRatherThanGroupsAndSupportsTheEnvelope() {
+        val groups = """[{"harnessSlug":"test-pot","items":[{"title":"Approve","needsHuman":true},{"title":"Reply"}]}]"""
+        val parsed = parseAttentionRows("""{"groups":$groups}""")
+        assertFalse(parsed.contentUnavailable)
+        assertEquals(listOf("Approve", "Reply"), parsed.rows.map { it.title })
+        assertEquals("test-pot", parsed.rows.first().harnessSlug)
+        assertEquals(3, inboxBadgeCount(AttentionFeed(groups, emptyList(), listOf(alert), 1, 0)))
+    }
+
+    @Test fun aMalformedRowCannotBeHiddenByOtherVisibleRows() {
+        val groups = """[{"items":[{"title":"Visible"},{"body":"Missing title"}]}]"""
+        val feed = AttentionFeed(groups, emptyList(), emptyList(), 1, 0)
+        val parsed = decodeAttentionFeed(feed)
+        assertEquals(1, parsed.rows.size)
+        assertTrue(parsed.contentUnavailable)
+        assertTrue(inboxPresentation(feed, parsed.rows.size, parsed.contentUnavailable).contentUnavailable)
+        assertNull(inboxBadgeCount(feed))
+    }
+
+    @Test fun malformedAndMissingGroupPayloadsAreUnavailableRatherThanEmpty() {
+        listOf("", "not-json", "{}", "[null]", "[{\"items\":null}]",
+            "[{\"items\":[{\"title\":7}]}]").forEach { groups ->
+            assertTrue(groups, parseAttentionRows(groups).contentUnavailable)
+            assertNull(groups, inboxBadgeCount(AttentionFeed(groups, emptyList(), emptyList(), 0, 0)))
+        }
+    }
+
+    @Test fun missingRowsOrMismatchedCountsDoNotClaimZero() {
+        assertNull(inboxBadgeCount(AttentionFeed("[]", emptyList(), emptyList(), 1, 0)))
+        assertNull(inboxBadgeCount(AttentionFeed("[]", emptyList(), emptyList(), 0, 1)))
+        assertNull(inboxBadgeCount(AttentionFeed("[{\"items\":[]}]", emptyList(), emptyList(), 1, 0)))
+    }
 }

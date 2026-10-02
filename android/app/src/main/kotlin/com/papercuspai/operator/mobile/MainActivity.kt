@@ -476,15 +476,22 @@ private fun PairedShell(
     val cloudConsentRequired by voice.cloudConsentRequired.collectAsState()
     val connState by monitor.state.collectAsState()
     val voiceStateForBanner by voice.state.collectAsState()
-    var recentToastBadgeCount by remember { mutableIntStateOf(0) }
-    var latestToastId by remember { mutableStateOf<Long?>(null) }
-    var shellToast by remember { mutableStateOf<uniffi.papercup.Toast?>(null) }
+    var inboxBadge by remember(current.deviceToken) { mutableStateOf<Int?>(null) }
+    var latestToastId by remember(current.deviceToken) { mutableStateOf<Long?>(null) }
+    var shellToast by remember(current.deviceToken) { mutableStateOf<uniffi.papercup.Toast?>(null) }
 
     suspend fun refreshShellFeeds(showNewToast: Boolean) {
         val client = current.client()
+        inboxBadge = null
+        try {
+            inboxBadge = inboxBadgeCount(client.attention())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            // Unknown remains visible until a complete current feed arrives.
+        }
         try {
             val notifications = client.recentNotifications()
-            recentToastBadgeCount = notifications.count(::isAttentionToast)
             val newest = newestToast(notifications)
             if (newest != null) {
                 val previous = latestToastId
@@ -493,9 +500,8 @@ private fun PairedShell(
                     shellToast = newest
                 }
             }
-        } catch (_: Throwable) {
-            // Keep the last known badge count; the screen itself surfaces load errors.
-        }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Throwable) { /* Notification history does not determine Inbox state. */ }
     }
 
     LaunchedEffect(current.deviceToken, liveTick) {
@@ -565,7 +571,7 @@ private fun PairedShell(
             MobileBottomNav(
                 selected = route,
                 badgeCounts = ShellBadgeCounts(
-                    recentToasts = recentToastBadgeCount,
+                    inbox = inboxBadge,
                 ),
                 onRouteChange = onRouteChange,
             )
@@ -738,7 +744,7 @@ private fun formatPauseAge(iso: String): String {
 }
 
 private data class ShellBadgeCounts(
-    val recentToasts: Int = 0,
+    val inbox: Int? = null,
 )
 
 private enum class NavBadgeTone { Info, Attention }
@@ -747,16 +753,9 @@ private data class BottomNavItem(
     val route: Route,
     val glyph: String,
     val label: String,
-    val badgeCount: Int,
+    val badgeCount: Int?,
     val badgeTone: NavBadgeTone,
 )
-
-private fun isAttentionToast(toast: uniffi.papercup.Toast): Boolean {
-    return when (toast.level.lowercase()) {
-        "error", "warning", "warn" -> true
-        else -> false
-    }
-}
 
 private fun newestToast(toasts: List<uniffi.papercup.Toast>): uniffi.papercup.Toast? =
     toasts.maxWithOrNull(compareBy<uniffi.papercup.Toast> { it.createdAt }.thenBy { it.id })
@@ -973,7 +972,7 @@ private fun MobileBottomNav(
     onRouteChange: (Route) -> Unit,
 ) {
     val items = listOf(
-        BottomNavItem(Route.Inbox, "◆", stringResource(R.string.tab_inbox), badgeCounts.recentToasts, NavBadgeTone.Attention),
+        BottomNavItem(Route.Inbox, "◆", stringResource(R.string.tab_inbox), badgeCounts.inbox, NavBadgeTone.Attention),
         BottomNavItem(Route.Operator, "●", stringResource(R.string.tab_operator), 0, NavBadgeTone.Info),
         BottomNavItem(Route.Plans, "▤", stringResource(R.string.tab_plans), 0, NavBadgeTone.Info),
         BottomNavItem(Route.Brew, "⌘", stringResource(R.string.tab_brew), 0, NavBadgeTone.Info),
@@ -1052,11 +1051,11 @@ private fun MobileBottomNav(
 
 @Composable
 private fun NavBadge(
-    count: Int,
+    count: Int?,
     tone: NavBadgeTone,
     modifier: Modifier = Modifier,
 ) {
-    if (count <= 0) return
+    if (count != null && count <= 0) return
     val container = when (tone) {
         NavBadgeTone.Attention -> PapercupColors.Error
         NavBadgeTone.Info -> PapercupColors.Accent
@@ -1078,7 +1077,14 @@ private fun NavBadge(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (count > 99) "99+" else count.toString(),
+                text = when {
+                    count == null -> "?"
+                    count > 99 -> "99+"
+                    else -> count.toString()
+                },
+                modifier = Modifier.semantics {
+                    contentDescription = if (count == null) "Inbox status unavailable" else "$count inbox items"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = content,
             )
