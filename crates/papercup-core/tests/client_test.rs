@@ -1462,3 +1462,149 @@ async fn operator_converse_does_not_retry_rejected_or_started_streams() {
         fallback.verify().await;
     }
 }
+
+// Source-audited 2026-10-02 against papercusp/packages/operator-core/lib/
+// endpoint-route/routes/device/{_shared,pair,operator-converse}.ts and
+// auth/require-principal.ts: device auth rejects with 401/403 before SSE;
+// public pair returns a replacement deviceToken/workspaceId; a fresh client
+// consumes delta/done and then reads the shared conversation. These fixtures
+// exercise client recovery, not the server's JWT verifier or native UI.
+async fn assert_operator_chat_recovers_after_repair(status: u16) {
+    let primary = MockServer::start().await;
+    let fallback = MockServer::start().await;
+    let rejected_text = "must not replay";
+    let recovered_text = "after re-pair";
+    let fresh_token = "fresh-device-jwt";
+
+    Mock::given(method("POST"))
+        .and(path("/api/device/operator/converse"))
+        .and(bearer_token(TOKEN))
+        .and(body_json(json!({
+            "text": rejected_text, "modality": "text", "trigger": "user_message"
+        })))
+        .respond_with(ResponseTemplate::new(status).set_body_json(json!({
+            "error": {
+                "code": if status == 401 { "unauthorized" } else { "forbidden" },
+                "message": "device principal rejected"
+            }
+        })))
+        .expect(1)
+        .mount(&primary)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/device/pair"))
+        .and(body_json(json!({"pairToken": "fresh-one-time-pair-token"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "deviceToken": fresh_token,
+            "deviceId": "repaired-device",
+            "desktopHost": "desktop:3070",
+            "workspaceId": "repaired-workspace",
+            "defguardEnrollmentUrl": "https://mesh.example.test/enroll",
+            "baseUrls": []
+        })))
+        .expect(1)
+        .mount(&primary)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/device/operator/converse"))
+        .and(bearer_token(fresh_token))
+        .and(body_json(json!({
+            "text": recovered_text, "modality": "text", "trigger": "user_message"
+        })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(concat!(
+                    "event: delta\r\ndata: {\"text\":\"Re-paired \"}\r\n\r\n",
+                    "event: delta\r\ndata: {\"text\":\"🌍\"}\r\n\r\n",
+                    "event: done\r\ndata: {\"costUsd\":0.01,\"conversationId\":\"repaired-thread\"}\r\n\r\n"
+                )),
+        )
+        .expect(1)
+        .mount(&primary)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/operator/conversation"))
+        .and(query_param("limit", "50"))
+        .and(bearer_token(fresh_token))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "conversation": {
+                "id": "repaired-thread", "workspaceId": "repaired-workspace",
+                "status": "active", "startedAt": 1_779_000_000_000i64
+            },
+            "turns": [
+                {
+                    "id": "repaired-user", "conversationId": "repaired-thread", "seq": 1,
+                    "role": "user", "text": recovered_text, "source": "text_typed",
+                    "createdAt": 1_779_000_000_001i64
+                },
+                {
+                    "id": "repaired-assistant", "conversationId": "repaired-thread", "seq": 2,
+                    "role": "assistant", "text": "Re-paired 🌍", "source": "text_typed",
+                    "createdAt": 1_779_000_000_002i64
+                }
+            ],
+            "hasMoreEarlier": false
+        })))
+        .expect(1)
+        .mount(&primary)
+        .await;
+
+    let rejected =
+        OperatorClient::new_with_fallback(primary.uri(), fallback.uri(), Some(TOKEN.into()));
+    let mut deltas = Vec::new();
+    assert!(matches!(
+        rejected
+            .operator_converse_stream(rejected_text, |delta| deltas.push(delta.to_owned()))
+            .await,
+        Err(ApiError::Unauthorized)
+    ));
+    assert!(deltas.is_empty(), "rejection must not produce a reply");
+    assert_eq!(rejected.base_url(), primary.uri());
+    assert_eq!(primary.received_requests().await.unwrap().len(), 1);
+    assert!(fallback.received_requests().await.unwrap().is_empty());
+
+    let unpaired = OperatorClient::new(primary.uri(), None);
+    let pair = unpaired
+        .pair(PairBody {
+            pair_token: "fresh-one-time-pair-token".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(pair.device_token, fresh_token);
+    assert_eq!(pair.workspace_id, "repaired-workspace");
+    let repaired =
+        OperatorClient::new_with_fallback(primary.uri(), fallback.uri(), Some(pair.device_token));
+    repaired
+        .operator_converse_stream(recovered_text, |delta| deltas.push(delta.to_owned()))
+        .await
+        .unwrap();
+    assert_eq!(deltas, ["Re-paired ", "🌍"]);
+    let read = repaired.operator_conversation(50).await.unwrap();
+    assert_eq!(read.conversation.workspace_id, pair.workspace_id);
+    assert_eq!(read.turns.len(), 2);
+    assert_eq!(read.turns[0].text, recovered_text);
+    assert_eq!(read.turns[1].role, "assistant");
+    assert_eq!(read.turns[1].text, deltas.concat());
+
+    let requests = primary.received_requests().await.unwrap();
+    assert_eq!(
+        requests.len(),
+        4,
+        "one rejection, pair, fresh send, thread read"
+    );
+    assert!(requests[1].headers.get("authorization").is_none());
+    assert_eq!(repaired.base_url(), primary.uri());
+    assert!(fallback.received_requests().await.unwrap().is_empty());
+    primary.verify().await;
+}
+
+#[tokio::test]
+async fn operator_chat_401_recovers_after_repair_without_replaying_rejected_message() {
+    assert_operator_chat_recovers_after_repair(401).await;
+}
+
+#[tokio::test]
+async fn operator_chat_403_recovers_after_repair_without_replaying_rejected_message() {
+    assert_operator_chat_recovers_after_repair(403).await;
+}
