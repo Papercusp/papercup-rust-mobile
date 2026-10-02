@@ -41,6 +41,7 @@
     <!-- Phase 4+: RECORD_AUDIO, etc. -->
 
     <application
+        android:name=".PapercupApplication"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Papercup.Starting"
