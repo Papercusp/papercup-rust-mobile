@@ -72,10 +72,12 @@ class PapercupAppSmokeTest {
         val resultFile = File(context.filesDir, "native-pairing-result.json")
         val result = JSONObject().put("runId", runId).put("journeyCompleted", false)
         var ownedDevice: String? = null
+        var stage = "pair-form"
         try {
             compose.onNodeWithText("Paste manually").performClick()
             compose.onNode(hasSetTextAction()).performTextInput(fixture.getJSONObject("pairPayload").toString())
             compose.onNodeWithText("Pair").performClick()
+            stage = "persisted-credentials"
             compose.waitUntil(30_000) { store.load() != null }
             val paired = requireNotNull(store.load())
             ownedDevice = paired.deviceId
@@ -85,12 +87,14 @@ class PapercupAppSmokeTest {
             assertTrue(paired.deviceToken.isNotBlank())
             // This device-JWT endpoint verifies the persisted token through
             // real JNI and HTTP, independently of the rendered paired shell.
+            stage = "authenticated-jni-request"
             val devices = runBlocking { paired.client().listDesktopDevices() }
             assertTrue("Paired device must be returned by its authenticated scope", devices.any { it.deviceId == paired.deviceId })
             result.put("authenticatedRequestPassed", true)
 
             // Pairing may hand off to mesh enrollment. Return to the native
             // app as a user would, then prove credentials survive recreation.
+            stage = "return-to-paired-shell"
             instrumentation.runOnMainSync {
                 context.startActivity(Intent(context, MainActivity::class.java).addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
@@ -98,6 +102,7 @@ class PapercupAppSmokeTest {
             }
             waitForPairedShell()
             result.put("returnedToPairedShell", true)
+            stage = "activity-recreation"
             scenario.recreate()
             val restored = requireNotNull(store.load())
             assertEquals(paired.deviceId, restored.deviceId)
@@ -105,6 +110,7 @@ class PapercupAppSmokeTest {
             assertTrue("Pairing token must survive recreation", paired.deviceToken == restored.deviceToken)
             waitForPairedShell()
             result.put("activityRecreated", true)
+            stage = "paired-navigation"
             for (tab in listOf("Inbox", "Operator", "Plans", "Fleet", "Settings")) {
                 compose.onNodeWithContentDescription(tab).assertIsDisplayed()
             }
@@ -113,6 +119,17 @@ class PapercupAppSmokeTest {
             compose.onNodeWithText("Diagnostics").performScrollTo().performClick()
             compose.onNodeWithText("Ping desktop").assertIsDisplayed()
             result.put("navigationPassed", true).put("journeyCompleted", true)
+        } catch (failure: Throwable) {
+            result.put("failedStage", stage).put("failureClass", failure.javaClass.name)
+            // Keep sensitive input only in the owned app's private storage;
+            // the runner retains this image in its restricted evidence dir.
+            runCatching {
+                File(context.filesDir, "native-pairing-failure.png").outputStream().use { image ->
+                    requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+                        .compress(android.graphics.Bitmap.CompressFormat.PNG, 100, image)
+                }
+            }.onFailure { result.put("diagnosticFailureClass", it.javaClass.name) }
+            throw failure
         } finally {
             val remaining = store.load()
             if (ownedDevice != null && remaining != null) {

@@ -54,7 +54,7 @@ device = '12345678-1234-1234-1234-123456789abc'
 original_device = '87654321-4321-4321-4321-cba987654321'
 
 cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail',
-         'native-pass', 'native-empty', 'native-no-proof', 'native-timeout', 'native-test-fail',
+         'native-pass', 'native-empty', 'native-no-proof', 'native-timeout', 'native-test-fail', 'native-uninstalled',
          'native-preflight-fail', 'native-local-cleanup-fail', 'native-cleanup-fail',
          'native-unused-token', 'native-wrong-device', 'native-existing-files', 'native-missing-serial']
 for case in cases:
@@ -207,7 +207,10 @@ elif args[0] == 'shell':
                  'returnedToPairedShell': True, 'activityRecreated': True,
                  'navigationPassed': True, 'credentialsCleared': True}
         if case == 'native-wrong-device': proof['deviceId'] = '87654321-4321-4321-4321-cba987654321'
+        if case == 'native-test-fail':
+            proof.update(journeyCompleted=False, failedStage='persisted-credentials', failureClass='FixtureFailure')
         print(json.dumps({} if case == 'native-no-proof' else proof))
+    elif 'test -f files/native-pairing-failure.png' in command: sys.exit(1)
     elif 'rm -f files/native-pairing-fixture.json' in command: private.unlink()
     else:
         assert 'test ! -e' in command or 'mkdir -p files' in command, command
@@ -228,6 +231,7 @@ if ':app:assembleDebugAndroidTest' in sys.argv:
         p.write_bytes(b'fixture-apk')
 else:
     assert ':app:connectedDebugAndroidTest' in sys.argv
+    assert '--rerun' in sys.argv and '--rerun-tasks' not in sys.argv, 'live gate rebuilt after minting its one-use token'
     assert '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true' in sys.argv
     assert any('PapercupAppSmokeTest#launcherActivityStarts' in arg for arg in sys.argv)
     assert all('private-test-token' not in arg for arg in sys.argv)
@@ -239,7 +243,7 @@ else:
                  '<testsuite tests="1"><testcase name="launcherActivityStarts"/></testsuite>')
     # AGP uninstalls both packages by default, deleting app-private proof.
     # Model that side effect so a missing retention option cannot pass here.
-    if '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true' not in sys.argv:
+    if case == 'native-uninstalled' or '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true' not in sys.argv:
         Path('app-uninstalled').touch()
         Path('private-fixture.json').unlink()
     if case in ('native-unused-token', 'native-test-fail'): sys.exit(1)
@@ -267,7 +271,7 @@ else:
         if case in ('cleanup-fail', 'native-cleanup-fail'):
             assert not result['cleanupVerified'] and len(state['workspaces']) == 2
         else:
-            assert result['cleanupVerified'] == (case != 'native-local-cleanup-fail'), (case, result)
+            assert result['cleanupVerified'] == (case not in ('native-local-cleanup-fail', 'native-uninstalled')), (case, result)
             assert state['workspaces'] == [{'id': 'original', 'name': 'Original'}], (case, result, state)
         if case in ('preflight-fail', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
             assert not state['minted'], 'failed fixture preflight still minted credentials'
@@ -284,6 +288,10 @@ else:
             xml = evidence / 'native-results/TEST-native.xml'
             assert '<failure>lifecycle failure</failure>' in xml.read_text(), 'failed native evidence was discarded'
             assert len(result['artifacts']) == 2, 'failed run lost its exact APKs'
+            assert result['nativeObservedProof']['failedStage'] == 'persisted-credentials', 'failure-stage witness was discarded'
+        if case == 'native-uninstalled':
+            assert not result['cleanupVerified'] and result['ownedDeviceIds'] == [device]
+            assert len(result['artifacts']) == 2, 'AGP teardown lost the immutable artifacts'
         assert 'private-test-token' not in run.stdout + run.stderr + (evidence / 'result.json').read_text()
     finally:
         server.shutdown()

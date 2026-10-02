@@ -145,7 +145,7 @@ def prepare_native():
                         ':app:assembleDebugAndroidTest', '--console=plain'],
                        env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
     adb('install', '-r', 'android/app/build/outputs/apk/debug/app-debug.apk')
-    app_shell('test ! -e files/native-pairing-fixture.json && test ! -e files/native-pairing-result.json')
+    app_shell('test ! -e files/native-pairing-fixture.json && test ! -e files/native-pairing-result.json && test ! -e files/native-pairing-failure.png')
     app_shell('mkdir -p files')
 
 try:
@@ -165,6 +165,7 @@ try:
         raise RuntimeError('second-workspace prerequisite was not established')
     token = api('/api/device/desktop/mint-pair-token', 'POST',
                 {'workspaceId': fixture_id if kind == 'native' else workspace})
+    result['pairTokenExpiresAt'] = token.get('expiresAt')
     env = os.environ.copy()
     env.update(PAPERCUP_LIVE_BASE=base, PAPERCUP_LIVE_PAIR_TOKEN=token['qrPayload']['pairToken'],
                PAPERCUP_LIVE_SECOND_WORKSPACE=fixture_id)
@@ -185,7 +186,7 @@ try:
         native_payload_created = True
         shutil.rmtree(connected, ignore_errors=True)
         command = ['android/gradlew', '-p', 'android', ':app:connectedDebugAndroidTest',
-                   '--rerun-tasks', '--console=plain',
+                   '--rerun', '--console=plain',
                    '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true',
                    '-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.PapercupAppSmokeTest#launcherActivityStarts',
                    '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true']
@@ -239,6 +240,22 @@ except Exception as error:
 finally:
     if native_execution_started:
         try:
+            if result['exitCode'] != 0:
+                # A failing JUnit verdict is never admitted as a journey,
+                # but its bounded private witness identifies the failed stage.
+                observed = app_shell('cat files/native-pairing-result.json', check=False)
+                if observed.returncode == 0:
+                    result['nativeObservedProof'] = json.loads(observed.stdout)
+                else:
+                    result['nativeProofUnavailable'] = True
+                if app_shell('test -f files/native-pairing-failure.png', check=False).returncode == 0:
+                    screenshot = out / 'native-pairing-failure.png'
+                    with screenshot.open('wb') as image:
+                        subprocess.run(['adb', '-s', native_device, 'exec-out', 'run-as', app,
+                                        'cat', 'files/native-pairing-failure.png'], stdout=image,
+                                       stderr=subprocess.PIPE, check=True, timeout=30)
+                    screenshot.chmod(0o600)
+                    result['failureScreenshot'] = str(screenshot)
             # Failed journeys need the same immutable APK/XML evidence as
             # passing ones; the next connected run replaces Gradle reports.
             if connected.is_dir():
@@ -258,7 +275,7 @@ finally:
     if kind == 'native' and native_payload_created:
         local_cleanup.extend([
             ('stop native callbacks', lambda: adb('shell', 'am', 'force-stop', app)),
-            ('remove owned private inputs', lambda: app_shell('rm -f files/native-pairing-fixture.json files/native-pairing-result.json')),
+            ('remove owned private inputs', lambda: app_shell('rm -f files/native-pairing-fixture.json files/native-pairing-result.json files/native-pairing-failure.png')),
         ])
     if reverse_created:
         local_cleanup.append(('remove owned reverse mapping', lambda: adb('reverse', '--remove', f'tcp:{url.port}')))
