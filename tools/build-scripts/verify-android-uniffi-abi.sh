@@ -24,7 +24,7 @@ if ! command -v "$READELF_BIN" >/dev/null 2>&1; then
 fi
 
 mapfile -t EXPECTED < <(
-    sed -nE 's/^[[:space:]]*fun (uniffi_papercup_checksum_[A-Za-z0-9_]+)\(.*/\1/p' "$KT_BINDINGS" \
+    sed -nE 's/^[[:space:]]*(external[[:space:]]+)?fun[[:space:]]+(uniffi_papercup_checksum_[A-Za-z0-9_]+)\(.*/\2/p' "$KT_BINDINGS" \
         | sort -u
 )
 if [ "${#EXPECTED[@]}" -eq 0 ]; then

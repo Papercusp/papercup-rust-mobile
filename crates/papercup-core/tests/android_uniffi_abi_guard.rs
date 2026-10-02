@@ -82,6 +82,61 @@ fn accepts_all_four_libraries_when_the_checksum_contract_matches() {
     fs::remove_dir_all(root).expect("clean fixture");
 }
 
+fn write_external_checksum_declarations(kotlin: &Path) {
+    // UniFFI 0.32 uses JNA direct mapping and multiline external methods.
+    fs::write(
+        kotlin,
+        r#"
+internal object IntegrityCheckingUniffiLib {
+    external fun uniffi_papercup_checksum_func_version(
+    ): Int
+    external fun uniffi_papercup_checksum_method_synccache_get(
+    ): Int
+}
+"#,
+    )
+    .expect("write external Kotlin declarations");
+}
+
+#[test]
+fn accepts_external_checksum_declarations() {
+    let (root, kotlin, libraries) = fixture();
+    write_external_checksum_declarations(&kotlin);
+    let output = run_guard(&root, &kotlin, &libraries);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout)
+        .contains("Verified 2 UniFFI checksum symbols across 4 Android ABI libraries"));
+    fs::remove_dir_all(root).expect("clean fixture");
+}
+
+#[test]
+fn rejects_missing_exports_for_external_checksum_declarations() {
+    let (root, kotlin, mut libraries) = fixture();
+    write_external_checksum_declarations(&kotlin);
+    let missing = root.join("x86_64-missing-symbol-libpapercup.so");
+    fs::write(&missing, b"ELF fixture").expect("write missing-symbol fixture");
+    libraries[3] = missing;
+    let output = run_guard(&root, &kotlin, &libraries);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "missing export unexpectedly accepted"
+    );
+    assert!(
+        stderr.contains("x86_64-missing-symbol-libpapercup.so"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("uniffi_papercup_checksum_method_synccache_get"),
+        "{stderr}"
+    );
+    fs::remove_dir_all(root).expect("clean fixture");
+}
+
 #[test]
 fn rejects_a_library_missing_a_generated_checksum_symbol() {
     let (root, kotlin, mut libraries) = fixture();
