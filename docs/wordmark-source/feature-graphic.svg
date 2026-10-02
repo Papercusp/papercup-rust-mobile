@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1024" height="500" viewBox="0 0 1024 500"
+     role="img" aria-labelledby="title description">
+  <title id="title">Papercusp — your operator, wherever you are</title>
+  <desc id="description">The official Papercusp wordmark on a dark background, with the caption Voice and chat for your Papercusp desktop.</desc>
+  <defs>
+    <radialGradient id="background" cx="50%" cy="35%" r="85%">
+      <stop offset="0%" stop-color="#243047"/>
+      <stop offset="55%" stop-color="#141c2d"/>
+      <stop offset="100%" stop-color="#0a101c"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="500" fill="url(#background)"/>
+  <!-- Reuse the canonical desktop/mobile mark; do not fork its artwork. -->
+  <image x="112" y="36" width="800" height="262"
+         xlink:href="wordmark.svg"/>
+  <text x="512" y="353" text-anchor="middle"
+        font-family="DejaVu Sans, sans-serif" font-size="30"
+        fill="#f3eef9">Your operator, wherever you are.</text>
+  <text x="512" y="405" text-anchor="middle"
+        font-family="DejaVu Sans, sans-serif" font-size="20"
+        fill="#bdc4d4">Voice and chat for your Papercusp desktop.</text>
+</svg>

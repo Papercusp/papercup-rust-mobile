@@ -60,4 +60,19 @@ and explicit cloud-voice privacy controls.
   privacy policy, and cloud-voice consent from the release candidate. Include a
   sanitized system-alert-only Inbox and the current fleet/pot availability view.
 - Android phone screenshots: the same product flow from the release candidate.
-- Google Play feature graphic: 1024 × 500.
+- Google Play feature graphic: `store/feature-graphic.png`, 1024 × 500,
+  rendered from `docs/wordmark-source/feature-graphic.svg` and the existing canonical
+  `docs/wordmark-source/wordmark.svg`. This brand asset contains no candidate
+  screenshots, rating claims, store badges, or availability claims.
+
+Re-render the feature graphic from the repository root with the same
+`rsvg-convert` renderer used for the app's existing wordmark assets:
+
+```sh
+rsvg-convert -w 1024 -h 500 docs/wordmark-source/feature-graphic.svg -o store/feature-graphic.png
+```
+
+Keep the official wordmark and the DejaVu Sans font available during rendering;
+inspect the exported PNG before upload. The graphic is prepared locally and
+does not establish that a candidate or store listing has shipped. Final Android
+screenshots still come from the exact accepted signed candidate after P-009.
