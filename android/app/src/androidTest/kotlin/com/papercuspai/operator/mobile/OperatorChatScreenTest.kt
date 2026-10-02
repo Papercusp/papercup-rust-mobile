@@ -15,7 +15,9 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -57,6 +59,117 @@ class OperatorChatScreenTest {
 
     @Test
     fun forbiddenSendKeepsDraftWithoutInventingAPersistedTurn() = verifyRejectedSend(403)
+
+    @Test
+    fun rejectedDraftSurvivesSettingsRoundTrip() = verifyShellRecovery("settings")
+
+    @Test
+    fun rejectedDraftSurvivesSameScopeRepairAndActivityRecreation() = verifyShellRecovery("same")
+
+    @Test
+    fun repairToAnotherWorkspaceDoesNotExposePreviousDraft() = verifyShellRecovery("workspace")
+
+    @Test
+    fun repairToAnotherServerDoesNotExposePreviousDraft() = verifyShellRecovery("server")
+
+    private fun verifyShellRecovery(recovery: String) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = CredentialStore(context)
+        val draft = "private rejected draft"
+        val freshWorkspace = if (recovery == "workspace") "other-workspace" else "draft-workspace"
+        val sends = AtomicInteger()
+        val pairs = AtomicInteger()
+        MockWebServer().use { first ->
+            MockWebServer().use { second ->
+                val dispatcher = object : Dispatcher() {
+                    override fun dispatch(request: RecordedRequest): MockResponse = when {
+                        request.path == "/api/device/pair" -> {
+                            assertEquals("repair-fixture", JSONObject(request.body.readUtf8()).getString("pairToken"))
+                            pairs.incrementAndGet()
+                            MockResponse().setHeader("Content-Type", "application/json").setBody(
+                                JSONObject().put("deviceToken", "fresh-draft-token")
+                                    .put("deviceId", "fresh-draft-device").put("workspaceId", freshWorkspace)
+                                    .put("desktopHost", "127.0.0.1").put("defguardEnrollmentUrl", JSONObject.NULL).toString(),
+                            )
+                        }
+                        request.path == "/api/device/operator/conversation?limit=50" ->
+                            MockResponse().setHeader("Content-Type", "application/json").setBody(
+                                JSONObject().put("conversation", JSONObject().put("id", "draft-thread")
+                                    .put("workspaceId", if (pairs.get() == 0) "draft-workspace" else freshWorkspace)
+                                    .put("harnessSlug", JSONObject.NULL).put("status", "active")
+                                    .put("startedAt", 1).put("endedAt", JSONObject.NULL))
+                                    .put("turns", JSONArray()).put("hasMoreEarlier", false).toString(),
+                            )
+                        request.path == "/api/device/operator/converse" -> {
+                            val text = JSONObject(request.body.readUtf8()).getString("text")
+                            if (sends.incrementAndGet() == 1) {
+                                assertEquals(draft, text)
+                                assertEquals("Bearer old-draft-token", request.getHeader("Authorization"))
+                                MockResponse().setResponseCode(401).setBody("{\"error\":\"rejected\"}")
+                            } else {
+                                assertEquals(if (recovery in listOf("workspace", "server")) "new scope draft" else draft, text)
+                                assertEquals("Bearer fresh-draft-token", request.getHeader("Authorization"))
+                                MockResponse().setHeader("Content-Type", "text/event-stream")
+                                    .setBody("event: delta\ndata: {\"text\":\"Recovered reply\"}\n\nevent: done\ndata: {}\n\n")
+                            }
+                        }
+                        else -> MockResponse().setResponseCode(404)
+                    }
+                }
+                first.dispatcher = dispatcher
+                second.dispatcher = dispatcher
+                first.start()
+                second.start()
+                store.save(DeviceCredentials(first.url("/").toString().trimEnd('/'),
+                    "old-draft-token", "old-draft-device", "draft-workspace"))
+                try {
+                    ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                        compose.onNodeWithContentDescription("Operator").performClick()
+                        compose.onNode(hasSetTextAction()).performTextInput(draft)
+                        compose.onNodeWithText("Send").performClick()
+                        val error = "Sending the message failed — this device's pairing is no longer valid. " +
+                            "Re-pair with your Papercup server from Settings."
+                        compose.waitUntil(10_000) { compose.onAllNodes(hasText(error)).fetchSemanticsNodes().isNotEmpty() }
+                        compose.onNode(hasSetTextAction()).assertTextContains(draft)
+                        compose.onNodeWithContentDescription("Settings").performClick()
+                        if (recovery != "settings") {
+                            compose.onNodeWithText("Forget this device").performScrollTo().performClick()
+                            compose.onNodeWithText("Paste manually").performClick()
+                            val target = if (recovery == "server") second else first
+                            compose.onNode(hasSetTextAction()).performTextInput(JSONObject()
+                                .put("server", target.url("/").toString().trimEnd('/'))
+                                .put("pairToken", "repair-fixture").put("workspaceId", freshWorkspace).toString())
+                            compose.onNodeWithText("Pair").performClick()
+                            compose.waitUntil(10_000) { store.load()?.deviceId == "fresh-draft-device" }
+                        }
+                        compose.onNodeWithContentDescription("Operator").performClick()
+                        val expected = if (recovery in listOf("workspace", "server")) "" else draft
+                        compose.onNode(hasSetTextAction()).assert(
+                            SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(expected)),
+                        )
+                        compose.onAllNodes(hasText(draft) and !hasSetTextAction()).assertCountEquals(0)
+                        assertEquals("Navigation and pairing must not replay a rejected send", 1, sends.get())
+                        if (recovery == "same") {
+                            scenario.recreate()
+                            compose.onNodeWithContentDescription("Operator").performClick()
+                            compose.onNode(hasSetTextAction()).assertTextContains(draft)
+                        }
+                        if (recovery != "settings") {
+                            if (expected.isEmpty()) compose.onNode(hasSetTextAction()).performTextInput("new scope draft")
+                            compose.onNodeWithText("Send").performClick()
+                            compose.waitUntil(10_000) { compose.onAllNodes(hasText("Recovered reply")).fetchSemanticsNodes().isNotEmpty() }
+                            assertEquals(2, sends.get())
+                            assertEquals(1, pairs.get())
+                        }
+                    }
+                } finally {
+                    assertEquals("Refusing to clear another pairing", if (pairs.get() > 0) "fresh-draft-device" else "old-draft-device",
+                        store.load()?.deviceId)
+                    store.clear()
+                }
+            }
+        }
+    }
 
     private fun verifyRejectedSend(status: Int) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
