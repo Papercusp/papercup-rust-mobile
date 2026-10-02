@@ -20,7 +20,9 @@ serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 thiserror = "1"
 tracing = "0.1"
-uniffi = { version = "0.28", features = ["cli"] }
+# 0.32 releases the scheduler lock before invoking foreign continuations.
+# Older runtimes deadlock when Compose resumes Kotlin inline and re-polls.
+uniffi = { version = "0.32", features = ["cli"] }
 
 [profile.release]
 opt-level = "s"
