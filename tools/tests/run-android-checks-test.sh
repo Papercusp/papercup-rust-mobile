@@ -46,13 +46,19 @@ from pathlib import Path
 import subprocess
 import sys
 import threading
+import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 runner, root = sys.argv[1], Path(sys.argv[2])
 device = '12345678-1234-1234-1234-123456789abc'
 original_device = '87654321-4321-4321-4321-cba987654321'
 
-for case in ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail']:
+cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail',
+         'native-pass', 'native-empty', 'native-no-proof', 'native-timeout',
+         'native-preflight-fail', 'native-local-cleanup-fail', 'native-cleanup-fail',
+         'native-unused-token', 'native-wrong-device', 'native-existing-files', 'native-missing-serial']
+for case in cases:
+    native_mode = case.startswith('native-')
     state = {'workspaces': [{'id': 'original', 'name': 'Original'}], 'current': 'original',
              'devices': [{'device_id': original_device}], 'minted': False, 'removed': [], 'hidden': False}
 
@@ -86,10 +92,19 @@ for case in ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail
                 self.reply(row)
             elif self.path == '/api/device/desktop/mint-pair-token':
                 assert len(state['workspaces']) == 2, 'mint before scope fixture exists'
-                assert body['workspaceId'] == 'original'
+                assert body['workspaceId'] == (state['workspaces'][-1]['id'] if native_mode else 'original')
                 state['minted'] = True
-                state['devices'].append({'device_id': device})
+                if case != 'native-unused-token':
+                    state['devices'].append(dict(device_id=device, workspace_id=body['workspaceId'])
+                                            if native_mode else {'device_id': device})
                 self.reply({'qrPayload': {'pairToken': 'private-test-token'}})
+            elif self.path == '/api/device/pair' and native_mode:
+                assert body == {'pairToken': 'private-test-token'}
+                if case == 'native-unused-token':
+                    state['devices'].append({'device_id': device, 'workspace_id': state['workspaces'][-1]['id']})
+                    self.reply({'deviceId': device, 'deviceToken': 'private-test-only'})
+                else:
+                    self.reply({'error': 'invalid_or_expired_token'}, 401)
             else:
                 self.reply({'error': 'unexpected write'}, 404)
 
@@ -102,7 +117,7 @@ for case in ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail
             elif self.path.startswith('/api/workspaces/'):
                 owned = self.path.rsplit('/', 1)[1]
                 assert owned != 'original', 'attempt to remove pre-existing workspace'
-                if case == 'cleanup-fail':
+                if case in ('cleanup-fail', 'native-cleanup-fail'):
                     self.reply({'error': 'cleanup rejected'}, 503)
                 else:
                     state['removed'].append(owned)
@@ -137,20 +152,119 @@ sys.exit(101 if case == 'test-fail' else 0)
     env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
                PAPERCUP_LIVE_BASE=f'http://127.0.0.1:{server.server_port}',
                PAPERCUP_LIVE_CONVERSE='1', PAPERCUP_LIVE_TIMEOUT_SEC='1', TEST_LIVE_CASE=case)
+    selected_runner = runner
+    if native_mode:
+        # Run the real maintained script in a private fixture tree. Fake ADB
+        # and Gradle are separate processes; no production build reports,
+        # connected devices, credentials or working-tree files are touched.
+        native_root = root / ('native-root-' + case)
+        for relative in ['tools/run-android-checks.sh', 'crates/papercup-core/tests/live_smoke.rs',
+                         'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']:
+            target = native_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(Path(runner).parent.parent / relative, target)
+        selected_runner = str(native_root / 'tools/run-android-checks.sh')
+        builder = native_root / 'tools/build-scripts/build-android.sh'
+        builder.parent.mkdir(parents=True, exist_ok=True)
+        builder.write_text('#!/bin/sh\nset -eu\n[ "$1" = debug ]\ntouch native-build-executed\n')
+        git = bin_dir / 'git'
+        git.write_text('#!/bin/sh\nif [ "$1" = rev-parse ]; then printf "%040d\\n" 1; fi\n')
+        git.chmod(0o755)
+        adb = bin_dir / 'adb'
+        adb.write_text('''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+case = os.environ['TEST_LIVE_CASE']
+if args == ['devices']:
+    print('List of devices attached\\nemulator-5556 device')
+    sys.exit(0)
+assert args[:2] == ['-s', 'emulator-5556']
+args = args[2:]
+private = Path('private-fixture.json')
+if args == ['shell', 'getprop', 'sys.boot_completed']: print('1')
+elif args == ['shell', 'getprop', 'ro.build.version.sdk']: print('36')
+elif args == ['shell', 'getconf', 'PAGE_SIZE']: print('4096' if case == 'native-preflight-fail' else '16384')
+elif args[:2] == ['reverse', '--list']: pass
+elif args[:2] == ['reverse', '--remove']:
+    if case == 'native-local-cleanup-fail': sys.exit(1)
+elif args and args[0] in ['reverse', 'install']: pass
+elif args == ['shell', 'am', 'force-stop', 'com.papercuspai.operator.mobile']: pass
+elif args[0] == 'shell':
+    command = args[1]
+    if 'cat > files/native-pairing-fixture.json' in command:
+        fixture = json.load(sys.stdin)
+        assert fixture['pairPayload']['pairToken'] == 'private-test-token'
+        assert fixture['pairPayload']['server'].startswith('http://127.0.0.1:')
+        assert fixture['workspaceId'].startswith('android-live-scope-')
+        private.write_text(json.dumps(fixture))
+    elif 'cat files/native-pairing-result.json' in command:
+        fixture = json.loads(private.read_text())
+        proof = {'runId': fixture['runId'], 'workspaceId': fixture['workspaceId'],
+                 'deviceId': '12345678-1234-1234-1234-123456789abc',
+                 'journeyCompleted': True, 'authenticatedRequestPassed': True,
+                 'navigationPassed': True, 'credentialsCleared': True}
+        if case == 'native-wrong-device': proof['deviceId'] = '87654321-4321-4321-4321-cba987654321'
+        print(json.dumps({} if case == 'native-no-proof' else proof))
+    elif 'rm -f files/native-pairing-fixture.json' in command: private.unlink()
+    else:
+        assert 'test ! -e' in command or 'mkdir -p files' in command, command
+        if 'test ! -e' in command and case == 'native-existing-files': sys.exit(1)
+else: raise AssertionError(args)
+''')
+        adb.chmod(0o755)
+        gradle = native_root / 'android/gradlew'
+        gradle.write_text('''#!/usr/bin/env python3
+import os, sys, time
+from pathlib import Path
+case = os.environ['TEST_LIVE_CASE']
+if ':app:assembleDebugAndroidTest' in sys.argv:
+    assert Path('native-build-executed').exists(), 'native gate reused an unverified JNI library'
+    for name in ['debug/app-debug.apk', 'androidTest/debug/app-debug-androidTest.apk']:
+        p = Path('android/app/build/outputs/apk') / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b'fixture-apk')
+else:
+    assert ':app:connectedDebugAndroidTest' in sys.argv
+    assert '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true' in sys.argv
+    assert any('PapercupAppSmokeTest#launcherActivityStarts' in arg for arg in sys.argv)
+    assert all('private-test-token' not in arg for arg in sys.argv)
+    if case == 'native-timeout': time.sleep(5)
+    p = Path('android/app/build/outputs/androidTest-results/connected/debug/TEST-native.xml')
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text('<testsuite tests="0"/>' if case == 'native-empty' else
+                 '<testsuite tests="1"><testcase name="launcherActivityStarts"/></testsuite>')
+    if case == 'native-unused-token': sys.exit(1)
+''')
+        gradle.chmod(0o755)
+        env.update(JAVA_HOME=str(native_root / 'jdk'), ANDROID_SERIAL='emulator-5556')
+        if case == 'native-missing-serial':
+            env.pop('ANDROID_SERIAL')
+        if case == 'native-existing-files':
+            (native_root / 'private-fixture.json').write_text('{"owner":"pre-existing"}')
     evidence = root / ('live-evidence-' + case)
     try:
-        run = subprocess.run(['bash', runner, 'live', str(evidence)], env=env,
+        run = subprocess.run(['bash', selected_runner, 'live', str(evidence), 'native' if native_mode else 'rust'], env=env,
                              capture_output=True, text=True, timeout=15)
         result = json.loads((evidence / 'result.json').read_text())
-        assert (run.returncode == 0) == (case == 'pass'), (case, run.stdout, run.stderr)
+        assert (run.returncode == 0) == (case in ('pass', 'native-pass')), (case, run.stdout, run.stderr, result)
         assert state['current'] == 'original'
         assert state['devices'] == [{'device_id': original_device}], state
-        if case == 'cleanup-fail':
+        if case in ('cleanup-fail', 'native-cleanup-fail'):
             assert not result['cleanupVerified'] and len(state['workspaces']) == 2
         else:
-            assert result['cleanupVerified'] and state['workspaces'] == [{'id': 'original', 'name': 'Original'}], (case, result, state)
-        if case == 'preflight-fail':
+            assert result['cleanupVerified'] == (case != 'native-local-cleanup-fail'), (case, result)
+            assert state['workspaces'] == [{'id': 'original', 'name': 'Original'}], (case, result, state)
+        if case in ('preflight-fail', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
             assert not state['minted'], 'failed fixture preflight still minted credentials'
+        if native_mode:
+            if case == 'native-existing-files':
+                assert (native_root / 'private-fixture.json').read_text() == '{"owner":"pre-existing"}'
+            else:
+                assert not (native_root / 'private-fixture.json').exists(), 'private pairing input remained'
+        if case == 'native-pass':
+            assert result['nativeJourney']['journeyCompleted'] is True
+            assert len(result['artifacts']) == 2
         assert 'private-test-token' not in run.stdout + run.stderr + (evidence / 'result.json').read_text()
     finally:
         server.shutdown()
@@ -160,7 +274,7 @@ sys.exit(101 if case == 'test-fail' else 0)
 remote = subprocess.run(['bash', runner, 'live', str(root / 'remote-refused')],
     env=dict(os.environ, PAPERCUP_LIVE_BASE='https://public.example'), capture_output=True, text=True)
 assert remote.returncode != 0 and not (root / 'remote-refused').exists()
-print('Android live fixture guards: 8 passed; owned scope, executed result and failure cleanup verified')
+print(f'Android live fixture guards: {len(cases) + 1} passed; Rust/native ownership, executed proof and independent cleanup verified')
 PY
 echo 'Android result guard tests: 10 passed'
 

@@ -39,7 +39,7 @@ mode="${1:-full}"
 if [[ "$mode" == live ]]; then
     # Reuse the canonical Cargo smoke, with owned fixtures rather than a
     # manually registered second workspace that disappears between sessions.
-    python3 - "${2:-}" <<'PY'
+    python3 - "${2:-}" "${3:-rust}" <<'PY'
 import datetime
 import hashlib
 import json
@@ -48,10 +48,17 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import shutil
+import shlex
+import xml.etree.ElementTree as ET
 import urllib.parse
 import urllib.request
+from urllib.error import HTTPError
 import uuid
 
+kind = sys.argv[2]
+if kind not in ('rust', 'native'):
+    raise SystemExit('live check kind must be rust or native')
 base = os.environ.get('PAPERCUP_LIVE_BASE', '').rstrip('/')
 url = urllib.parse.urlsplit(base)
 if (url.scheme != 'http' or url.hostname not in ('127.0.0.1', 'localhost', '::1')
@@ -63,7 +70,7 @@ if not 1 <= timeout <= 600:
 attempt = uuid.uuid4().hex
 out = Path(sys.argv[1] or f'android/app/build/ci-evidence/live-{attempt}')
 out.mkdir(parents=True, exist_ok=False, mode=0o700)
-log_path = out / 'cargo-test.log'
+log_path = out / ('native-test.log' if kind == 'native' else 'cargo-test.log')
 
 def api(path, method='GET', body=None):
     request = urllib.request.Request(base + path, method=method,
@@ -91,8 +98,57 @@ result = {'command': command, 'startedAt': now(), 'runtime': base,
           'scope': 'Rust API contract on current operator; no native or release-candidate acceptance',
           'log': str(log_path), 'exitCode': 1, 'cleanupVerified': False}
 fixture_id = None
+token = None
 errors = []
+native_device = None
+native_payload_created = False
+reverse_created = False
+existing_devices = set()
+app = 'com.papercuspai.operator.mobile'
+connected = Path('android/app/build/outputs/androidTest-results/connected/debug')
+
+def adb(*args, input=None, check=True):
+    return subprocess.run(['adb', '-s', native_device, *args], input=input,
+        capture_output=True, text=True, check=check, timeout=30)
+
+def app_shell(command, **kwargs):
+    return adb('shell', 'run-as ' + app + ' sh -c ' + shlex.quote(command), **kwargs)
+
+def prepare_native():
+    global native_device
+    devices = subprocess.check_output(['adb', 'devices'], text=True)
+    serials = [line.split()[0] for line in devices.splitlines()[1:]
+               if len(line.split()) == 2 and line.split()[1] == 'device']
+    requested = os.environ.get('ANDROID_SERIAL')
+    if (len(serials) != 1 or not serials[0].startswith('emulator-')
+            or not requested or requested != serials[0]):
+        raise RuntimeError('native live checks require exactly one explicitly owned emulator')
+    native_device = serials[0]
+    for args, expected in [(('shell', 'getprop', 'sys.boot_completed'), '1'),
+                           (('shell', 'getprop', 'ro.build.version.sdk'), '36'),
+                           (('shell', 'getconf', 'PAGE_SIZE'), '16384')]:
+        if adb(*args).stdout.strip() != expected:
+            raise RuntimeError('native live emulator must be booted API36 with 16KB pages')
+    env = os.environ.copy()
+    if not env.get('JAVA_HOME'):
+        env['JAVA_HOME'] = subprocess.check_output(
+            ['bash', 'tools/build-scripts/resolve-java-home.sh'], text=True).strip()
+    with log_path.open('w') as log:
+        # Reuse the four-ABI/JNI/checksum/alignment build; a Gradle-only
+        # rebuild could otherwise execute a stale Rust shared library.
+        subprocess.run(['bash', 'tools/build-scripts/build-android.sh', 'debug'],
+                       env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
+        subprocess.run(['android/gradlew', '-p', 'android',
+                        ':app:assembleDebugAndroidTest', '--console=plain'],
+                       env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
+    adb('install', '-r', 'android/app/build/outputs/apk/debug/app-debug.apk')
+    app_shell('test ! -e files/native-pairing-fixture.json && test ! -e files/native-pairing-result.json')
+    app_shell('mkdir -p files')
+
 try:
+    if kind == 'native':
+        prepare_native()
+        existing_devices = {row['device_id'] for row in api('/api/device/desktop/devices')['devices']}
     fixture = api('/api/workspaces', 'POST', {'name': fixture_name})
     fixture_id = fixture['id']
     if fixture_id in existing or fixture.get('name') != fixture_name:
@@ -102,12 +158,41 @@ try:
     if (ready.get('current') != before['current'] or not any(
             row['id'] == fixture_id and row['name'] == fixture_name for row in ready['workspaces'])):
         raise RuntimeError('second-workspace prerequisite was not established')
-    token = api('/api/device/desktop/mint-pair-token', 'POST', {'workspaceId': workspace})
+    token = api('/api/device/desktop/mint-pair-token', 'POST',
+                {'workspaceId': fixture_id if kind == 'native' else workspace})
     env = os.environ.copy()
     env.update(PAPERCUP_LIVE_BASE=base, PAPERCUP_LIVE_PAIR_TOKEN=token['qrPayload']['pairToken'],
                PAPERCUP_LIVE_SECOND_WORKSPACE=fixture_id)
     env.pop('PAPERCUP_LIVE_CONVERSE', None)
-    with log_path.open('w') as log:
+    if kind == 'native':
+        port = url.port
+        if not port:
+            raise RuntimeError('native live checks require an explicit loopback port')
+        mapping = f'tcp:{port}'
+        if any(mapping in line.split() for line in adb('reverse', '--list').stdout.splitlines()):
+            raise RuntimeError('refusing to replace an existing emulator reverse mapping')
+        adb('reverse', mapping, mapping)
+        reverse_created = True
+        payload = dict(token['qrPayload'], server=f'http://127.0.0.1:{port}', workspaceId=fixture_id)
+        app_shell('umask 077; set -C; cat > files/native-pairing-fixture.json',
+            input=json.dumps({'schemaVersion': 1, 'runId': attempt,
+                             'workspaceId': fixture_id, 'pairPayload': payload}))
+        native_payload_created = True
+        shutil.rmtree(connected, ignore_errors=True)
+        command = ['android/gradlew', '-p', 'android', ':app:connectedDebugAndroidTest',
+                   '--rerun-tasks', '--console=plain',
+                   '-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.PapercupAppSmokeTest#launcherActivityStarts',
+                   '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true']
+        env['ANDROID_SERIAL'] = native_device
+        if not env.get('JAVA_HOME'):
+            env['JAVA_HOME'] = subprocess.check_output(
+                ['bash', 'tools/build-scripts/resolve-java-home.sh'], text=True).strip()
+        result.update(command=command, scope='Owned local debug native pairing/JNI/navigation; no signed-candidate, mesh, phone or Play acceptance',
+                      sourceFingerprints={path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                          for path in ['tools/run-android-checks.sh',
+                            'tools/build-scripts/build-android.sh',
+                            'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt']})
+    with log_path.open('a' if kind == 'native' else 'w') as log:
         try:
             completed = subprocess.run(command, env=env, stdout=log,
                                        stderr=subprocess.STDOUT, timeout=timeout)
@@ -116,18 +201,82 @@ try:
             result['exitCode'] = 124
             errors.append('canonical live smoke exceeded its execution deadline')
     text = log_path.read_text()
-    if result['exitCode'] == 0 and not re.search(
+    if kind == 'native' and result['exitCode'] == 0:
+        reports = list(connected.rglob('TEST-*.xml'))
+        cases = [case for file in reports for case in ET.parse(file).getroot().iter('testcase')]
+        if (len(cases) != 1 or cases[0].get('name') != 'launcherActivityStarts'
+                or any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
+                or any(int(suite.get(tag, '0')) for file in reports
+                       for suite in ET.parse(file).getroot().iter('testsuite')
+                       for tag in ('failures', 'errors', 'skipped'))):
+            raise RuntimeError('native live test must execute exactly once without failures or skips')
+        proof = json.loads(app_shell('cat files/native-pairing-result.json').stdout)
+        if (proof.get('runId') != attempt or proof.get('workspaceId') != fixture_id
+                or not all(proof.get(k) is True for k in
+                    ('journeyCompleted', 'authenticatedRequestPassed', 'navigationPassed', 'credentialsCleared'))):
+            raise RuntimeError('native live journey proof is missing, mismatched or incomplete')
+        registered = api('/api/device/desktop/devices')['devices']
+        if (proof.get('deviceId') in existing_devices or not any(
+                row['device_id'] == proof.get('deviceId') and row.get('workspace_id') == fixture_id
+                for row in registered)):
+            raise RuntimeError('native proof must name a newly paired device in the owned workspace')
+        result['nativeJourney'] = proof
+        shutil.copytree(connected, out / 'native-results')
+        result['artifacts'] = []
+        for source in [Path('android/app/build/outputs/apk/debug/app-debug.apk'),
+                       Path('android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]:
+            target = out / source.name
+            shutil.copy2(source, target)
+            result['artifacts'].append({'path': str(target), 'sha256': hashlib.sha256(target.read_bytes()).hexdigest()})
+    if kind == 'rust' and result['exitCode'] == 0 and not re.search(
             r'test result: ok\. 1 passed; 0 failed; 0 ignored;', text):
         result['exitCode'] = 1
         errors.append('canonical live test did not execute exactly once without failures or skips')
 except Exception as error:
     errors.append(str(error))
+    result['exitCode'] = result['exitCode'] or 1
 finally:
+    # A local cleanup failure must not strand the remote fixture as well.
+    local_cleanup = []
+    local_cleanup_ok = True
+    if kind == 'native' and native_payload_created:
+        local_cleanup.extend([
+            ('stop native callbacks', lambda: adb('shell', 'am', 'force-stop', app)),
+            ('remove owned private inputs', lambda: app_shell('rm -f files/native-pairing-fixture.json files/native-pairing-result.json')),
+        ])
+    if reverse_created:
+        local_cleanup.append(('remove owned reverse mapping', lambda: adb('reverse', '--remove', f'tcp:{url.port}')))
+    for label, action in local_cleanup:
+        try:
+            action()
+        except Exception as error:
+            local_cleanup_ok = False
+            errors.append(label + ': ' + str(error))
+            result['exitCode'] = result['exitCode'] or 1
     try:
         # A timeout can kill Cargo before its Rust panic cleanup. Only revoke
         # the fresh identity printed by this canonical, privately minted run.
         text = log_path.read_text() if log_path.exists() else ''
-        paired = re.search(r'^paired: device=([0-9a-f-]{36}) workspace=', text, re.MULTILINE)
+        if kind == 'native' and fixture_id:
+            # Burn an unused one-use token before deleting its workspace.
+            # A completed native redemption instead returns the expected401.
+            if token is not None:
+                try:
+                    api('/api/device/pair', 'POST', {'pairToken': token['qrPayload']['pairToken']})
+                except HTTPError as error:
+                    if error.code != 401 or json.load(error).get('error') != 'invalid_or_expired_token':
+                        raise
+            # The random new workspace had no devices before this attempt.
+            # Discover failed/late pairings even when JUnit did not emit proof.
+            for row in api('/api/device/desktop/devices')['devices']:
+                if row.get('workspace_id') == fixture_id:
+                    if row['device_id'] in existing_devices:
+                        raise RuntimeError('refusing to revoke a pre-existing device identity')
+                    api('/api/device/desktop/devices/' + row['device_id'], 'DELETE')
+            if any(row.get('workspace_id') == fixture_id
+                   for row in api('/api/device/desktop/devices')['devices']):
+                raise RuntimeError('native fixture pairing remained after revocation')
+        paired = re.search(r'^paired: device=([0-9a-f-]{36}) workspace=', text, re.MULTILINE) if kind == 'rust' else None
         if paired:
             device = paired.group(1)
             api('/api/device/desktop/devices/' + device, 'DELETE')
@@ -144,7 +293,7 @@ finally:
         if (after.get('current') != before['current'] or
                 fixture_id and any(row['id'] == fixture_id for row in after['workspaces'])):
             raise RuntimeError('workspace cleanup or current-selection preservation failed')
-        result['cleanupVerified'] = True
+        result['cleanupVerified'] = local_cleanup_ok
     except Exception as error:
         errors.append('cleanup: ' + str(error))
         result['exitCode'] = result['exitCode'] or 1
@@ -266,7 +415,7 @@ if [[ "$mode" == verify-results ]]; then
     exit
 fi
 [[ "$mode" == host || "$mode" == connected || "$mode" == full ]] || {
-    echo 'usage: run-android-checks.sh [host|connected|full|live [EVIDENCE_DIR]|prepare-ci|verify-emulator|verify-avd-space DISK_SIZE|verify-results ROOT host|connected]' >&2
+    echo 'usage: run-android-checks.sh [host|connected|full|live [EVIDENCE_DIR] [rust|native]|prepare-ci|verify-emulator|verify-avd-space DISK_SIZE|verify-results ROOT host|connected]' >&2
     exit 2
 }
 
