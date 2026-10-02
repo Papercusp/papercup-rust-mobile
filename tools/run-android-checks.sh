@@ -65,7 +65,10 @@ journey = native.get('nativeJourney', {})
 required = ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
             'activityRecreated', 'valueRowLabelsPassed', 'enrollmentBrowserStubbed',
             'inboxScopedReadPassed', 'inboxRenderingPassed', 'inboxUnauthorizedPassed',
-            'inboxRecoveryPassed', 'navigationPassed', 'credentialsCleared')
+            'inboxRecoveryPassed', 'navigationPassed', 'credentialsCleared',
+            'expiredJwtControlPassed', 'expiredJwtRejected', 'expiredJwtRenderingPassed',
+            'expiredJwtFreshPairPassed', 'revokedDeviceRejected',
+            'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed')
 if (journey.get('runId') != native.get('runId')
         or journey.get('workspaceId') != native.get('ownedWorkspace', {}).get('id')
         or not journey.get('deviceId') in native.get('ownedDeviceIds', [])
@@ -133,6 +136,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import secrets
 import subprocess
 import time
 import urllib.request
@@ -149,6 +153,10 @@ if not workspace.startswith('test-runtime-') or not home.parent.name.startswith(
 base = os.environ.get('PAPERCUSP_OPERATOR_URL', '')
 if base != 'http://127.0.0.1:' + os.environ.get('PAPERCUSP_HONO_PORT', ''):
     raise SystemExit('isolated-native-child requires its owned loopback operator port')
+# Share one private, in-memory signing secret with the owned host and fixture
+# signer. Never read a production secret or persist this test-only credential.
+os.environ['MOBILE_JWT_SECRET'] = secrets.token_urlsafe(48)
+os.environ['PAPERCUP_ANDROID_AUTH_FIXTURE'] = '1'
 operator = Path(os.environ['PAPERCUP_OPERATOR_ROOT'])
 bundle = operator / 'apps/operator/dist-host/hono-host.mjs'
 evidence = Path(os.environ['PAPERCUP_ANDROID_EVIDENCE'])
@@ -270,10 +278,13 @@ out = Path(sys.argv[1] or f'android/app/build/ci-evidence/live-{attempt}')
 out.mkdir(parents=True, exist_ok=False, mode=0o700)
 log_path = out / ('native-test.log' if kind == 'native' else 'cargo-test.log')
 
-def api(path, method='GET', body=None):
+def api(path, method='GET', body=None, bearer=None):
+    headers = {'Content-Type': 'application/json'}
+    if bearer is not None:
+        headers['Authorization'] = 'Bearer ' + bearer
     request = urllib.request.Request(base + path, method=method,
         data=json.dumps(body).encode() if body is not None else None,
-        headers={'Content-Type': 'application/json'})
+        headers=headers)
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
 
@@ -298,6 +309,8 @@ result = {'command': command, 'startedAt': now(), 'runtime': base,
           'log': str(log_path), 'exitCode': 1, 'executionStarted': False, 'cleanupVerified': False}
 fixture_id = None
 token = None
+native_pair_tokens = []
+auth_fixture_enabled = kind == 'native' and os.environ.get('PAPERCUP_ANDROID_AUTH_FIXTURE') == '1'
 errors = []
 native_device = None
 native_payload_created = False
@@ -316,6 +329,10 @@ def app_shell(command, **kwargs):
 
 def prepare_native():
     global native_device
+    if auth_fixture_enabled and (len(os.environ.get('MOBILE_JWT_SECRET', '')) < 32
+            or not (Path(os.environ.get('PAPERCUP_OPERATOR_ROOT', '')) /
+                    'packages/operator-core/lib/device-jwt.ts').is_file()):
+        raise RuntimeError('native auth fixture requires its owned operator signer and injected private secret')
     devices = subprocess.check_output(['adb', 'devices'], text=True)
     serials = [line.split()[0] for line in devices.splitlines()[1:]
                if len(line.split()) == 2 and line.split()[1] == 'device']
@@ -345,6 +362,62 @@ def prepare_native():
     app_shell('test ! -e files/native-pairing-fixture.json && test ! -e files/native-pairing-result.json && test ! -e files/native-pairing-failure.png')
     app_shell('mkdir -p files')
 
+def native_auth_fixture(port):
+    def mint():
+        minted = api('/api/device/desktop/mint-pair-token', 'POST', {'workspaceId': fixture_id})
+        native_pair_tokens.append(minted)
+        return minted
+
+    control = api('/api/device/pair', 'POST', {'pairToken': mint()['qrPayload']['pairToken']})
+    if (control.get('workspaceId') != fixture_id or control.get('deviceId') in existing_devices
+            or not re.fullmatch('[0-9a-f-]{36}', control.get('deviceId', ''))):
+        raise RuntimeError('expiry control did not return an owned newly paired device')
+    result['ownedDeviceIds'].append(control['deviceId'])
+    # The positive control reaches the same actual endpoint before expiry.
+    api('/api/device/attention', bearer=control['deviceToken'])
+    operator = Path(os.environ['PAPERCUP_OPERATOR_ROOT'])
+    signer = operator / 'packages/operator-core/lib/device-jwt.ts'
+    script = '''
+import {readFileSync} from 'node:fs';
+import {pathToFileURL} from 'node:url';
+import {resolve} from 'node:path';
+const {signDeviceToken, verifyDeviceToken} = await import(pathToFileURL(resolve('packages/operator-core/lib/device-jwt.ts')).href);
+const input = JSON.parse(readFileSync(0, 'utf8'));
+const claims = verifyDeviceToken(input.controlToken);
+if (!claims || claims.sub !== input.deviceId || claims.workspace_id !== input.workspaceId) throw Error('Control signature/scope mismatch');
+const realNow = Date.now;
+Date.now = () => realNow() - 366 * 24 * 3600 * 1000;
+let expired;
+try { expired = signDeviceToken({sub: claims.sub, workspace_id: claims.workspace_id, device_kind: 'mobile', user_email: claims.user_email}); }
+finally { Date.now = realNow; }
+if (verifyDeviceToken(expired) !== null) throw Error('Expiry control did not expire');
+process.stdout.write(expired);
+'''
+    signed = subprocess.run(['node', '--import', 'tsx', '--input-type=module', '-e', script],
+        cwd=operator, input=json.dumps({'controlToken': control['deviceToken'],
+            'deviceId': control['deviceId'], 'workspaceId': fixture_id}),
+        capture_output=True, text=True, check=True, timeout=30)
+    expired = signed.stdout.strip()
+    if len(expired.split('.')) != 3:
+        raise RuntimeError('owned signer did not return an expired JWT')
+    try:
+        api('/api/device/attention', bearer=expired)
+    except HTTPError as error:
+        if error.code != 401:
+            raise
+    else:
+        raise RuntimeError('actual expired JWT was accepted by the owned operator')
+    result['authFixtureBasis'] = {'controlDeviceId': control['deviceId'],
+        'controlAccepted': True, 'expiredRejectedStatus': 401,
+        'expiredTokenSha256': hashlib.sha256(expired.encode()).hexdigest(),
+        'signerSourceSha256': hashlib.sha256(signer.read_bytes()).hexdigest(),
+        'method': 'existing signDeviceToken with past clock; same signature/scope/device positive control'}
+    def payload(minted):
+        return dict(minted['qrPayload'], server=f'http://127.0.0.1:{port}', workspaceId=fixture_id)
+    return {'controlDeviceId': control['deviceId'], 'controlToken': control['deviceToken'],
+        'expiredToken': expired, 'expiredRepairPayload': payload(mint()),
+        'revokedRepairPayload': payload(mint())}
+
 try:
     # Initialize the result before any fallible service prerequisite. A
     # disconnected or invalid workspace API must leave an honest failure
@@ -371,6 +444,8 @@ try:
         raise RuntimeError('second-workspace prerequisite was not established')
     token = api('/api/device/desktop/mint-pair-token', 'POST',
                 {'workspaceId': fixture_id if kind == 'native' else workspace})
+    if kind == 'native':
+        native_pair_tokens.append(token)
     result['pairTokenExpiresAt'] = token.get('expiresAt')
     env = os.environ.copy()
     env.update(PAPERCUP_LIVE_BASE=base, PAPERCUP_LIVE_PAIR_TOKEN=token['qrPayload']['pairToken'],
@@ -386,9 +461,12 @@ try:
         adb('reverse', mapping, mapping)
         reverse_created = True
         payload = dict(token['qrPayload'], server=f'http://127.0.0.1:{port}', workspaceId=fixture_id)
+        fixture_payload = {'schemaVersion': 1, 'runId': attempt,
+                           'workspaceId': fixture_id, 'pairPayload': payload}
+        if auth_fixture_enabled:
+            fixture_payload['auth'] = native_auth_fixture(port)
         app_shell('umask 077; set -C; cat > files/native-pairing-fixture.json',
-            input=json.dumps({'schemaVersion': 1, 'runId': attempt,
-                             'workspaceId': fixture_id, 'pairPayload': payload}))
+            input=json.dumps(fixture_payload))
         native_payload_created = True
         shutil.rmtree(connected, ignore_errors=True)
         command = ['android/gradlew', '-p', 'android', ':app:connectedDebugAndroidTest',
@@ -396,6 +474,8 @@ try:
                    '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true',
                    '-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.PapercupAppSmokeTest#launcherActivityStarts,com.papercuspai.operator.mobile.PapercupAppSmokeTest#privateInboxScopeAcceptsOnlyDocumentedGlobalControls,com.papercuspai.operator.mobile.OperatorChatScreenTest',
                    '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true']
+        if auth_fixture_enabled:
+            command.append('-Pandroid.testInstrumentationRunnerArguments.nativeAuthFixture=true')
         env['ANDROID_SERIAL'] = native_device
         if not env.get('JAVA_HOME'):
             env['JAVA_HOME'] = subprocess.check_output(
@@ -457,12 +537,22 @@ try:
                      'inboxUnauthorizedPassed', 'inboxRecoveryPassed',
                      'navigationPassed', 'credentialsCleared'))):
             raise RuntimeError('native live journey proof is missing, mismatched or incomplete')
+        if auth_fixture_enabled and not all(proof.get(k) is True for k in
+                ('expiredJwtControlPassed', 'expiredJwtRejected', 'expiredJwtRenderingPassed',
+                 'expiredJwtFreshPairPassed', 'revokedDeviceRejected',
+                 'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed')):
+            raise RuntimeError('actual expiry/revocation and fresh-pair recovery proof required')
         registered = api('/api/device/desktop/devices')['devices']
         if (proof.get('deviceId') in existing_devices or not any(
                 row['device_id'] == proof.get('deviceId') and row.get('workspace_id') == fixture_id
                 for row in registered)):
             raise RuntimeError('native proof must name a newly paired device in the owned workspace')
         result['nativeJourney'] = proof
+        for device in proof.get('pairedDeviceIds', []):
+            if not re.fullmatch('[0-9a-f-]{36}', device) or device in existing_devices:
+                raise RuntimeError('native auth proof names an unowned device')
+            if device not in result['ownedDeviceIds']:
+                result['ownedDeviceIds'].append(device)
     if kind == 'rust' and result['exitCode'] == 0 and not re.search(
             r'test result: ok\. 1 passed; 0 failed; 0 ignored;', text):
         result['exitCode'] = 1
@@ -540,9 +630,9 @@ finally:
         if kind == 'native' and fixture_id:
             # Burn an unused one-use token before deleting its workspace.
             # A completed native redemption instead returns the expected401.
-            if token is not None:
+            for pending_token in native_pair_tokens:
                 try:
-                    burned = api('/api/device/pair', 'POST', {'pairToken': token['qrPayload']['pairToken']})
+                    burned = api('/api/device/pair', 'POST', {'pairToken': pending_token['qrPayload']['pairToken']})
                     result['nativePairTokenDisposition'] = 'redeemed-by-cleanup'
                     if burned.get('deviceId') and burned['deviceId'] not in existing_devices:
                         result['ownedDeviceIds'].append(burned['deviceId'])

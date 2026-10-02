@@ -98,7 +98,10 @@ native = {'checkKind': 'native', 'exitCode': 0, 'executionStarted': True,
 flags = ['journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
          'activityRecreated', 'valueRowLabelsPassed', 'enrollmentBrowserStubbed',
          'inboxScopedReadPassed', 'inboxRenderingPassed', 'inboxUnauthorizedPassed',
-         'inboxRecoveryPassed', 'navigationPassed', 'credentialsCleared']
+         'inboxRecoveryPassed', 'navigationPassed', 'credentialsCleared',
+         'expiredJwtControlPassed', 'expiredJwtRejected', 'expiredJwtRenderingPassed',
+         'expiredJwtFreshPairPassed', 'revokedDeviceRejected',
+         'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed']
 native['nativeJourney'] = dict(runId='this-attempt', workspaceId='fixture-workspace',
                              deviceId='fixture-device', currentStage='completed', **{k: True for k in flags})
 runtime = dict(exitCode=0, executionStarted=True, hostCleanupVerified=True,

@@ -102,6 +102,8 @@ class PapercupAppSmokeTest {
         val result = JSONObject().put("runId", runId).put("journeyCompleted", false)
             .put("enrollmentBrowserStubbed", enrollmentIntentFixture)
         var ownedDevice: String? = null
+        val ownedDevices = mutableSetOf<String>()
+        val pairedDeviceIds = JSONArray()
         var stage = "pair-form"
         fun beginStage(value: String) {
             stage = value
@@ -117,8 +119,10 @@ class PapercupAppSmokeTest {
             compose.onNodeWithText("Pair").performClick()
             beginStage("persisted-credentials")
             compose.waitUntil(30_000) { store.load() != null }
-            val paired = requireNotNull(store.load())
+            var paired = requireNotNull(store.load())
             ownedDevice = paired.deviceId
+            ownedDevices.add(paired.deviceId)
+            pairedDeviceIds.put(paired.deviceId)
             result.put("deviceId", paired.deviceId).put("workspaceId", paired.workspaceId)
             resultFile.writeText(result.toString())
             assertEquals(expectedWorkspace, paired.workspaceId)
@@ -182,6 +186,48 @@ class PapercupAppSmokeTest {
             waitForPairedShell()
             verifyOwnedInbox(paired, result) { beginStage("inbox-recovery-$it") }
             result.put("inboxRecoveryPassed", true)
+            if (InstrumentationRegistry.getArguments().getString("nativeAuthFixture") == "true") {
+                val auth = fixture.getJSONObject("auth")
+                val control = paired.copy(deviceId = auth.getString("controlDeviceId"),
+                    deviceToken = auth.getString("controlToken"))
+                ownedDevices.add(control.deviceId)
+                beginStage("expired-jwt-positive-control")
+                verifyOwnedInbox(control, result) { beginStage("expired-control-$it") }
+                result.put("expiredJwtControlPassed", true)
+                val expired = control.copy(deviceToken = auth.getString("expiredToken"))
+                beginStage("expired-jwt-rejection")
+                assertTrue("A signed expired token must fail through actual JNI/HTTP",
+                    runCatching { runBlocking { expired.client().attention() } }.exceptionOrNull() is ApiException.Unauthorized)
+                result.put("expiredJwtRejected", true)
+                showRejectedSession(scenario, expired)
+                result.put("expiredJwtRenderingPassed", true)
+                beginStage("expired-jwt-fresh-pair")
+                paired = repairWithFreshPairing(auth.getJSONObject("expiredRepairPayload"), paired)
+                ownedDevice = paired.deviceId
+                ownedDevices.add(paired.deviceId)
+                pairedDeviceIds.put(paired.deviceId)
+                verifyOwnedInbox(paired, result) { beginStage("expired-repair-$it") }
+                result.put("expiredJwtFreshPairPassed", true)
+
+                beginStage("actual-device-revocation")
+                runBlocking { paired.client().revokeDevice(paired.deviceId) }
+                assertTrue("A revoked device must fail through actual JNI/HTTP",
+                    runCatching { runBlocking { paired.client().attention() } }.exceptionOrNull() is ApiException.Unauthorized)
+                result.put("revokedDeviceRejected", true)
+                showRejectedSession(scenario, paired)
+                result.put("revokedDeviceRenderingPassed", true)
+                beginStage("revoked-device-fresh-pair")
+                paired = repairWithFreshPairing(auth.getJSONObject("revokedRepairPayload"), paired)
+                ownedDevice = paired.deviceId
+                ownedDevices.add(paired.deviceId)
+                pairedDeviceIds.put(paired.deviceId)
+                scenario.recreate()
+                waitForPairedShell()
+                assertEquals(paired.deviceId, requireNotNull(store.load()).deviceId)
+                verifyOwnedInbox(paired, result) { beginStage("revoked-repair-$it") }
+                result.put("revokedDeviceFreshPairPassed", true)
+                result.put("deviceId", paired.deviceId).put("pairedDeviceIds", pairedDeviceIds)
+            }
             beginStage("paired-navigation")
             for (tab in listOf("Inbox", "Operator", "Plans", "Fleet", "Settings")) {
                 compose.onNodeWithContentDescription(tab).assertIsDisplayed()
@@ -239,7 +285,8 @@ class PapercupAppSmokeTest {
         } finally {
             val remaining = store.load()
             if (ownedDevice != null && remaining != null) {
-                assertEquals("Refusing to clear another pairing", ownedDevice, remaining.deviceId)
+                assertTrue("Refusing to clear another pairing", remaining.deviceId in ownedDevices)
+                assertEquals(expectedWorkspace, remaining.workspaceId)
                 store.clear()
             }
             result.put("credentialsCleared", store.load() == null)
@@ -258,6 +305,39 @@ class PapercupAppSmokeTest {
             compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("Inbox"))
                 .fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
         }
+    }
+
+    private fun showRejectedSession(scenario: ActivityScenario<MainActivity>, rejected: DeviceCredentials) {
+        CredentialStore(InstrumentationRegistry.getInstrumentation().targetContext).save(rejected)
+        scenario.recreate()
+        waitForPairedShell()
+        compose.onNodeWithContentDescription("Inbox").performClick()
+        waitForText("Could not load inbox")
+        compose.onNodeWithText("Inbox status unavailable").assertIsDisplayed()
+        compose.onNodeWithText("Loading the inbox failed — this device's pairing is no longer valid. Re-pair with your Papercup server from Settings.")
+            .assertIsDisplayed()
+        compose.onNodeWithText("Inbox zero — nothing needs you right now.").assertDoesNotExist()
+    }
+
+    private fun repairWithFreshPairing(payload: JSONObject, previous: DeviceCredentials): DeviceCredentials {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = CredentialStore(context)
+        compose.onNodeWithContentDescription("Settings").performClick()
+        val forget = context.getString(R.string.settings_forget_device)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(forget))
+        compose.onNodeWithText(forget).performClick()
+        waitForText("Paste manually")
+        assertNull("Settings must discard the invalid credentials", store.load())
+        compose.onNodeWithText("Paste manually").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput(payload.toString())
+        compose.onNodeWithText("Pair").performClick()
+        compose.waitUntil(30_000) { store.load()?.deviceId?.let { it != previous.deviceId } == true }
+        val fresh = requireNotNull(store.load())
+        assertEquals(previous.workspaceId, fresh.workspaceId)
+        assertEquals(previous.server, fresh.server)
+        assertTrue("Recovery must persist a fresh token", previous.deviceToken != fresh.deviceToken)
+        waitForPairedShell()
+        return fresh
     }
 
     private fun verifyOwnedInbox(paired: DeviceCredentials, result: JSONObject, beginStage: (String) -> Unit) {
