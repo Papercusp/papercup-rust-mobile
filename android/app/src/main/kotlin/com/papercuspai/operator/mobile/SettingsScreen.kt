@@ -108,8 +108,10 @@ fun SettingsScreen(
                     ValueRow(label = "Desktop", value = creds.server)
                     selfDevice?.pairedAt?.let { ValueRow(label = "Paired", value = it) }
                     ValueRow(label = "Workspace", value = creds.workspaceId)
-                    ValueRow(label = "Device ID", value = creds.deviceId, mono = true, last = creds.defguardEnrollmentUrl == null)
-                    creds.defguardEnrollmentUrl?.let { ValueRow(label = "Mesh", value = "Defguard enrolled", last = true) }
+                    ValueRow(label = "Device ID", value = creds.deviceId, mono = true, last = creds.defguardEnrollmentUrl.isNullOrBlank())
+                    creds.defguardEnrollmentUrl?.takeIf { it.isNotBlank() }?.let {
+                        ValueRow(label = "Mesh", value = "Enrollment link ready", last = true)
+                    }
                 }
             }
 
@@ -307,6 +309,8 @@ private fun ValueRow(
         )
         Text(
             text = value,
+            modifier = Modifier.weight(2f).padding(start = 12.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
             style = MaterialTheme.typography.bodyMedium,
             color = PapercupColors.Text,
             fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,

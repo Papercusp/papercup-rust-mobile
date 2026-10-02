@@ -6,15 +6,24 @@ import android.content.Intent
 import android.os.Build
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasAnySibling
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.espresso.intent.Intents
+import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
+import androidx.test.espresso.intent.matcher.IntentMatchers.hasData
+import org.hamcrest.Matchers.allOf
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -29,6 +38,7 @@ import org.json.JSONObject
 
 @RunWith(AndroidJUnit4::class)
 class PapercupAppSmokeTest {
+    private var enrollmentIntentFixture = false
     @get:Rule
     val compose = createEmptyComposeRule()
 
@@ -39,9 +49,25 @@ class PapercupAppSmokeTest {
         // Fail rather than deleting a device's existing pairing. The runner
         // must supply a dedicated fresh emulator for these native journeys.
         assertNull("Native pairing tests require an unpaired fixture", CredentialStore(context).load())
+        if (InstrumentationRegistry.getArguments().getString("nativePairingFixture") == "true") {
+            // The owned native journey verifies our outgoing enrollment
+            // intent, while full external browser/mesh enrollment has its own
+            // acceptance plane. A fresh Chrome first-run screen is outside
+            // this test and can otherwise steal focus after pairing.
+            Intents.init()
+            enrollmentIntentFixture = true
+            Intents.intending(hasAction(Intent.ACTION_VIEW)).respondWith(
+                android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_CANCELED, null),
+            )
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    @After
+    fun releaseEnrollmentIntentFixture() {
+        if (enrollmentIntentFixture) Intents.release()
     }
 
     @Test
@@ -71,6 +97,7 @@ class PapercupAppSmokeTest {
         val store = CredentialStore(context)
         val resultFile = File(context.filesDir, "native-pairing-result.json")
         val result = JSONObject().put("runId", runId).put("journeyCompleted", false)
+            .put("enrollmentBrowserStubbed", enrollmentIntentFixture)
         var ownedDevice: String? = null
         var stage = "pair-form"
         try {
@@ -85,6 +112,10 @@ class PapercupAppSmokeTest {
             resultFile.writeText(result.toString())
             assertEquals(expectedWorkspace, paired.workspaceId)
             assertTrue(paired.deviceToken.isNotBlank())
+            paired.defguardEnrollmentUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                Intents.intended(allOf(hasAction(Intent.ACTION_VIEW), hasData(android.net.Uri.parse(url))))
+                result.put("enrollmentIntentObserved", true)
+            }
             // This device-JWT endpoint verifies the persisted token through
             // real JNI and HTTP, independently of the rendered paired shell.
             stage = "authenticated-jni-request"
@@ -115,9 +146,20 @@ class PapercupAppSmokeTest {
                 compose.onNodeWithContentDescription(tab).assertIsDisplayed()
             }
             compose.onNodeWithContentDescription("Settings").performClick()
-            compose.onNodeWithText(expectedWorkspace).assertIsDisplayed()
-            compose.onNodeWithText("Diagnostics").performScrollTo().performClick()
+            compose.onNodeWithText("Workspace").assertIsDisplayed()
+            compose.onNode(hasText(expectedWorkspace) and hasAnySibling(hasText("Workspace")))
+                .assertIsDisplayed()
+            if (!paired.defguardEnrollmentUrl.isNullOrBlank()) {
+                compose.onNodeWithText("Enrollment link ready").assertIsDisplayed()
+                result.put("meshEnrollmentClaimCorrect", true)
+            }
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Diagnostics"))
+            compose.onNodeWithText("Diagnostics").assertIsDisplayed().performClick()
             compose.onNodeWithText("Ping desktop").assertIsDisplayed()
+            compose.onNodeWithText("Workspace").performScrollTo().assertIsDisplayed()
+            compose.onNode(hasText(expectedWorkspace) and hasAnySibling(hasText("Workspace")))
+                .assertIsDisplayed()
+            result.put("valueRowLabelsPassed", true)
             result.put("navigationPassed", true).put("journeyCompleted", true)
         } catch (failure: Throwable) {
             result.put("failedStage", stage).put("failureClass", failure.javaClass.name)

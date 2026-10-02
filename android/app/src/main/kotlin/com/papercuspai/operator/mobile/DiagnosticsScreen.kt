@@ -217,6 +217,8 @@ private fun ValueRow(
         )
         Text(
             text = value,
+            modifier = Modifier.weight(2f).padding(start = 12.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
             style = MaterialTheme.typography.bodyMedium,
             color = PapercupColors.Text,
             fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default,
