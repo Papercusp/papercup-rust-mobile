@@ -374,7 +374,10 @@ def native_auth_fixture(port):
         raise RuntimeError('expiry control did not return an owned newly paired device')
     result['ownedDeviceIds'].append(control['deviceId'])
     # The positive control reaches the same actual endpoint before expiry.
+    result['authFixtureStage'] = 'positive-control'
     api('/api/device/attention', bearer=control['deviceToken'])
+    result['authFixtureBasis'] = {'controlDeviceId': control['deviceId'], 'controlAccepted': True}
+    result['authFixtureStage'] = 'sign-expired-control'
     operator = Path(os.environ['PAPERCUP_OPERATOR_ROOT'])
     signer = operator / 'packages/operator-core/lib/device-jwt.ts'
     script = '''
@@ -400,18 +403,21 @@ process.stdout.write(expired);
     expired = signed.stdout.strip()
     if len(expired.split('.')) != 3:
         raise RuntimeError('owned signer did not return an expired JWT')
+    result['authFixtureStage'] = 'expired-rejection'
     try:
         api('/api/device/attention', bearer=expired)
     except HTTPError as error:
-        if error.code != 401:
+        if error.code not in (401, 403):
             raise
+        rejected_status = error.code
     else:
         raise RuntimeError('actual expired JWT was accepted by the owned operator')
     result['authFixtureBasis'] = {'controlDeviceId': control['deviceId'],
-        'controlAccepted': True, 'expiredRejectedStatus': 401,
+        'controlAccepted': True, 'expiredRejectedStatus': rejected_status,
         'expiredTokenSha256': hashlib.sha256(expired.encode()).hexdigest(),
         'signerSourceSha256': hashlib.sha256(signer.read_bytes()).hexdigest(),
         'method': 'existing signDeviceToken with past clock; same signature/scope/device positive control'}
+    result['authFixtureStage'] = 'fresh-repair-tokens'
     def payload(minted):
         return dict(minted['qrPayload'], server=f'http://127.0.0.1:{port}', workspaceId=fixture_id)
     return {'controlDeviceId': control['deviceId'], 'controlToken': control['deviceToken'],

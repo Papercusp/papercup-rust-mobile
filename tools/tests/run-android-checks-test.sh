@@ -168,6 +168,63 @@ for case in cases:
     assert (run.returncode == 0) == (case == 'pass'), (case, run.stdout, run.stderr)
 print(f'Android paired proof barrier: {len(cases)} acceptance/refusal controls passed (evidence fixtures only)')
 PY
+python3 - "$runner" "$TMP_ROOT" <<'PY'
+import ast
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+from types import SimpleNamespace
+from urllib.error import HTTPError
+
+runner, temp = Path(sys.argv[1]), Path(sys.argv[2])
+live = runner.read_text().split('if [[ "$mode" == live ]]; then', 1)[1].split("<<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+function = next(n for n in ast.parse(live).body if isinstance(n, ast.FunctionDef) and n.name == 'native_auth_fixture')
+operator = temp / 'auth-operator'
+signer = operator / 'packages/operator-core/lib/device-jwt.ts'
+signer.parent.mkdir(parents=True); signer.write_text('private operator signer source fixture')
+for case in ['reject-401', 'reject-403', 'accepted-expiry', 'server-fault', 'foreign-scope', 'bad-signer']:
+    minted, observed = [], []
+    def api(path, method='GET', body=None, bearer=None):
+        observed.append((path, method, bearer))
+        if path.endswith('mint-pair-token'):
+            return {'qrPayload': {'pairToken': 'private-one-use', 'workspaceId': 'owned-workspace'}}
+        if path.endswith('/pair'):
+            return {'deviceId': '12345678-1234-1234-1234-123456789abc',
+                    'deviceToken': 'private-control-token',
+                    'workspaceId': 'foreign' if case == 'foreign-scope' else 'owned-workspace'}
+        assert path == '/api/device/attention'
+        if bearer == 'private-control-token': return {'groups': []}
+        assert bearer == 'header.expired.signature'
+        if case == 'accepted-expiry': return {'groups': []}
+        raise HTTPError(path, 500 if case == 'server-fault' else int(case[-3:]), 'auth refusal', {}, None)
+    def run(command, **kwargs):
+        assert command[:5] == ['node', '--import', 'tsx', '--input-type=module', '-e']
+        assert 'signDeviceToken' in command[-1] and 'verifyDeviceToken' in command[-1]
+        assert 'finally { Date.now = realNow; }' in command[-1]
+        assert kwargs['cwd'] == operator and kwargs['capture_output'] and kwargs['check']
+        assert json.loads(kwargs['input'])['controlToken'] == 'private-control-token'
+        return SimpleNamespace(stdout='not-jwt' if case == 'bad-signer' else 'header.expired.signature')
+    result = {'ownedDeviceIds': []}
+    scope = dict(api=api, native_pair_tokens=minted, fixture_id='owned-workspace', existing_devices=set(),
+        result=result, re=re, Path=Path, os=SimpleNamespace(environ={'PAPERCUP_OPERATOR_ROOT': str(operator)}),
+        subprocess=SimpleNamespace(run=run), json=json, HTTPError=HTTPError, hashlib=hashlib)
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(runner), 'exec'), scope)
+    try:
+        fixture = scope['native_auth_fixture'](34567)
+    except (RuntimeError, HTTPError):
+        assert case not in ['reject-401', 'reject-403'], case
+    else:
+        assert case in ['reject-401', 'reject-403'], case
+        assert result['authFixtureBasis']['expiredRejectedStatus'] == int(case[-3:])
+        assert result['authFixtureBasis']['controlAccepted']
+        assert len(minted) == 3 and len(result['ownedDeviceIds']) == 1
+        assert fixture['expiredToken'] == 'header.expired.signature'
+        assert 'private-control-token' not in json.dumps(result)
+        assert 'header.expired.signature' not in json.dumps(result)
+print('Android auth fixture: 6 control/refusal cases passed (signer and API fixtures only)')
+PY
 mkdir -p "$TMP_ROOT/test-results/testDebugUnitTest" "$TMP_ROOT/test-results/testReleaseUnitTest" \
     "$TMP_ROOT/outputs/androidTest-results/connected/debug/device"
 debug="$TMP_ROOT/test-results/testDebugUnitTest/TEST-unit.xml"
