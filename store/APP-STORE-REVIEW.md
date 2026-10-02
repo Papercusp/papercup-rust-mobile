@@ -302,6 +302,75 @@ Temporary extraction was removed afterward.
 This proves local source extraction and Cargo graph resolution for the recorded
 revision. Compilation, Android/Gradle/native SDK source obligations, final
 notices, licensing clearance and actual recipient retrieval remain open.
+
+### Selected Android SDK source and notice preparation
+
+The October 2 preparation at mobile commit
+`143aad60db1e253552eb84dc8768aa9695b52275` retains the six version-specific
+Maven Central POMs and source JARs for the voice/native modules inventoried
+above. Private local evidence is in
+`android/app/build/outputs/papercusp-android-dependency-sources/PROVENANCE.json`
+(SHA-256 `1be56c04b197580764d243f0ae081d5b959c9fcb58ebf7589448fba5bacf3aef`).
+It records the download URLs, sizes, hashes, source-file counts and notice
+paths. All 24 retained evidence-file hashes were checked after writing.
+
+| Module | Source JAR SHA-256 | Java/Kotlin/C/C++/header entries |
+|---|---|---|
+| `ai.picovoice:porcupine-android:4.0.0` | `49d3bee7ce35e13da99de8fceaa48f725a2bbbe8cb395603cb350740a7395f32` | 17 |
+| `ai.picovoice:android-voice-processor:1.0.2` | `e52af65540876e11621e370a256f480bf43378669b82a3c9e11e216ed1b4a223` | 7 |
+| `io.elevenlabs:elevenlabs-android:0.9.0` | `59c163f6453c6806555881f47d3cdc7c6cc655469176e861c7636b4998075d07` | 30 |
+| `io.livekit:livekit-android:2.22.0` | `b3a146cd26c751114d0a91866eee3cc641b8b6336f7cf4ad999081b65964a693` | 252 |
+| `io.github.webrtc-sdk:android-prefixed:137.7151.04` | `18dc05a4d201cdf4c7580d59ded2ae92f44926f45a8eb55ae2574209100acf6a` | 0 |
+| `net.java.dev.jna:jna:5.19.1` | `0136f719ddd91d92d2368aa2c59a0c436810ac0b9c29024044383758b0e99786` | 66 |
+
+The counts include generated source entries where present. None of these six
+source JARs contains a filename matching `license`, `notice` or `copying`.
+The WebRTC source JAR is 206 bytes and contains only its manifest; downloading
+it does not supply the native engine source.
+
+The same evidence directory retains these upstream release-tag references:
+
+- ElevenLabs `v0.9.0`, commit `3fa8d85ec2443982dd2561e0c2e8fc2f7c3ca378`:
+  [MIT license and copyright text](https://raw.githubusercontent.com/elevenlabs/elevenlabs-android/3fa8d85ec2443982dd2561e0c2e8fc2f7c3ca378/LICENSE).
+- LiveKit `v2.22.0`, commit `e5af72ed521ca000a8636b483731a888746a4c64`:
+  [LICENSE](https://raw.githubusercontent.com/livekit/client-sdk-android/e5af72ed521ca000a8636b483731a888746a4c64/LICENSE)
+  and [NOTICE](https://raw.githubusercontent.com/livekit/client-sdk-android/e5af72ed521ca000a8636b483731a888746a4c64/NOTICE).
+  The notice includes LiveKit, Shiguredo, SDP parser and WebRTC material;
+  preserve that complete text when preparing the applicable distribution notices.
+- Porcupine `4.0.0`, commit `c794ad57b189f4b06e8128abd0324ad09e1a424d`:
+  [LICENSE](https://raw.githubusercontent.com/Picovoice/porcupine/c794ad57b189f4b06e8128abd0324ad09e1a424d/LICENSE).
+  Engine/model/account terms remain a separate review requirement.
+- JNA `5.19.1`, commit `1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d`:
+  `LICENSE`, `AL2.0`, `LGPL2.1` and
+  [native libffi copyright/license text](https://raw.githubusercontent.com/java-native-access/jna/1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d/native/libffi/LICENSE).
+  Retaining both offered JNA license texts does not decide the distribution's
+  license choice or establish complete native dependency coverage.
+
+For `android-voice-processor:1.0.2`, all seven Java files in the retained source
+JAR byte-match upstream revision `2bd8e3b6bc09d4d0c6c9202173b7ccc576bc5088`.
+Its [LICENSE](https://raw.githubusercontent.com/Picovoice/android-voice-processor/2bd8e3b6bc09d4d0c6c9202173b7ccc576bc5088/LICENSE)
+is retained as `voiceprocessor-LICENSE` (SHA-256
+`930c1bf076c9477108de5d2b053b5aa682bd68ee215f183f783207aaf2bc0153`).
+The separate `voiceprocessor-SOURCE-MATCH.json` receipt has SHA-256
+`a6e8261d58aeb9fb2d624db91e1bc682893daae9812fb39bf180cd57edba0a78`.
+This binds the Java source comparison and license reference to a recorded
+revision; it does not prove which build produced the Maven binary.
+
+WebRTC's packaging tag `v137.7151.04` points to
+`f126941a2667f8f1bd3ac60b1a6a4783a3310e1f`. Its pinned download script imports
+the release's `libwebrtc_prefixed.aar` and renames the native library. The
+downloaded release asset's SHA-256 is
+`76b7fc94ac3a16b81bd42f0e8bf781636ad52f815d296f1c0c314271fd1ed262`.
+The four native payloads in the retained Gradle AAR byte-match that asset for
+`arm64-v8a`, `armeabi-v7a`, `x86` and `x86_64`, accounting for the name change.
+This establishes that bounded native-byte relationship. The packaging
+repository's MIT text and Maven's BSD metadata concern different evidence
+surfaces; neither alone supplies a complete native dependency notice census.
+
+These files remain private local preparation. Upstream release tags are not
+proof that those revisions produced the Maven artifacts. Full
+transitive/native/model coverage, final notice accessibility, candidate binding, distribution rights,
+compilation and actual recipient retrieval remain open.
 Recreate the contributions from the exact final candidate revision and verify
 the final delivery before publication; these retained preparation archives
 have not been published.
