@@ -371,6 +371,31 @@ These files remain private local preparation. Upstream release tags are not
 proof that those revisions produced the Maven artifacts. Full
 transitive/native/model coverage, final notice accessibility, candidate binding, distribution rights,
 compilation and actual recipient retrieval remain open.
+
+### Generated Android dependency metadata
+
+The Android build uses the maintained AboutLibraries Gradle plugin to generate
+variant-specific `raw/aboutlibraries.json` resources. The existing release
+export is also available with:
+
+```sh
+JAVA_HOME="$(tools/build-scripts/resolve-java-home.sh)" \
+  android/gradlew -p android :app:exportLibraryDefinitions
+make test-android-library-notices
+```
+
+The maintained check compares the generated release resource with Gradle's
+actual `releaseRuntimeClasspath` module IDs and selected versions. It rejects
+omitted modules, stale versions, test-only dependencies and missing standard
+license text. It runs in `make check` and the Android host/full gate.
+
+The first local export contains 210 release library records and nine license
+records. Five license records contain links without license text: CameraX's
+libyuv BSD reference, WebRTC's BSD reference, ML Kit terms, Android SDK terms
+and the JAIN SIP public-domain reference. These require explicit review and
+supplemental text where applicable. Generated POM metadata does not include
+every native/model notice, Rust license or upstream copyright notice; it does
+not prove distribution rights or complete recipient-visible notice delivery.
 Recreate the contributions from the exact final candidate revision and verify
 the final delivery before publication; these retained preparation archives
 have not been published.

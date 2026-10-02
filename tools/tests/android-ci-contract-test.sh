@@ -75,7 +75,11 @@ for phase in [
     'cargo clippy --workspace --all-targets -- -D warnings',
     'cargo test --workspace --all-targets',
     'make bindings-smoke test-android-java test-android-launch-lifecycle',
-    'test-android-release-provenance test-android-signing test-android-runner test-android-ci',
+    'test-android-release-provenance',
+    'test-android-signing',
+    'test-android-library-notices',
+    'test-android-runner',
+    'test-android-ci',
     'make bindings-kotlin',
     'bash tools/build-scripts/build-android.sh debug',
     ':app:testDebugUnitTest :app:testReleaseUnitTest',
@@ -152,7 +156,11 @@ phases = [
     'cargo clippy --workspace --all-targets -- -D warnings',
     'cargo test --workspace --all-targets',
     'make bindings-smoke test-android-java test-android-launch-lifecycle',
-    'test-android-release-provenance test-android-signing test-android-runner test-android-ci',
+    'test-android-release-provenance',
+    'test-android-signing',
+    'test-android-library-notices',
+    'test-android-runner',
+    'test-android-ci',
     'make bindings-kotlin',
     'bash tools/build-scripts/build-android.sh debug',
     ':app:testDebugUnitTest :app:testReleaseUnitTest',
@@ -174,5 +182,5 @@ PY
             exit 1
         fi
     done
-    echo 'Android CI runner phase mutation controls: 15 rejected'
+    echo 'Android CI runner phase mutation controls: 19 rejected'
 fi
