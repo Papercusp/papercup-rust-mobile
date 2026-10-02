@@ -28,6 +28,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -262,21 +263,40 @@ class PapercupAppSmokeTest {
     private fun verifyOwnedInbox(paired: DeviceCredentials, result: JSONObject, beginStage: (String) -> Unit) {
         beginStage("jni-request")
         val feed = runBlocking { paired.client().attention() }
-        // This runner creates a fresh private workspace with no harness or
-        // work-item fixtures. Global system alerts may still be present.
-        assertEquals("Private workspace must not leak other attention groups", 0L, feed.groupCount)
-        assertEquals("Private workspace must not leak other work items", 0L, feed.workItemCount)
-        assertTrue(feed.workItems.isEmpty())
         val groups = if (feed.groupsJson.trim().startsWith("[")) JSONArray(feed.groupsJson)
             else JSONObject(feed.groupsJson).getJSONArray("groups")
-        assertEquals(0, groups.length())
+        // Capture bounded scope metadata before assertions, so a failed native
+        // run distinguishes actual foreign content from host-global controls.
+        val scopes = JSONArray()
+        for (g in 0 until groups.length()) {
+            val group = groups.getJSONObject(g)
+            val items = group.getJSONArray("items")
+            val itemScopes = JSONArray()
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                itemScopes.put(JSONObject().put("id", item.opt("id"))
+                    .put("kind", item.opt("kind")).put("harnessSlug", item.opt("harnessSlug"))
+                    .put("planSlug", item.opt("planSlug")))
+            }
+            scopes.put(JSONObject().put("key", group.opt("key"))
+                .put("harnessSlug", group.opt("harnessSlug")).put("planSlug", group.opt("planSlug"))
+                .put("items", itemScopes))
+        }
+        result.put("inboxScopeWitness", JSONObject().put("groupCount", feed.groupCount)
+            .put("workItemCount", feed.workItemCount).put("groups", scopes))
+        beginStage("inbox-scope")
+        assertEquals(groups.length().toLong(), feed.groupCount)
+        assertPrivateWorkspaceGroups(groups)
+        assertFalse(parseAttentionRows(feed.groupsJson).contentUnavailable)
+        assertEquals("Private workspace must not leak other work items", 0L, feed.workItemCount)
+        assertTrue(feed.workItems.isEmpty())
         result.put("inboxScopedReadPassed", true).put("inboxSystemAlertCount", feed.systemAlerts.size)
         beginStage("rendering")
         compose.onNodeWithContentDescription("Inbox").performClick()
-        if (feed.systemAlerts.isEmpty()) {
+        if (feed.systemAlerts.isEmpty() && groups.length() == 0) {
             waitForText("Inbox zero — nothing needs you right now.")
         } else {
-            waitForText("SYSTEM ALERTS")
+            waitForText(if (feed.systemAlerts.isNotEmpty()) "SYSTEM ALERTS" else "NEEDS YOU")
             compose.onNodeWithText("Inbox zero — nothing needs you right now.").assertDoesNotExist()
         }
         compose.waitUntil(30_000) {
@@ -285,6 +305,62 @@ class PapercupAppSmokeTest {
         }
         compose.onNodeWithText("Could not load inbox").assertDoesNotExist()
         compose.onNodeWithText("Inbox status unavailable").assertDoesNotExist()
+    }
+
+    private fun assertPrivateWorkspaceGroups(groups: JSONArray) {
+        // plans:attention source 13 reads the static dark-flag registry for
+        // every workspace. Permit that exact global contract; tenant-backed
+        // plans, harnesses, questions and work items remain forbidden here.
+        for (g in 0 until groups.length()) {
+            val group = groups.getJSONObject(g)
+            assertEquals("alerts:workspace", group.getString("key"))
+            assertEquals("alerts", group.getString("kind"))
+            for (scope in listOf("harnessSlug", "planSlug")) {
+                assertTrue(group.has(scope) && group.isNull(scope))
+            }
+            val items = group.getJSONArray("items")
+            assertTrue(items.length() > 0)
+            for (i in 0 until items.length()) {
+                val item = items.getJSONObject(i)
+                assertEquals("dark-flag-ratification", item.getString("kind"))
+                assertEquals("system-control", item.getString("category"))
+                assertEquals("harness", item.getString("source"))
+                for (scope in listOf("harnessSlug", "planSlug")) {
+                    assertTrue(item.has(scope) && item.isNull(scope))
+                }
+                val ref = item.getJSONObject("ref")
+                assertEquals("dark-flag-ratification", ref.getString("kind"))
+                val flag = ref.getString("flagKey")
+                assertTrue(flag.startsWith("papercusp-") && flag.length > "papercusp-".length)
+                assertEquals("dark-flag-ratification:$flag", item.getString("id"))
+            }
+        }
+    }
+
+    @Test
+    fun privateInboxScopeAcceptsOnlyDocumentedGlobalControls() {
+        val valid = """[{"key":"alerts:workspace","kind":"alerts","harnessSlug":null,"planSlug":null,
+            "items":[{"id":"dark-flag-ratification:papercusp-fixture","kind":"dark-flag-ratification",
+            "category":"system-control","source":"harness","harnessSlug":null,"planSlug":null,
+            "ref":{"kind":"dark-flag-ratification","flagKey":"papercusp-fixture"}}]}]"""
+        assertPrivateWorkspaceGroups(JSONArray("[]"))
+        assertPrivateWorkspaceGroups(JSONArray(valid))
+        val controls: List<(JSONObject) -> Unit> = listOf(
+            { it.put("harnessSlug", "foreign-harness") },
+            { it.put("planSlug", "foreign-plan") },
+            { it.put("key", "plan:foreign-plan") },
+            { it.getJSONArray("items").getJSONObject(0).put("harnessSlug", "foreign-harness") },
+            { it.getJSONArray("items").getJSONObject(0).put("planSlug", "foreign-plan") },
+            { it.getJSONArray("items").getJSONObject(0).put("kind", "owner-question") },
+            { it.getJSONArray("items").getJSONObject(0).put("category", "work-item") },
+            { it.getJSONArray("items").getJSONObject(0).put("id", "foreign-work-item") },
+            { it.getJSONArray("items").getJSONObject(0).getJSONObject("ref").put("kind", "plan-item") },
+        )
+        for (mutate in controls) {
+            val groups = JSONArray(valid)
+            mutate(groups.getJSONObject(0))
+            assertThrows(AssertionError::class.java) { assertPrivateWorkspaceGroups(groups) }
+        }
     }
 
     private fun waitForText(text: String) {

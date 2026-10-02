@@ -196,7 +196,7 @@ try:
         command = ['android/gradlew', '-p', 'android', ':app:connectedDebugAndroidTest',
                    '--rerun', '--console=plain',
                    '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true',
-                   '-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.PapercupAppSmokeTest#launcherActivityStarts',
+                   '-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.PapercupAppSmokeTest#launcherActivityStarts,com.papercuspai.operator.mobile.PapercupAppSmokeTest#privateInboxScopeAcceptsOnlyDocumentedGlobalControls',
                    '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true']
         env['ANDROID_SERIAL'] = native_device
         if not env.get('JAVA_HOME'):
