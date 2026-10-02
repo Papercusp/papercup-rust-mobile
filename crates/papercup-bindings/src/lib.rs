@@ -25,6 +25,88 @@ use papercup_core::voice::{
 
 uniffi::include_scaffolding!("papercup");
 
+#[cfg(test)]
+mod async_bridge_tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+
+    static READY_CALLBACKS: AtomicUsize = AtomicUsize::new(0);
+
+    extern "C" fn repoll(data: u64, result: uniffi::RustFuturePoll) {
+        if result == uniffi::RustFuturePoll::Ready {
+            READY_CALLBACKS.fetch_add(1, Ordering::SeqCst);
+        } else {
+            // Match the inline Kotlin continuation observed in native1248.
+            // This uses our actual generated FFI entry, not a mock scheduler.
+            unsafe {
+                super::ffi_papercup_rust_future_poll_u32(
+                    uniffi::Handle::from_raw_unchecked(data),
+                    repoll,
+                    data,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reentrant_polling_finishes() {
+        const CHILD: &str = "PAPERCUP_UNIFFI_REENTRANT_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let mut first = true;
+            let future = std::future::poll_fn(move |cx| {
+                if first {
+                    first = false;
+                    cx.waker().wake_by_ref();
+                    std::task::Poll::Pending
+                } else {
+                    std::task::Poll::Ready(Ok(47_u32))
+                }
+            });
+            let handle = uniffi::ffi::rust_future_new(future, super::UniFfiTag);
+            unsafe {
+                super::ffi_papercup_rust_future_poll_u32(handle.clone(), repoll, handle.as_raw());
+                assert_eq!(READY_CALLBACKS.load(Ordering::SeqCst), 1);
+                let mut status = uniffi::RustCallStatus::default();
+                assert_eq!(
+                    super::ffi_papercup_rust_future_complete_u32(handle.clone(), &mut status),
+                    47
+                );
+                assert_eq!(status.code, uniffi::RustCallStatusCode::Success);
+                super::ffi_papercup_rust_future_free_u32(handle);
+            }
+            return;
+        }
+        // A regressed native mutex must fail this test rather than hang CI.
+        // Kill only this owned child; the test binary and its output are the
+        // standard Cargo suite, including when the regression is present.
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "async_bridge_tests::reentrant_polling_finishes",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert!(
+                    status.success(),
+                    "generated UniFFI callback re-entry failed"
+                );
+                break;
+            }
+            if Instant::now() >= deadline {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                panic!("generated UniFFI callback re-entry deadlocked");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
 // ── free fns ────────────────────────────────────────────────────────────
 
 fn version() -> String {
