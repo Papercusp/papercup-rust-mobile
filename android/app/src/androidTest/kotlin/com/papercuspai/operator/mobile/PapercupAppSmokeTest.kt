@@ -205,6 +205,27 @@ class PapercupAppSmokeTest {
             result.put("navigationPassed", true).put("journeyCompleted", true)
         } catch (failure: Throwable) {
             result.put("failedStage", stage).put("failureClass", failure.javaClass.name)
+            // Record the generated bridge's actual outstanding handle count,
+            // and stack metadata, before fixture cleanup cancels app work.
+            // No payload, token, thread-local value or exception message is
+            // included. Together with host response-finish timing this can
+            // distinguish a pending Rust callback from a resumed UI task.
+            runCatching {
+                val threads = Thread.getAllStackTraces().entries
+                    .filter { (thread, frames) -> thread.name == "main" || frames.any {
+                        it.className.startsWith("uniffi.") || it.className.startsWith("com.sun.jna.")
+                    } }
+                    .sortedBy { it.key.name }
+                val rows = JSONArray()
+                for ((thread, frames) in threads.take(32)) {
+                    rows.put(JSONObject().put("name", thread.name).put("state", thread.state.name)
+                        .put("frames", JSONArray(frames.take(32).map { it.toString() })))
+                }
+                result.put("asyncFailureWitness", JSONObject()
+                    .put("observedAtMillis", System.currentTimeMillis())
+                    .put("uniffiPendingContinuations", uniffi.papercup.uniffiContinuationHandleMap.size)
+                    .put("threads", rows).put("matchingThreadCount", threads.size))
+            }.onFailure { result.put("asyncWitnessFailureClass", it.javaClass.name) }
             // Keep sensitive input only in the owned app's private storage;
             // the runner retains this image in its restricted evidence dir.
             runCatching {
