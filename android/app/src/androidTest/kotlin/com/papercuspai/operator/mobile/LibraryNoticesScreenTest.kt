@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+package com.papercuspai.operator.mobile
+
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.setContent
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.test.core.app.ActivityScenario
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.papercuspai.operator.mobile.theme.PapercupTheme
+import org.junit.Assert.assertNull
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class LibraryNoticesScreenTest {
+    @get:Rule val compose = createEmptyComposeRule()
+
+    @Before
+    fun requireOwnedUnpairedDevice() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        assertNull(CredentialStore(instrumentation.targetContext).load())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            instrumentation.uiAutomation.grantRuntimePermission(
+                instrumentation.targetContext.packageName, Manifest.permission.POST_NOTIFICATIONS,
+            )
+        }
+    }
+
+    @Test
+    fun unpairedRecipientCanOpenBundledLicenseTextAndReturn() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val libraries = context.resources.openRawResource(R.raw.aboutlibraries).bufferedReader().use {
+            parseLibraryNotices(it.readText())
+        }
+        val library = libraries.libraries.first { row -> row.licenses.any { !it.licenseContent.isNullOrBlank() } }
+        val text = requireNotNull(library.licenses.first { !it.licenseContent.isNullOrBlank() }.licenseContent)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText("Third-party licenses").performClick()
+            compose.waitUntil(15_000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(library.name))
+            compose.onNodeWithText(library.name).performClick()
+            compose.onNodeWithText(text).assertExists()
+            compose.onNodeWithText("OK").performClick()
+            compose.onNodeWithContentDescription("Back").performClick()
+            compose.onNodeWithText("Pair with your desktop").assertIsDisplayed()
+            assertNull(CredentialStore(context).load())
+        }
+    }
+
+    @Test
+    fun dialogPreservesMultipleLicenseTextsAndLinkedOnlyTerms() {
+        val libraries = parseLibraryNotices("""{
+            "libraries":[{"uniqueId":"fixture:library","name":"Fixture library","artifactVersion":"1",
+                "developers":[],"licenses":["first","second","linked"]}],
+            "licenses":{
+                "first":{"name":"First license","content":"First complete license text","hash":"first"},
+                "second":{"name":"Second license","content":"Second complete license text","hash":"second"},
+                "linked":{"name":"Linked terms","url":"https://example.com/terms","hash":"linked"}
+            }
+        }""")
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity -> activity.setContent {
+                PapercupTheme { LibraryNoticesContent(libraries, onBack = {}) }
+            } }
+            compose.onNodeWithText("Fixture library").performClick()
+            compose.onNodeWithText("First complete license text").assertExists()
+            compose.onNodeWithText("Second complete license text").assertExists()
+            compose.onNodeWithText("Linked terms").assertExists()
+            compose.onNodeWithText("Open license reference").assertExists()
+        }
+    }
+
+    @Test
+    fun failedResourceDisplaysAnErrorInsteadOfACompletedEmptyList() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity -> activity.setContent {
+                PapercupTheme { LibraryNoticesContent(null, failed = true, onBack = {}) }
+            } }
+            compose.onNodeWithText("Licenses could not be loaded.").assertIsDisplayed()
+        }
+    }
+}

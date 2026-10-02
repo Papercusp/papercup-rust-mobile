@@ -37,6 +37,7 @@ fun SettingsScreen(
     onOpenVoiceSettings: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {},
     onOpenPrivacyPolicy: () -> Unit = {},
+    onOpenLibraryNotices: () -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val activity = androidx.compose.ui.platform.LocalContext.current.let { ctx ->
@@ -185,6 +186,12 @@ fun SettingsScreen(
                                 ),
                             )
                         },
+                        last = false,
+                    )
+                    ActionRow(
+                        title = stringResource(R.string.settings_library_notices),
+                        subtitle = stringResource(R.string.settings_library_notices_subtitle),
+                        onClick = onOpenLibraryNotices,
                         last = true,
                     )
                 }

@@ -31,6 +31,12 @@
     <string name="settings_diagnostics_subtitle">Connection, mesh, build info</string>
     <string name="settings_privacy_policy">Privacy policy</string>
     <string name="settings_privacy_policy_subtitle">How app, voice, and diagnostic data are handled</string>
+    <string name="settings_library_notices">Third-party licenses</string>
+    <string name="settings_library_notices_subtitle">Licenses for software used in this app</string>
+    <string name="library_notices_loading">Loading licenses…</string>
+    <string name="library_notices_error">Licenses could not be loaded.</string>
+    <string name="library_notices_missing">No license details supplied.</string>
+    <string name="library_notices_open">Open license reference</string>
     <string name="settings_support">Support</string>
     <string name="settings_support_subtitle">Help with pairing, connectivity, or the app</string>
     <string name="settings_forget_device">Forget this device</string>

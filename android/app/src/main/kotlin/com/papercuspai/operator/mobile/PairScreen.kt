@@ -54,7 +54,7 @@ import uniffi.papercup.parseQrPayload
 /// `server` from the payload as the base URL, persist the result, and
 /// return it via `onPaired`.
 @Composable
-fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
+fun PairScreen(onPaired: (DeviceCredentials) -> Unit, onOpenLibraryNotices: () -> Unit = {}) {
     var mode by remember { mutableStateOf<PairMode>(PairMode.Choose) }
     var error by remember { mutableStateOf<String?>(null) }
     var redeeming by remember { mutableStateOf(false) }
@@ -199,6 +199,10 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit) {
                 Spacer(Modifier.width(8.dp))
                 PapercupMetaText(stringResource(R.string.pair_redeeming))
             }
+        }
+
+        TextButton(onClick = onOpenLibraryNotices) {
+            Text(stringResource(R.string.settings_library_notices))
         }
 
         error?.let {

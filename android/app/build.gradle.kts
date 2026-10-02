@@ -237,6 +237,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    // This viewer line is compatible with our Kotlin 2.0 / Compose stack.
+    // The independent Gradle collector produces the variant-specific JSON.
+    implementation("com.mikepenz:aboutlibraries-compose-m3:11.2.2")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.15.0")
 

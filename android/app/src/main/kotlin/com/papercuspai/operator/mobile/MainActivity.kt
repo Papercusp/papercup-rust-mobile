@@ -145,7 +145,7 @@ private fun AppRoot(
     // System back walks the route hierarchy instead of exiting the activity
     // (found by the on-device E2E pass — back from a pushed screen left the
     // app). Inbox is the root: back there exits as normal.
-    androidx.activity.compose.BackHandler(enabled = creds != null && route != Route.Inbox) {
+    androidx.activity.compose.BackHandler(enabled = route != Route.Inbox && (creds != null || route == Route.LibraryNotices)) {
         route = when (val r = route) {
             is Route.Detail -> Route.Brew
             is Route.RunLog -> Route.Detail(r.slug)
@@ -153,6 +153,7 @@ private fun AppRoot(
             Route.PushTapTest -> Route.Diagnostics
             Route.StandingApprovals, Route.VoiceSettings,
             Route.Diagnostics, Route.WorkspaceSelector, Route.PrivacyPolicy -> Route.Settings
+            Route.LibraryNotices -> if (creds == null) Route.Inbox else Route.Settings
             else -> Route.Inbox
         }
     }
@@ -170,10 +171,17 @@ private fun AppRoot(
 
     val current = creds
     if (current == null) {
-        PairScreen(onPaired = { fresh ->
-            onCredentialsChanged(fresh)
-            route = Route.Inbox
-        })
+        if (route == Route.LibraryNotices) {
+            LibraryNoticesScreen(onBack = { route = Route.Inbox })
+        } else {
+            PairScreen(
+                onPaired = { fresh ->
+                    onCredentialsChanged(fresh)
+                    route = Route.Inbox
+                },
+                onOpenLibraryNotices = { route = Route.LibraryNotices },
+            )
+        }
         return
     }
 
@@ -434,6 +442,7 @@ private fun AppRoot(
             onWorkspaceSwitched = onWorkspaceSwitched,
         )
         Route.PrivacyPolicy -> PrivacyPolicyScreen(onBack = { route = Route.Settings })
+        Route.LibraryNotices -> LibraryNoticesScreen(onBack = { route = Route.Settings })
         Route.NotificationHistory -> ActivityScreen(
             creds = current,
             invalidationTick = liveTick,
@@ -467,6 +476,7 @@ private fun AppRoot(
             onOpenVoiceSettings = { route = Route.VoiceSettings },
             onOpenDiagnostics = { route = Route.Diagnostics },
             onOpenPrivacyPolicy = { route = Route.PrivacyPolicy },
+            onOpenLibraryNotices = { route = Route.LibraryNotices },
             onForget = onForget,
             operatorDraft = if (draftServer == current.server.trimEnd('/') &&
                 draftWorkspace == current.workspaceId) operatorDraft else "",
@@ -503,6 +513,7 @@ private fun PairedShell(
     onOpenVoiceSettings: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
+    onOpenLibraryNotices: () -> Unit,
     onForget: () -> Unit,
     operatorDraft: String,
     onOperatorDraftChange: (String) -> Unit,
@@ -650,6 +661,7 @@ private fun PairedShell(
                     onOpenVoiceSettings = onOpenVoiceSettings,
                     onOpenDiagnostics = onOpenDiagnostics,
                     onOpenPrivacyPolicy = onOpenPrivacyPolicy,
+                    onOpenLibraryNotices = onOpenLibraryNotices,
                     onForget = onForget,
                 )
                 else -> {}
@@ -1148,6 +1160,7 @@ private sealed interface Route {
     data object PushTapTest : Route
     data object WorkspaceSelector : Route
     data object PrivacyPolicy : Route
+    data object LibraryNotices : Route
     data object NotificationHistory : Route
     data object RecentActions : Route
 }
