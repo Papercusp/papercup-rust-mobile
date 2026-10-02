@@ -36,6 +36,113 @@ PY
 }
 
 mode="${1:-full}"
+if [[ "$mode" == isolated-native ]]; then
+    # Reuse the operator's migrated-PG/profile owner; never reproduce its
+    # isolation setup here or connect this journey to the shared operator.
+    operator_root="$(realpath "${2:?isolated-native requires the operator checkout}")"
+    [[ -f "$operator_root/scripts/with-test-pg.mjs" &&
+       -f "$operator_root/apps/operator/dist-host/hono-host.mjs" ]] || {
+        echo 'isolated-native requires a prepared operator checkout and host bundle' >&2
+        exit 2
+    }
+    export PAPERCUP_ANDROID_RUNNER="$ROOT/tools/run-android-checks.sh"
+    export PAPERCUP_OPERATOR_ROOT="$operator_root"
+    export PAPERCUP_ANDROID_EVIDENCE="$(realpath -m "${3:-android/app/build/ci-evidence/isolated-native-$(date -u +%Y%m%dT%H%M%SZ)}")"
+    # The runtime's private HOME must not hide the explicitly selected build
+    # toolchain. These paths contain toolchain state, not operator identity.
+    export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+    export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+    export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+    export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/27.0.12077973}"
+    if [[ -z "${JAVA_HOME:-}" ]]; then
+        export JAVA_HOME="$(bash tools/build-scripts/resolve-java-home.sh)"
+    fi
+    exec node "$operator_root/scripts/with-test-pg.mjs" --isolated-runtime=operator-api \
+        -- bash "$PAPERCUP_ANDROID_RUNNER" isolated-native-child
+fi
+
+if [[ "$mode" == isolated-native-child ]]; then
+    python3 - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import time
+import urllib.request
+
+required = {'PAPERCUSP_BACKGROUND_WORKERS': '0', 'PAPERCUSP_DBOS_ENABLE': '0',
+            'PAPERCUSP_CLUSTER': '0', 'PAPERCUSP_SKIP_PG_DISCOVERY': '1',
+            'PAPERCUSP_BIND_HOST': '127.0.0.1'}
+if any(os.environ.get(k) != v for k, v in required.items()):
+    raise SystemExit('isolated-native-child requires the canonical operator-api isolation profile')
+workspace = os.environ.get('PAPERCUSP_WORKSPACE_ID', '')
+home = Path(os.environ.get('HOME', '/'))
+if not workspace.startswith('test-runtime-') or not home.parent.name.startswith('papercusp-test-runtime-'):
+    raise SystemExit('isolated-native-child refuses an ambient workspace or HOME')
+base = os.environ.get('PAPERCUSP_OPERATOR_URL', '')
+if base != 'http://127.0.0.1:' + os.environ.get('PAPERCUSP_HONO_PORT', ''):
+    raise SystemExit('isolated-native-child requires its owned loopback operator port')
+operator = Path(os.environ['PAPERCUP_OPERATOR_ROOT'])
+bundle = operator / 'apps/operator/dist-host/hono-host.mjs'
+evidence = Path(os.environ['PAPERCUP_ANDROID_EVIDENCE'])
+runtime_evidence = Path(str(evidence) + '-runtime')
+runtime_evidence.mkdir(mode=0o700, parents=True, exist_ok=False)
+proof = {'schemaVersion': 1, 'runtime': base, 'workspaceId': workspace,
+         'bundleSha256': hashlib.sha256(bundle.read_bytes()).hexdigest(),
+         'profile': 'with-test-pg --isolated-runtime=operator-api',
+         'backgroundDisabled': True, 'dbosDisabled': True,
+         'executionStarted': False, 'exitCode': 1, 'hostCleanupVerified': False,
+         'scope': 'Private operator/debug native integration; not signed-candidate, physical-phone or Play acceptance'}
+host = None
+try:
+    with (runtime_evidence / 'host.log').open('w') as log:
+        host = subprocess.Popen(['node', str(bundle)], cwd=operator,
+                                stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        proof['hostPid'] = host.pid
+        deadline = time.monotonic() + 60
+        while True:
+            if host.poll() is not None:
+                raise RuntimeError('private operator exited before readiness')
+            try:
+                with urllib.request.urlopen(base + '/api/health', timeout=2) as response:
+                    health = json.load(response)
+                with urllib.request.urlopen(base + '/api/workspaces', timeout=2) as response:
+                    registry = json.load(response)
+                if (health.get('ok') is True and health.get('service') == 'papercusp-operator'
+                        and registry.get('current') == workspace
+                        and {r['id'] for r in registry['workspaces']} == {workspace}):
+                    proof['health'] = health
+                    break
+            except (OSError, ValueError):
+                pass
+            if time.monotonic() >= deadline:
+                raise RuntimeError('private operator health/workspace readiness timed out')
+            time.sleep(0.25)
+        env = dict(os.environ, PAPERCUP_LIVE_BASE=base)
+        proof['executionStarted'] = True
+        run = subprocess.run(['bash', os.environ['PAPERCUP_ANDROID_RUNNER'], 'live',
+                              str(evidence), 'native'], env=env, timeout=1800)
+        proof['exitCode'] = run.returncode
+except Exception as error:
+    proof['error'] = str(error)
+finally:
+    if host is not None:
+        if host.poll() is None:
+            os.killpg(host.pid, signal.SIGTERM)
+            try:
+                host.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(host.pid, signal.SIGKILL)
+                host.wait(timeout=10)
+        proof['hostCleanupVerified'] = host.poll() is not None
+    (runtime_evidence / 'result.json').write_text(json.dumps(proof, indent=2) + '\n')
+raise SystemExit(proof['exitCode'] if proof['hostCleanupVerified'] else 1)
+PY
+    exit $?
+fi
+
 if [[ "$mode" == live ]]; then
     # Reuse the canonical Cargo smoke, with owned fixtures rather than a
     # manually registered second workspace that disappears between sessions.
