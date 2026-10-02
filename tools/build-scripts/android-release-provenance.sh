@@ -8,6 +8,7 @@ MANIFEST_REL="android/app/build/outputs/papercusp-release-provenance.json"
 RECORD_REL="android/app/build/outputs/RELEASE-CANDIDATE.md"
 APK_REL="android/app/build/outputs/apk/release/app-release.apk"
 AAB_REL="android/app/build/outputs/bundle/release/app-release.aab"
+SOURCE_REL="android/app/build/outputs/papercusp-mobile-source.tar.gz"
 MANIFEST="$REPO_ROOT/$MANIFEST_REL"
 RECORD="$REPO_ROOT/$RECORD_REL"
 
@@ -48,6 +49,146 @@ assert_clean_source() {
     }
 }
 
+# Export only committed files, including each recursively pinned submodule.
+# This is the project's source contribution, not third-party license clearance
+# or proof that a recipient can retrieve it from a published location.
+source_archive() {
+    local action="$1" commit="$2"
+    REPO_ROOT="$REPO_ROOT" SOURCE_REL="$SOURCE_REL" python3 - "$action" "$commit" <<'PY'
+import gzip
+import hashlib
+import io
+import json
+import os
+from pathlib import Path, PurePosixPath
+import subprocess
+import sys
+import tarfile
+import tempfile
+
+action, commit = sys.argv[1:]
+root = Path(os.environ['REPO_ROOT']).resolve()
+output = root / os.environ['SOURCE_REL']
+prefix = 'papercusp-mobile-source/'
+expected, repositories = {}, []
+
+def git(repo, *args):
+    return subprocess.check_output(['git', '-C', str(repo), *args])
+
+def safe_path(name):
+    path = PurePosixPath(name)
+    if path.is_absolute() or '..' in path.parts or not path.parts:
+        raise SystemExit(f'Unsafe source path: {name}')
+    return path
+
+def collect(repo, revision, relative=''):
+    if not repo.is_dir() or Path(git(repo, 'rev-parse', '--show-toplevel').decode().strip()).resolve() != repo:
+        raise SystemExit(f'Source repository is not initialized: {relative or "."}')
+    if git(repo, 'rev-parse', 'HEAD').decode().strip() != revision:
+        raise SystemExit(f'Source repository differs from its gitlink: {relative or "."}')
+    if git(repo, 'status', '--porcelain', '--untracked-files=normal').strip():
+        raise SystemExit(f'Source repository is dirty: {relative or "."}')
+    repositories.append({'path': relative or '.', 'commit': revision})
+    objects = {}
+    children = []
+    for row in git(repo, 'ls-tree', '-rz', '--full-tree', revision).split(b'\0'):
+        if not row:
+            continue
+        header, name = row.split(b'\t', 1)
+        mode, kind, oid = header.decode().split()
+        name = name.decode()
+        safe_path(name)
+        if kind == 'commit' and mode == '160000':
+            children.append((name, oid))
+        elif kind == 'blob':
+            objects[name] = (mode, oid)
+        else:
+            raise SystemExit(f'Unsupported source entry: {name}')
+    object_format = git(repo, 'rev-parse', '--show-object-format').decode().strip()
+    seen = set()
+    with tarfile.open(fileobj=io.BytesIO(git(repo, 'archive', '--format=tar', revision))) as archive:
+        for member in archive:
+            if member.isdir():
+                continue
+            safe_path(member.name)
+            if member.name not in objects or member.name in seen:
+                raise SystemExit(f'Unexpected source archive entry: {member.name}')
+            seen.add(member.name)
+            mode, oid = objects[member.name]
+            if member.issym() and mode == '120000':
+                data = member.linkname.encode()
+            elif member.isfile() and mode in ('100644', '100755'):
+                data = archive.extractfile(member).read()
+            else:
+                raise SystemExit(f'Source entry type mismatch: {member.name}')
+            blob = b'blob ' + str(len(data)).encode() + b'\0' + data
+            if hashlib.new(object_format, blob).hexdigest() != oid:
+                raise SystemExit(f'Source archive differs from committed bytes: {member.name}')
+            full = prefix + (relative + '/' if relative else '') + member.name
+            expected[full] = (member, data)
+    if seen != set(objects):
+        raise SystemExit('Source archive omitted committed files (check export-ignore attributes)')
+    for name, oid in children:
+        child = (repo / name).resolve()
+        if not child.is_relative_to(root):
+            raise SystemExit(f'Submodule escapes source root: {name}')
+        collect(child, oid, (relative + '/' if relative else '') + name)
+
+collect(root, commit)
+metadata_name = prefix + 'SOURCE-PROVENANCE.json'
+if metadata_name in expected:
+    raise SystemExit('SOURCE-PROVENANCE.json is reserved for generated source identity')
+metadata = (json.dumps({'schemaVersion': 1, 'sourceCommit': commit,
+                       'repositories': repositories}, sort_keys=True, indent=2) + '\n').encode()
+info = tarfile.TarInfo(metadata_name)
+info.size, info.mode = len(metadata), 0o644
+expected[metadata_name] = (info, metadata)
+
+if action == 'write':
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            with gzip.GzipFile(fileobj=stream, mode='wb', filename='', mtime=0) as compressed:
+                with tarfile.open(fileobj=compressed, mode='w', format=tarfile.PAX_FORMAT) as archive:
+                    for name, (entry, data) in sorted(expected.items()):
+                        entry.name = name
+                        # Git may carry a PAX path override for long filenames.
+                        # Let tarfile regenerate it from the prefixed name.
+                        entry.pax_headers = {}
+                        entry.uid = entry.gid = 0
+                        entry.uname = entry.gname = ''
+                        archive.addfile(entry, io.BytesIO(data) if entry.isfile() else None)
+        os.replace(temporary, output)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+elif action == 'verify':
+    seen = set()
+    with tarfile.open(output, 'r:gz') as archive:
+        for entry in archive:
+            safe_path(entry.name)
+            if entry.name not in expected or entry.name in seen:
+                raise SystemExit(f'Unexpected or duplicate delivered source entry: {entry.name}')
+            seen.add(entry.name)
+            wanted, data = expected[entry.name]
+            if entry.type != wanted.type or entry.mode != wanted.mode or entry.linkname != wanted.linkname:
+                raise SystemExit(f'Delivered source entry metadata mismatch: {entry.name}')
+            if entry.isfile() and archive.extractfile(entry).read() != data:
+                raise SystemExit(f'Delivered source bytes mismatch: {entry.name}')
+    if seen != set(expected):
+        raise SystemExit('Delivered source archive is incomplete')
+else:
+    raise SystemExit(f'Unsupported source archive action: {action}')
+# Refuse a checkout/HEAD change that happened during archive construction.
+for repository in repositories:
+    repo = root if repository['path'] == '.' else root / repository['path']
+    if git(repo, 'rev-parse', 'HEAD').decode().strip() != repository['commit'] or git(repo, 'status', '--porcelain', '--untracked-files=normal').strip():
+        raise SystemExit('Source checkout changed while preparing its archive')
+PY
+}
+
 resolve_apkanalyzer() {
     if [[ -n "${PAPERCUP_APKANALYZER:-}" ]]; then
         printf '%s\n' "$PAPERCUP_APKANALYZER"
@@ -86,12 +227,14 @@ write_manifest() {
         || die "APK versionCode must be a positive integer (got $apk_version_code)"
     [[ "$apk_version_code" == "$expected_version_code" ]] \
         || die "APK versionCode is $apk_version_code, but requested release version derives versionCode $expected_version_code"
+    source_archive write "$commit"
     built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     mkdir -p "$(dirname "$MANIFEST")"
     tmp="${MANIFEST}.tmp.$$"
     RELEASE_VERSION="$version" RELEASE_VERSION_CODE="$expected_version_code" SOURCE_COMMIT="$commit" BUILT_AT="$built_at" \
         APK_SIZE="$(stat -c%s "$apk")" APK_SHA256="$(sha256_file "$apk")" \
         AAB_SIZE="$(stat -c%s "$aab")" AAB_SHA256="$(sha256_file "$aab")" \
+        SOURCE_SIZE="$(stat -c%s "$REPO_ROOT/$SOURCE_REL")" SOURCE_SHA256="$(sha256_file "$REPO_ROOT/$SOURCE_REL")" \
         node - "$tmp" <<'NODE'
 const fs = require('node:fs');
 const out = process.argv[2];
@@ -111,6 +254,7 @@ const manifest = {
   artifacts: {
     apk: artifact('apk', 'android/app/build/outputs/apk/release/app-release.apk', process.env.APK_SIZE, process.env.APK_SHA256),
     aab: artifact('aab', 'android/app/build/outputs/bundle/release/app-release.aab', process.env.AAB_SIZE, process.env.AAB_SHA256),
+    source: artifact('source', 'android/app/build/outputs/papercusp-mobile-source.tar.gz', process.env.SOURCE_SIZE, process.env.SOURCE_SHA256),
   },
 };
 fs.writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
@@ -156,7 +300,7 @@ const lines = [
   `| Source dirty | ${manifest.sourceDirty} |`,
   `| Built at | ${manifest.builtAt} |`,
 ];
-for (const kind of ['apk', 'aab']) {
+for (const kind of ['apk', 'aab', 'source']) {
   const artifact = manifest.artifacts?.[kind];
   if (!artifact) throw new Error(`manifest is missing the ${kind} artifact`);
   const label = kind.toUpperCase();
@@ -171,6 +315,9 @@ lines.push(
   '```sh',
   `tools/build-scripts/android-release-provenance.sh verify ${manifest.releaseVersion}`,
   '```',
+  '',
+  'The source archive includes committed root files and recursively pinned submodules.',
+  'Third-party corresponding source, license clearance and recipient retrieval remain separate checks.',
   '',
 );
 fs.writeFileSync(out, lines.join('\n'), { mode: 0o600 });
@@ -219,6 +366,7 @@ if (manifest.sourceDirty !== false) fail('sourceDirty must be false');
 for (const [kind, rel] of [
   ['apk', 'android/app/build/outputs/apk/release/app-release.apk'],
   ['aab', 'android/app/build/outputs/bundle/release/app-release.aab'],
+  ['source', 'android/app/build/outputs/papercusp-mobile-source.tar.gz'],
 ]) {
   const entry = manifest.artifacts?.[kind];
   if (!entry || entry.kind !== kind || entry.path !== rel) fail(`${kind} path/kind mismatch`);
@@ -228,6 +376,7 @@ for (const [kind, rel] of [
   if (!/^[0-9a-f]{64}$/.test(entry.sha256) || hashFile(file) !== entry.sha256) fail(`${kind} sha256 mismatch`);
 }
 NODE
+    source_archive verify "$commit"
 }
 
 case "${1:-}" in
@@ -253,7 +402,15 @@ case "${1:-}" in
         [[ $# -eq 1 ]] || die "usage: $0 record"
         printf '%s\n' "$RECORD"
         ;;
+    source-archive)
+        [[ $# -eq 1 ]] || die "usage: $0 source-archive"
+        assert_clean_source
+        commit="$(source_commit)"
+        source_archive write "$commit"
+        source_archive verify "$commit"
+        printf '%s\n' "$REPO_ROOT/$SOURCE_REL"
+        ;;
     *)
-        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record}"
+        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive}"
         ;;
 esac

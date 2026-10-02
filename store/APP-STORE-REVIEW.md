@@ -231,3 +231,22 @@ terms. A root-only Git archive omits submodule contents, and a private clone URL
 does not give a recipient access. Bind the final source delivery to the
 candidate's actual gitlink, include build instructions and applicable notices,
 and verify retrieval as a recipient before claiming source delivery complete.
+
+The existing Android provenance producer now creates
+`android/app/build/outputs/papercusp-mobile-source.tar.gz` when writing release
+provenance. It records the archive's size and SHA-256 in the same artifact map
+as the APK/AAB and verifies its committed file contents and recursively pinned
+submodule sources. The archive includes `SOURCE-PROVENANCE.json`, root build
+instructions and tracked license files. Missing, dirty or mismatched submodule
+checkouts are rejected. For local preparation from a clean checkout:
+
+```sh
+tools/build-scripts/android-release-provenance.sh source-archive
+```
+
+This archive provides the mobile repository's source contribution. It does not
+by itself include every third-party dependency's corresponding source, establish
+licensing clearance, or make a private artifact accessible to recipients. Before
+distribution, supplement any required dependency sources/notices, bind the final
+delivery to the candidate and verify actual recipient retrieval. Do not publish
+the source archive merely because local preparation passed.
