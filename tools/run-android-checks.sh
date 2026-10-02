@@ -68,7 +68,9 @@ required = ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedS
             'inboxRecoveryPassed', 'navigationPassed', 'credentialsCleared',
             'expiredJwtControlPassed', 'expiredJwtRejected', 'expiredJwtRenderingPassed',
             'expiredJwtFreshPairPassed', 'revokedDeviceRejected',
-            'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed')
+            'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed',
+            'revocationMissingPromptBlocked', 'revocationDeniedPromptBlocked',
+            'revocationApprovedPromptInvoked', 'revocationBiometricPromptStubbed')
 if (journey.get('runId') != native.get('runId')
         or journey.get('workspaceId') != native.get('ownedWorkspace', {}).get('id')
         or not journey.get('deviceId') in native.get('ownedDeviceIds', [])
@@ -113,6 +115,10 @@ if [[ "$mode" == isolated-native ]]; then
         echo 'isolated-native requires a prepared operator checkout and host bundle' >&2
         exit 2
     }
+    # Catch fixture contract and high-risk approval regressions before the
+    # expensive native leg. These are controls, not native acceptance.
+    bash tools/tests/run-android-checks-test.sh
+    cargo test -p papercup-core --lib biometric::tests -- --nocapture
     export PAPERCUP_ANDROID_RUNNER="$ROOT/tools/run-android-checks.sh"
     export PAPERCUP_OPERATOR_ROOT="$operator_root"
     export PAPERCUP_ANDROID_EVIDENCE="$(realpath -m "${3:-android/app/build/ci-evidence/isolated-native-$(date -u +%Y%m%dT%H%M%SZ)}")"
@@ -546,7 +552,9 @@ try:
         if auth_fixture_enabled and not all(proof.get(k) is True for k in
                 ('expiredJwtControlPassed', 'expiredJwtRejected', 'expiredJwtRenderingPassed',
                  'expiredJwtFreshPairPassed', 'revokedDeviceRejected',
-                 'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed')):
+                 'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed',
+                 'revocationMissingPromptBlocked', 'revocationDeniedPromptBlocked',
+                 'revocationApprovedPromptInvoked', 'revocationBiometricPromptStubbed')):
             raise RuntimeError('actual expiry/revocation and fresh-pair recovery proof required')
         registered = api('/api/device/desktop/devices')['devices']
         if (proof.get('deviceId') in existing_devices or not any(
