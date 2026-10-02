@@ -55,6 +55,8 @@ if (native.get('checkKind') != 'native' or native.get('exitCode') != 0
         or runtime.get('exitCode') != 0
         or not all(runtime.get(k) is True for k in ('executionStarted', 'hostCleanupVerified', 'nativeProcessCleanupVerified'))
         or runtime.get('operatorSourceCommit') != expected
+        or not re.fullmatch('[0-9a-f]{7,40}', runtime.get('health', {}).get('sha') or '')
+        or not expected.startswith(runtime.get('health', {}).get('sha') or '!')
         or not re.fullmatch('[0-9a-f]{64}', runtime.get('bundleSha256', ''))
         or native.get('runtime') != runtime.get('runtime')
         or not runtime.get('workspaceId', '').startswith('test-runtime-')):
@@ -181,6 +183,11 @@ try:
                         and registry.get('current') == workspace
                         and {r['id'] for r in registry['workspaces']} == {workspace}):
                     proof['health'] = health
+                    expected = os.environ.get('PAPERCUP_OPERATOR_SHA')
+                    if expected and (proof['operatorSourceCommit'] != expected
+                            or not isinstance(health.get('sha'), str)
+                            or len(health['sha']) < 7 or not expected.startswith(health['sha'])):
+                        raise RuntimeError('private operator loaded source differs from the pinned counterpart')
                     break
             except (OSError, ValueError):
                 pass

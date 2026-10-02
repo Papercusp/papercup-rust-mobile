@@ -103,18 +103,20 @@ native['nativeJourney'] = dict(runId='this-attempt', workspaceId='fixture-worksp
                              deviceId='fixture-device', currentStage='completed', **{k: True for k in flags})
 runtime = dict(exitCode=0, executionStarted=True, hostCleanupVerified=True,
                nativeProcessCleanupVerified=True, runtime=native['runtime'],
-               workspaceId='test-runtime-fixture', operatorSourceCommit=expected, bundleSha256='b'*64)
+               workspaceId='test-runtime-fixture', operatorSourceCommit=expected, bundleSha256='b'*64,
+               health={'sha': expected[:12]})
 good_xml = '<testsuite tests="2"><testcase name="launcherActivityStarts"/><testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"/></testsuite>'
 cases = ['pass', 'stale-counterpart', 'missing-bundle', 'native-failed', 'host-failed',
          'native-not-executed', 'host-not-executed', 'native-cleanup', 'host-cleanup',
          'native-process-cleanup', 'ambient-runtime', 'runtime-mismatch', 'other-attempt',
          'other-workspace', 'other-device', 'stale-source', 'missing-fingerprints',
-         'changed-apk', 'missing-apk', 'missing-xml', 'skipped-xml', 'duplicate-test'] + ['missing-'+f for f in flags]
+         'changed-apk', 'missing-apk', 'missing-xml', 'skipped-xml', 'duplicate-test',
+         'stale-loaded-source', 'missing-loaded-source'] + ['missing-'+f for f in flags]
 for case in cases:
     out = temp / ('paired-proof-' + case); out.mkdir()
     reports = out / 'native-results'; reports.mkdir()
     host = Path(str(out)+'-runtime'); host.mkdir()
-    n, r = copy.deepcopy(native), dict(runtime)
+    n, r = copy.deepcopy(native), copy.deepcopy(runtime)
     n['artifacts'] = []
     for name in ('app-debug.apk', 'app-debug-androidTest.apk'):
         (out / name).write_bytes(b'tested fixture APK')
@@ -122,6 +124,8 @@ for case in cases:
     xml = good_xml
     if case == 'stale-counterpart': r['operatorSourceCommit'] = 'c'*40
     if case == 'missing-bundle': r.pop('bundleSha256')
+    if case == 'stale-loaded-source': r['health']['sha'] = 'c'*12
+    if case == 'missing-loaded-source': r.pop('health')
     if case == 'native-failed': n['exitCode'] = 1
     if case == 'host-failed': r['exitCode'] = 1
     if case == 'native-not-executed': n['executionStarted'] = False

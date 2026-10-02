@@ -138,7 +138,7 @@ jobs:
         run: |
           test "$(git -C android-ci-attempt/operator rev-parse HEAD)" = "$PAPERCUP_OPERATOR_SHA"
           git -C android-ci-attempt/operator submodule status --recursive > android-ci-attempt/operator-submodules.txt
-          if rg -n '^[+-U]' android-ci-attempt/operator-submodules.txt; then exit 1; fi
+          if rg -n '^[+U-]' android-ci-attempt/operator-submodules.txt; then exit 1; fi
           printf '%s\n' "$PAPERCUP_OPERATOR_SHA" > android-ci-attempt/operator-source-sha.txt
 
       - name: Restore exact-content native success proof
@@ -178,7 +178,7 @@ jobs:
         run: |
           node scripts/npm-install-safe.mjs ci --legacy-peer-deps
           bash apps/operator/bin/bundle-host.sh
-          node apps/operator/bin/bundle-host-freshness.mjs check --repo-root "$PWD" --entry bin/hono-host.ts --outfile dist-host/hono-host.mjs --manifest dist-host/.bundle-fresh.json
+          node apps/operator/bin/bundle-host-freshness.mjs check --repo-root "$PWD" --entry apps/operator/bin/hono-host.ts --outfile apps/operator/dist-host/hono-host.mjs --manifest apps/operator/dist-host/.bundle-fresh.json
           cp apps/operator/dist-host/.bundle-fresh.json ../operator-bundle-fresh.json
 
       - uses: android-actions/setup-android@v3
