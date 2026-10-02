@@ -233,12 +233,14 @@ try:
     if kind == 'native' and result['exitCode'] == 0:
         reports = list(connected.rglob('TEST-*.xml'))
         cases = [case for file in reports for case in ET.parse(file).getroot().iter('testcase')]
-        if (len(cases) != 1 or cases[0].get('name') != 'launcherActivityStarts'
+        required_native_tests = {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls'}
+        if (len(cases) != len(required_native_tests)
+                or {case.get('name') for case in cases} != required_native_tests
                 or any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
                 or any(int(suite.get(tag, '0')) for file in reports
                        for suite in ET.parse(file).getroot().iter('testsuite')
                        for tag in ('failures', 'errors', 'skipped'))):
-            raise RuntimeError('native live test must execute exactly once without failures or skips')
+            raise RuntimeError('native journey and scope controls must each execute exactly once without failures or skips')
         proof = json.loads(app_shell('cat files/native-pairing-result.json').stdout)
         if (proof.get('runId') != attempt or proof.get('workspaceId') != fixture_id
                 or proof.get('currentStage') != 'completed'

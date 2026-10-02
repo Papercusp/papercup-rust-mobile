@@ -55,7 +55,9 @@ original_device = '87654321-4321-4321-4321-cba987654321'
 
 cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail',
          'setup-unavailable', 'setup-no-selection',
-         'native-pass', 'native-empty', 'native-no-proof', 'native-no-label-proof', 'native-no-browser-boundary',
+         'native-pass', 'native-empty', 'native-no-scope-test', 'native-duplicate-journey',
+         'native-wrong-scope-test', 'native-skipped-scope-test',
+         'native-no-proof', 'native-no-label-proof', 'native-no-browser-boundary',
          'native-no-inbox-scope', 'native-no-inbox-rendering', 'native-no-inbox-unauthorized', 'native-no-inbox-recovery',
          'native-no-pairing-trace', 'native-no-progress',
          'native-timeout', 'native-test-fail', 'native-uninstalled',
@@ -268,13 +270,21 @@ else:
     assert '--rerun' in sys.argv and '--rerun-tasks' not in sys.argv, 'live gate rebuilt after minting its one-use token'
     assert '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true' in sys.argv
     assert any('PapercupAppSmokeTest#launcherActivityStarts' in arg for arg in sys.argv)
+    assert any('PapercupAppSmokeTest#privateInboxScopeAcceptsOnlyDocumentedGlobalControls' in arg for arg in sys.argv)
     assert all('private-test-token' not in arg for arg in sys.argv)
     if case == 'native-timeout': time.sleep(5)
     p = Path('android/app/build/outputs/androidTest-results/connected/debug/TEST-native.xml')
     p.parent.mkdir(parents=True, exist_ok=True)
+    journey = '<testcase name="launcherActivityStarts"/>'
+    scope = '<testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"/>'
+    if case == 'native-no-scope-test': scope = ''
+    if case == 'native-duplicate-journey': scope = journey
+    if case == 'native-wrong-scope-test': scope = '<testcase name="unrelatedTest"/>'
+    if case == 'native-skipped-scope-test':
+        scope = '<testcase name="privateInboxScopeAcceptsOnlyDocumentedGlobalControls"><skipped/></testcase>'
     p.write_text('<testsuite tests="0"/>' if case == 'native-empty' else
-                 '<testsuite tests="1" failures="1"><testcase name="launcherActivityStarts"><failure>lifecycle failure</failure></testcase></testsuite>' if case == 'native-test-fail' else
-                 '<testsuite tests="1"><testcase name="launcherActivityStarts"/></testsuite>')
+                 '<testsuite tests="2" failures="1"><testcase name="launcherActivityStarts"><failure>lifecycle failure</failure></testcase>' + scope + '</testsuite>' if case == 'native-test-fail' else
+                 '<testsuite tests="2">' + journey + scope + '</testsuite>')
     # AGP uninstalls both packages by default, deleting app-private proof.
     # Model that side effect so a missing retention option cannot pass here.
     if case == 'native-uninstalled' or '-Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true' not in sys.argv:
