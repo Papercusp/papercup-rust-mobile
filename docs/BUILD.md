@@ -117,7 +117,12 @@ navigation on the explicitly owned API 36 / 16 KB emulator. The native runner
 revokes its device and removes its workspace and private app inputs; the wrapper
 stops its host even on interruption, then the canonical bootstrap disposes its
 database and private runtime. Runtime and native evidence use separate attempt
-directories. Prepare the operator dependencies/bundle before invocation; a
+directories. The isolated invocation runs the maintained runner controls and
+Rust biometric gate tests before the native build. Its revocation journey
+checks that missing and denied biometric callbacks leave the device valid,
+then uses an explicitly recorded test approval callback to exercise actual
+JNI/HTTP revocation and fresh pairing. This does not verify OS biometric UI or
+physical hardware. Prepare the operator dependencies/bundle before invocation; a
 missing bundle or an ambient runtime is refused. Scheduled CI now checks out the
 exact operator commit pinned in `ci.yml`, recursively obtains its private
 submodules with the existing canonical `SUBMODULES_PAT` read credential, and

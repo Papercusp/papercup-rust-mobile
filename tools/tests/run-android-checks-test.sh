@@ -101,7 +101,9 @@ flags = ['journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShel
          'inboxRecoveryPassed', 'navigationPassed', 'credentialsCleared',
          'expiredJwtControlPassed', 'expiredJwtRejected', 'expiredJwtRenderingPassed',
          'expiredJwtFreshPairPassed', 'revokedDeviceRejected',
-         'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed']
+         'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed',
+         'revocationMissingPromptBlocked', 'revocationDeniedPromptBlocked',
+         'revocationApprovedPromptInvoked', 'revocationBiometricPromptStubbed']
 native['nativeJourney'] = dict(runId='this-attempt', workspaceId='fixture-workspace',
                              deviceId='fixture-device', currentStage='completed', **{k: True for k in flags})
 runtime = dict(exitCode=0, executionStarted=True, hostCleanupVerified=True,
@@ -184,7 +186,9 @@ function = next(n for n in ast.parse(live).body if isinstance(n, ast.FunctionDef
 operator = temp / 'auth-operator'
 signer = operator / 'packages/operator-core/lib/device-jwt.ts'
 signer.parent.mkdir(parents=True); signer.write_text('private operator signer source fixture')
-for case in ['reject-401', 'reject-403', 'accepted-expiry', 'server-fault', 'foreign-scope', 'bad-signer']:
+auth_cases = ['reject-401', 'reject-403', 'accepted-expiry', 'server-fault',
+              'foreign-scope', 'bad-signer', 'control-reject-401', 'control-reject-403']
+for case in auth_cases:
     minted, observed = [], []
     def api(path, method='GET', body=None, bearer=None):
         observed.append((path, method, bearer))
@@ -195,7 +199,10 @@ for case in ['reject-401', 'reject-403', 'accepted-expiry', 'server-fault', 'for
                     'deviceToken': 'private-control-token',
                     'workspaceId': 'foreign' if case == 'foreign-scope' else 'owned-workspace'}
         assert path == '/api/device/attention'
-        if bearer == 'private-control-token': return {'groups': []}
+        if bearer == 'private-control-token':
+            if case.startswith('control-reject-'):
+                raise HTTPError(path, int(case[-3:]), 'positive control refused', {}, None)
+            return {'groups': []}
         assert bearer == 'header.expired.signature'
         if case == 'accepted-expiry': return {'groups': []}
         raise HTTPError(path, 500 if case == 'server-fault' else int(case[-3:]), 'auth refusal', {}, None)
@@ -215,6 +222,9 @@ for case in ['reject-401', 'reject-403', 'accepted-expiry', 'server-fault', 'for
         fixture = scope['native_auth_fixture'](34567)
     except (RuntimeError, HTTPError):
         assert case not in ['reject-401', 'reject-403'], case
+        if case.startswith('control-reject-'):
+            assert result['authFixtureStage'] == 'positive-control'
+            assert 'authFixtureBasis' not in result
     else:
         assert case in ['reject-401', 'reject-403'], case
         assert result['authFixtureBasis']['expiredRejectedStatus'] == int(case[-3:])
@@ -223,7 +233,7 @@ for case in ['reject-401', 'reject-403', 'accepted-expiry', 'server-fault', 'for
         assert fixture['expiredToken'] == 'header.expired.signature'
         assert 'private-control-token' not in json.dumps(result)
         assert 'header.expired.signature' not in json.dumps(result)
-print('Android auth fixture: 6 control/refusal cases passed (signer and API fixtures only)')
+print(f'Android auth fixture: {len(auth_cases)} control/refusal cases passed (signer and API fixtures only)')
 PY
 mkdir -p "$TMP_ROOT/test-results/testDebugUnitTest" "$TMP_ROOT/test-results/testReleaseUnitTest" \
     "$TMP_ROOT/outputs/androidTest-results/connected/debug/device"

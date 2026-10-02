@@ -38,6 +38,9 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import uniffi.papercup.ApiException
+import uniffi.papercup.BiometricPrompt
+import uniffi.papercup.BiometricResult
+import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(AndroidJUnit4::class)
 class PapercupAppSmokeTest {
@@ -209,8 +212,47 @@ class PapercupAppSmokeTest {
                 verifyOwnedInbox(paired, result) { beginStage("expired-repair-$it") }
                 result.put("expiredJwtFreshPairPassed", true)
 
+                beginStage("revocation-missing-prompt-control")
+                val revokeClient = paired.client()
+                assertTrue("High-risk revocation requires an explicit biometric approval",
+                    runCatching { runBlocking { revokeClient.revokeDevice(paired.deviceId) } }
+                        .exceptionOrNull() is ApiException.Unauthorized)
+                verifyOwnedInbox(paired, result) { beginStage("revocation-missing-prompt-$it") }
+                result.put("revocationMissingPromptBlocked", true)
+
+                // This callback fixtures the platform decision only. The
+                // actual UniFFI gate, HTTP revoke and rejected reads execute;
+                // OS biometric UI and physical hardware remain separate proof.
+                val expectedReason = "Revoke device ${paired.deviceId.take(8)}"
+                val deniedPrompts = AtomicInteger()
+                revokeClient.setBiometricPrompt(object : BiometricPrompt {
+                    override fun prompt(reason: String): BiometricResult {
+                        assertEquals(expectedReason, reason)
+                        deniedPrompts.incrementAndGet()
+                        return BiometricResult.Denied
+                    }
+                })
+                beginStage("revocation-denied-prompt-control")
+                assertTrue("Denied biometric approval must block revocation",
+                    runCatching { runBlocking { revokeClient.revokeDevice(paired.deviceId) } }
+                        .exceptionOrNull() is ApiException.Unauthorized)
+                assertEquals(1, deniedPrompts.get())
+                verifyOwnedInbox(paired, result) { beginStage("revocation-denied-prompt-$it") }
+                result.put("revocationDeniedPromptBlocked", true)
+
+                val approvedPrompts = AtomicInteger()
+                revokeClient.setBiometricPrompt(object : BiometricPrompt {
+                    override fun prompt(reason: String): BiometricResult {
+                        assertEquals(expectedReason, reason)
+                        approvedPrompts.incrementAndGet()
+                        return BiometricResult.Approved
+                    }
+                })
                 beginStage("actual-device-revocation")
-                runBlocking { paired.client().revokeDevice(paired.deviceId) }
+                runBlocking { revokeClient.revokeDevice(paired.deviceId) }
+                assertEquals(1, approvedPrompts.get())
+                result.put("revocationApprovedPromptInvoked", true)
+                    .put("revocationBiometricPromptStubbed", true)
                 assertTrue("A revoked device must fail through actual JNI/HTTP",
                     runCatching { runBlocking { paired.client().attention() } }.exceptionOrNull() is ApiException.Unauthorized)
                 result.put("revokedDeviceRejected", true)
