@@ -328,6 +328,23 @@ choose among alternative license grants, clear distribution rights or prove
 recipient access. Final app notice delivery and the candidate-bound review
 remain required.
 
+Actual October 3 production at mobile commit `8d3e99c8` verified all 249
+locked registry packages and 12,321 vendor files, generating 162 distinct texts.
+Those exact package/text definitions now extend the existing
+`android/config/libraries` and `android/config/licenses` collector inputs.
+`android/config/RUST-SOURCES.json` retains each source declaration, checksum,
+selected text hash and pinned supplement reference. The ordinary collector
+checks the Cargo.lock fingerprint before generation; a changed lockfile
+requires reviewed regeneration. The maintained metadata check compares the
+entire registry population and exact texts with this ledger and exercises
+damaged Rust records as well as Android graph cache transitions.
+
+This delivers supplemental lockfile records through the same generated resource
+and viewer. It retains the broad inventory scope above; it does not claim that
+every record is linked into Android or complete source-header/license clearance.
+Final signed-candidate/native notice access and recipient delivery still need
+their own evidence.
+
 The existing source-provenance helper provides a repeatable exported-source
 compilation check, after the root archive and locked Rust supplement are prepared:
 
