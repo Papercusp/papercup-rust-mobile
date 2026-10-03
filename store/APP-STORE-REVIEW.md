@@ -1232,25 +1232,38 @@ The pinned engine's `DEPS` selects `src/third_party` revision
 `8062e0e102496ff14a8c58b586f014527424953d`, which also matches the retained
 build package's `VERSIONS` record. The private
 `webrtc-jni-zero-8062e0e1-source.json` now retains the complete pristine texts
-of both `third_party/jni_zero` files targeted by `jni_prefix.patch`.
+of all four `third_party/jni_zero` files identified by the `---`/`+++` hunk
+paths in `jni_prefix.patch`. Two `diff --git` headers omit `third_party`;
+the earlier two-target coverage claim is corrected here.
 
 | Patch input | Git blob | Source SHA-256 |
 | --- | --- | --- |
+| `BUILD.gn` | `31a6f3d6b9a9c973bebf68b7f6af42180442e16a` | `409bacfd1f649db582f075b60645700303d46df7eb0e8fd9608aba9eac49baea` |
+| `codegen/header_common.py` | `e401549e5519bd0555dca109a046e8be3d34cd4f` | `38b22fb5dc37a30fbef5a80049c5a586709b92d4bc01dd0e6d759fda0d302b0c` |
 | `jni_zero.gni` | `31c1392fad4873cf49594cbb3d2a8987d6911c1e` | `ac2f533d6698f4a10bb9b3c3f72337706cca1f899b7b0b86427c7c35d405bcec` |
 | `parse.py` | `9195137abec229257444f96813fee9b1d86fecea` | `10af81a7b58aef221eb810adcfe4068726b5a5a51cbe2920cd5721991a6ff846` |
 
 Their complete Git blob identities match the patch's old-index prefixes.
 Readback checked each text's size, SHA-256 and Git blob identity, and verified
-that these two paths exactly cover the patch's external JNI-zero targets.
+that these four paths exactly cover the patch's external JNI-zero hunk targets.
 The receipt SHA-256 is
-`d2eafba08aea558fd50cf96c40e8d9547e78a82ec39c45c92ad47dcdc6c96b59`;
+`5e69e7e7d19abf3662ca3ce6edd19309e17b2f7b2cf90c948e22dddccceeaa18`;
 the existing private build-source reference binds that receipt.
 
-The full JNI-zero subtree download was rate-limited with HTTP 429 before a
-source archive was written. The receipt explicitly marks full-subtree source
-retention and archive creation false. Future retrieval must retain verified
-blobs incrementally and respect server rate signals. These two patch inputs
-do not complete that subtree, other external DEPS/CIPD sources, applied-source
-verification or build reproduction. No upstream script, hook, patch, compiler
-or native payload was executed; all final notice/rights, exact-candidate,
-recipient and existing release requirements remain open.
+The prior complete-subtree attempt stopped on HTTP 429. The resumed attempt
+persisted sixteen rehashed tree objects before HTTP 503 at
+`sample/javatests/src`; that response supplied no `Retry-After`. The cached
+trees are retained in `webrtc-jni-zero-8062e0e1-trees.json`. The four verified
+patch inputs are also retained incrementally in
+`webrtc-jni-zero-8062e0e1-blobs.tar`, whose SHA-256 is
+`9075f4a8fae0a9d9c3ea9e2c394c14112a990c1721cf42dcd75d1c227d0d43eb`.
+The separate progress sidecar preserves the recursive attempt's failure
+before blob retention; the source receipt records the subsequent four inputs.
+
+Full-subtree source retention and complete source archive creation remain
+false. Resume from the cached verified trees and blobs while respecting server
+rate signals. These four patch inputs do not complete the JNI-zero subtree,
+other external DEPS/CIPD sources, applied-source verification or build
+reproduction. No upstream script, hook, patch, compiler or native payload was
+executed; final notice/rights, exact-candidate, recipient and existing release
+requirements remain open.
