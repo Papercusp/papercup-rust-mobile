@@ -406,6 +406,10 @@ sys.exit(101 if case == 'test-fail' else 0)
         for relative in ['tools/run-android-checks.sh', 'crates/papercup-core/tests/live_smoke.rs',
                          'android/app/build.gradle.kts',
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/SettingsScreen.kt',
+                         'android/app/src/main/kotlin/com/papercuspai/operator/mobile/LibraryNoticesScreen.kt',
+                         'android/app/src/main/res/values/strings.xml',
+                         'android/build.gradle.kts',
+                         'tools/tests/android-library-notices-test.sh',
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/DiagnosticsScreen.kt',
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/MainActivity.kt',
                          'android/app/src/main/AndroidManifest.xml',
@@ -418,6 +422,8 @@ sys.exit(101 if case == 'test-fail' else 0)
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/OperatorChatScreen.kt',
                          'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt',
                          'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/OperatorChatScreenTest.kt',
+                         'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/LibraryNoticesScreenTest.kt',
+                         'android/app/src/test/kotlin/com/papercuspai/operator/mobile/LibraryNoticesTest.kt',
                          'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/UniffiCallbackTest.kt']:
             target = native_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)

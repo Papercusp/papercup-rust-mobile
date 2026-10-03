@@ -1,0 +1,138 @@
+{
+  "schemaVersion": "android-library-notices-local-v1",
+  "scope": "Local current debug notice UI and debug/release collector preparation; excludes signed candidate, physical phone, Play, distribution rights and complete native/model/Rust source or notice delivery",
+  "mobileCommitAtReceipt": "2364a7ce1f865f0b59d7158f8fb8df06709c5265",
+  "sourceFiles": [
+    {
+      "path": "android/app/build.gradle.kts",
+      "sha256": "3dbcd894065179143078cbd93ecc4f9fe9c3daecc416ca096801d3d1c1c4b261"
+    },
+    {
+      "path": "android/build.gradle.kts",
+      "sha256": "66464247166c6a043f92c6feed6314e4802bc700174015c620ec1c05f453eb96"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/papercuspai/operator/mobile/LibraryNoticesScreen.kt",
+      "sha256": "3a36b7054d5387813a5546b27f96c9c57701a47cb65b8c173bebe110201105b1"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/papercuspai/operator/mobile/MainActivity.kt",
+      "sha256": "1040ccad1588a992a491563c13f22b8d69a0f1999bf4f5b8a1264637f2e98575"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt",
+      "sha256": "68d35ada3b9ad11b89bf87598d8d5c5b4fd84c3af801d8e30f8f64ae601c98ae"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/papercuspai/operator/mobile/SettingsScreen.kt",
+      "sha256": "c30d6121d91412ff0d224c2dde3a5905eeb3771a96d6b8c983824c0f6d17a5b3"
+    },
+    {
+      "path": "android/app/src/main/res/values/strings.xml",
+      "sha256": "ffe19e33b1457c7f169575b5ab9c91fa2b73098355680ce8dd422fb18b543488"
+    },
+    {
+      "path": "android/app/src/test/kotlin/com/papercuspai/operator/mobile/LibraryNoticesTest.kt",
+      "sha256": "4d76dd47105cb9a86e398eb43b2615935528de42fdad0040bcdcf767cdb61e85"
+    },
+    {
+      "path": "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/LibraryNoticesScreenTest.kt",
+      "sha256": "cdb693df578fa965353eafc0ff7dedd67c7031ab9d0421b99b1c1ba49cfc817a"
+    },
+    {
+      "path": "tools/tests/android-library-notices-test.sh",
+      "sha256": "312b9efc83b40fdc44b4e4754859da5c4b6c8810cee9883bd838f1ed550f465a"
+    },
+    {
+      "path": "tools/run-android-checks.sh",
+      "sha256": "6826898eec89c0c6881e84d36a43ba4865aceee77163dacefb5d90e14e189832"
+    },
+    {
+      "path": "tools/tests/run-android-checks-test.sh",
+      "sha256": "d703103686df31d2665937c5a929a84b726dfdfcba0274d24181798b04f7dc9d"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "android/app/build/ci-evidence/p007-license-viewer-host-after-20261002.log",
+      "sha256": "05fc391a0536fb990c9d677b67a4567ad51677d6121d195784b07c630ec541b8"
+    },
+    {
+      "path": "android/app/build/ci-evidence/p007-license-viewer-native-final-20261002.log",
+      "sha256": "5c89c99a09e90bc369c04b9cf04f0e47b9e2a86d197d239770405fb52e1ebd57"
+    },
+    {
+      "path": "android/app/build/ci-evidence/p007-license-viewer-metadata-both-20261002.log",
+      "sha256": "b6141cfc0c7c78b2acd5a3fd0a37962351bb3912421726206327e8179cc6801d"
+    },
+    {
+      "path": "android/app/build/ci-evidence/p007-license-viewer-runner-ci-after-20261002.log",
+      "sha256": "1d230b6cc7b22f0b3c5ee3dffd698263990e7fe31ca0eab69d02c31a14ee8826"
+    },
+    {
+      "path": "android/app/build/outputs/apk/debug/app-debug.apk",
+      "sha256": "92e7eabae85a58922d6dca1a21806653200e2084e14808bb6b44809ef3a68dce"
+    },
+    {
+      "path": "android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+      "sha256": "5eaca216ccfbc57a158d667c9d906d6076614d376ac3eac06b01b89487433414"
+    }
+  ],
+  "tests": {
+    "debugUnit": {
+      "executed": 36,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "releaseUnit": {
+      "executed": 36,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "nativeNotices": {
+      "executed": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "api": 36,
+      "pageSize": 16384
+    },
+    "metadataGraphTransitions": {
+      "release": [
+        221,
+        222,
+        221
+      ],
+      "debug": [
+        227,
+        228,
+        227
+      ],
+      "damagedControlsPerVariantPerPhase": 4
+    }
+  },
+  "assertions": [
+    {
+      "id": "unpaired-bundled-license-access",
+      "passed": true,
+      "evidence": "Actual LibraryNoticesScreenTest native final XML/log: pairing link, packaged license text, back navigation, no credentials"
+    },
+    {
+      "id": "multiple-license-text-and-linked-reference",
+      "passed": true,
+      "evidence": "Actual native dialog preserves both complete fixture texts and linked-only reference"
+    },
+    {
+      "id": "failed-resource-error",
+      "passed": true,
+      "evidence": "Actual native error state appears instead of completed empty list"
+    },
+    {
+      "id": "cached-graph-invalidation",
+      "passed": true,
+      "evidence": "Maintained notice check resolves and compares both variant populations; private local Maven fixture added then removed without rerun/force flags"
+    }
+  ]
+}

@@ -53,7 +53,7 @@ class LibraryNoticesScreenTest {
             compose.waitUntil(15_000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
             compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(library.name))
             // Multiplatform wrapper and Android artifacts can share a name.
-            compose.onAllNodes(hasText(library.name) and hasClickAction()).onFirst().performClick()
+            compose.onAllNodes(hasText(library.name) and hasClickAction())[0].performClick()
             compose.onNodeWithText(text).assertExists()
             compose.onNodeWithText("OK").performClick()
             compose.onNodeWithContentDescription("Back").performClick()

@@ -399,3 +399,32 @@ not prove distribution rights or complete recipient-visible notice delivery.
 Recreate the contributions from the exact final candidate revision and verify
 the final delivery before publication; these retained preparation archives
 have not been published.
+
+### In-app Android license access
+
+The pairing screen and Settings → About now open **Third-party licenses**.
+Users can read bundled license text without pairing or opening a website.
+The existing AboutLibraries collector supplies the variant-specific resource;
+its maintained Material 3 viewer supplies the list and license dialog.
+The viewer uses version 11.2.2, whose published Kotlin 2.0 dependencies fit the
+app's current compiler. The independently versioned collector remains 12.2.4.
+The dialog preserves every supplied license and linked reference for a library.
+Linked-only records still require the applicable supplemental text before
+complete distribution-notice acceptance; a visible link does not satisfy that
+requirement by itself.
+
+The collector's resolved dependency data is marked `@Internal` in version
+12.2.4. The Android build therefore adds runtime artifact and selected module
+graph inputs to its existing debug/release preparation tasks. The maintained
+notice check exercises a cached add/remove transition using a private local
+Maven fixture: 221 normal release records, 222 with the fixture, and 221 after
+removal. It also retains the four damaged-metadata rejection controls.
+
+On October 2, the maintained debug and release unit suites each passed 36
+tests. Three additional native Compose tests passed on an owned API 36 / 16 KB
+emulator: unpaired access to actual bundled license text and return navigation,
+multiple license texts plus linked-only terms in the dialog, and a resource
+failure message. These are current debug UI checks, not signed-candidate,
+physical-phone, complete corresponding-source, distribution-rights, or Play
+acceptance. The release packet still requires final candidate binding and the
+supplemental native/model/Rust notices and recipient retrieval described above.
