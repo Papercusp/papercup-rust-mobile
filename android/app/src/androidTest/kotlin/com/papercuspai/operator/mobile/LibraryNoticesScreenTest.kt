@@ -84,6 +84,10 @@ class LibraryNoticesScreenTest {
                 "f046c8bbdfc36989e98e40b5915b2a09545d06c3ce204dd1f53f188604902976"),
             Triple("javax.sip:android-jain-sip-ri", "fa7f33c49aa6110f3cedeb2975e140e0",
                 "dc6bd4b4a6fd417e4245b55d6f532cf482e56500350f8f8ac1890caaf8eec702"),
+            Triple("io.livekit:livekit-android", "papercusp-livekit-notice",
+                "1ddcdc49391b88daa34060c04a5c3ecaa324903abdca74010aad6edbd952ed72"),
+            Triple("net.java.dev.jna:jna", "papercusp-jna-libffi",
+                "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388"),
         )
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.onNodeWithText("Third-party licenses").performClick()

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "retrievedAt": "2026-10-03T00:32:02.028733+00:00",
-  "scope": "Five generated link-only Android license references supplemented through the existing AboutLibraries config. Upstream native-license snapshots do not establish exact binary/source correspondence; current Google terms do not establish account acceptance. JAIN SIP API copyright is retained separately from NIST public-domain conditions. Complete transitive/native/model/Rust notices, source compilation, recipient retrieval and release rights remain open.",
+  "scope": "Five generated link-only Android license references and two selected upstream attribution texts supplemented through the existing AboutLibraries config. The original retrieval timestamp applies to the five license snapshots; the LiveKit and JNA additions reuse separately retained release-tag references. Upstream native-license snapshots do not establish exact binary/source correspondence; current Google terms do not establish account acceptance. JAIN SIP API copyright is retained separately from NIST public-domain conditions. Complete transitive/native/model/Rust notices, source compilation, recipient retrieval and release rights remain open.",
   "licenses": [
     {
       "key": "libyuv",
