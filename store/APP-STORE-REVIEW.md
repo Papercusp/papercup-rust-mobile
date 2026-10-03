@@ -664,9 +664,9 @@ Private retained evidence is under the existing
 | Pinned AndroidX root LICENSE | `809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0` |
 | Derived native source attribution | `09700dee0f298c3bde3435f539010e7f1b7ed50339a144d8907cd49094232a4b` |
 
-Gitiles archive compression can change between downloads; the retained archive
-hash identifies the actual inspected bytes, while the complete per-file Git blob
-checks bind its contents to the pinned source tree. The source/header hashes and
+The retained archive hash identifies the actual inspected download, while the
+complete per-file Git blob checks bind its contents to the pinned source tree.
+The source/header hashes and
 extraction rule also live in the existing `android/config/SOURCES.json` ledger.
 The maintained metadata guard rejects missing, substituted or unlinked attribution
 and checks that the original Apache label survives. The native notice test now
