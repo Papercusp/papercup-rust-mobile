@@ -441,7 +441,7 @@ import json, os, sys
 from pathlib import Path
 args = sys.argv[1:]
 case = os.environ['TEST_LIVE_CASE']
-if args == ['devices']:
+if args in (['devices'], ['devices', '-l']):
     print('List of devices attached\\nemulator-5556 device')
     sys.exit(0)
 assert args[:2] == ['-s', 'emulator-5556']
@@ -450,6 +450,9 @@ private = Path('private-fixture.json')
 if args == ['shell', 'getprop', 'sys.boot_completed']: print('1')
 elif args == ['shell', 'getprop', 'ro.build.version.sdk']: print('36')
 elif args == ['shell', 'getconf', 'PAGE_SIZE']: print('4096' if case == 'native-preflight-fail' else '16384')
+elif args[:2] == ['shell', 'pidof']: print('123')
+elif args == ['shell', 'settings', 'get', 'global', 'airplane_mode_on']: print('0')
+elif args == ['logcat', '-b', 'crash', '-d']: pass
 elif args[:2] == ['logcat', '-d']:
     if case != 'native-no-pairing-trace':
         for stage in ['client-start', 'client-ready', 'request-start', 'response-received', 'credentials-saved']:
@@ -762,12 +765,34 @@ if [[ "$*" == '-s emulator-5584 shell getprop sys.boot_completed' ]]; then
     if [[ "${TEST_BOOT_READY:-0}" == 1 ]]; then printf '1\r\n'; else echo 'error: device not found' >&2; exit 1; fi
 elif [[ "$*" == 'devices -l' ]]; then
     printf 'List of devices attached\n'
+elif [[ "$*" == *'shell pidof '* ]]; then
+    if [[ "${TEST_BOOT_CASE:-}" == missing ]]; then exit 1; fi
+    if [[ "${TEST_BOOT_CASE:-}" == restart ]]; then
+        value="$(cat "$TEST_BOOT_COUNTER" 2>/dev/null || echo 100)"
+        echo "$((value + 1))" > "$TEST_BOOT_COUNTER"
+        echo "$value"
+    else echo 100; fi
+elif [[ "$*" == *'shell settings get global airplane_mode_on' ]]; then
+    if [[ "${TEST_BOOT_CASE:-}" == settings ]]; then echo 'Broken pipe' >&2; exit 224; fi
+    echo 0
+elif [[ "$*" == *'logcat -b crash -d' ]]; then
+    if [[ "${TEST_BOOT_CASE:-}" == crash ]]; then
+        echo 'Fatal signal 6 (SIGABRT) in tid 843 (RegionSampling), pid 762 (surfaceflinger)'
+        echo "Abort message: 'Assertion failed: !rcEnc->featureInfo()->hasReadColorBufferDma'"
+    fi
 else
     echo "unexpected boot fixture command: $*" >&2; exit 1
 fi
 SH
 chmod +x "$TMP_ROOT/boot-bin/adb"
 TEST_BOOT_READY=1 PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 "$TMP_ROOT/boot-pass" 1
+for case in missing restart settings crash; do
+    if TEST_BOOT_READY=1 TEST_BOOT_CASE="$case" TEST_BOOT_COUNTER="$TMP_ROOT/boot-counter" \
+        PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 \
+        "$TMP_ROOT/boot-$case" 1 > "$TMP_ROOT/output" 2>&1; then
+        echo "FAIL: sticky boot flag admitted unhealthy framework: $case" >&2; exit 1
+    fi
+done
 if PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 "$TMP_ROOT/boot-fail" 1 > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: missing ADB transport accepted as a booted emulator' >&2; exit 1
 fi
@@ -776,10 +801,15 @@ import json, sys
 from pathlib import Path
 root = Path(sys.argv[1])
 assert json.loads((root / 'boot-pass/emulator-boot.json').read_text())['bootCompleted'] is True
+assert json.loads((root / 'boot-pass/emulator-boot.json').read_text())['frameworkReady'] is True
+for case in ['missing', 'restart', 'settings', 'crash']:
+    proof = json.loads((root / f'boot-{case}/emulator-boot.json').read_text())
+    assert proof['bootCompleted'] and not proof['frameworkReady'] and proof['frameworkErrors']
 bad = json.loads((root / 'boot-fail/emulator-boot.json').read_text())
 assert bad['bootCompleted'] is False and 'device not found' in bad['adbError']
 assert (root / 'boot-fail/boot-transports.txt').is_file()
 PY
+echo 'Android native framework readiness: healthy accepted; missing/restarting/broken-service/crashing controls rejected'
 if TEST_EMULATOR_MISSING_LIB=1 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/missing-lib-proof" > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: missing emulator shared library was accepted' >&2
     exit 1

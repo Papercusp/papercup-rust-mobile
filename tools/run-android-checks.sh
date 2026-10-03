@@ -352,6 +352,9 @@ def prepare_native():
                            (('shell', 'getconf', 'PAGE_SIZE'), '16384')]:
         if adb(*args).stdout.strip() != expected:
             raise RuntimeError('native live emulator must be booted API36 with 16KB pages')
+    subprocess.run(['bash', str(Path('tools/run-android-checks.sh').resolve()), 'verify-emulator-boot',
+                    native_device, str(out / 'emulator-preflight'), '1'],
+                   check=True, timeout=45)
     env = os.environ.copy()
     if not env.get('JAVA_HOME'):
         env['JAVA_HOME'] = subprocess.check_output(
@@ -750,7 +753,7 @@ if [[ "$mode" == verify-emulator-boot ]]; then
     done
     adb devices -l > "$attempt_dir/boot-transports.txt" 2>&1 || true
     python3 - "$serial" "$attempt_dir" "$boot_ready" "$n" <<'PY'
-import json, sys
+import json, re, subprocess, sys, time
 from pathlib import Path
 serial, destination, ready, count = sys.argv[1:]
 out = Path(destination)
@@ -758,9 +761,43 @@ proof = {'serial': serial, 'bootCompleted': ready == '1', 'checks': int(count),
          'property': (out / 'boot-property.txt').read_text().strip(),
          'adbError': (out / 'boot-adb-error.txt').read_text().strip(),
          'transportEvidence': 'boot-transports.txt'}
+proof['frameworkReady'] = False
+proof['frameworkSamples'] = []
+proof['frameworkErrors'] = []
+if proof['bootCompleted']:
+    def adb(*args):
+        result = subprocess.run(['adb', '-s', serial, *args], capture_output=True,
+                                text=True, timeout=8)
+        if result.returncode:
+            raise RuntimeError(f'{args}: exit {result.returncode}: {result.stdout}{result.stderr}')
+        return result.stdout.strip()
+    try:
+        for index in range(3):
+            sample = {name: adb('shell', 'pidof', name)
+                      for name in ('surfaceflinger', 'system_server')}
+            sample['settings'] = adb('shell', 'settings', 'get', 'global', 'airplane_mode_on')
+            if sample['settings'] not in ('0', '1'):
+                raise RuntimeError('Native settings service did not return a valid value')
+            if any(not re.fullmatch(r'[1-9][0-9]*', sample[name])
+                   for name in ('surfaceflinger', 'system_server')):
+                raise RuntimeError('Native framework process is missing')
+            proof['frameworkSamples'].append(sample)
+            if index < 2:
+                time.sleep(1)
+        if any(sample != proof['frameworkSamples'][0] for sample in proof['frameworkSamples'][1:]):
+            raise RuntimeError('Native framework restarted during readiness checks')
+        crash = adb('logcat', '-b', 'crash', '-d')
+        (out / 'framework-crash.log').write_text(crash + '\n')
+        if re.search(r'Fatal signal[^\n]*(?:surfaceflinger|system_server)|'
+                     r'FATAL EXCEPTION IN SYSTEM PROCESS|'
+                     r'Process: system_server|hasReadColorBufferDma', crash):
+            raise RuntimeError('Native framework crash detected before app execution')
+        proof['frameworkReady'] = True
+    except (RuntimeError, subprocess.TimeoutExpired) as error:
+        proof['frameworkErrors'].append(str(error))
 (out / 'emulator-boot.json').write_text(json.dumps(proof, indent=2) + '\n')
-if not proof['bootCompleted']:
-    raise SystemExit('Owned emulator did not boot; see emulator-boot.json and boot-transports.txt')
+if not proof['bootCompleted'] or not proof['frameworkReady']:
+    raise SystemExit('Owned emulator is not healthy; see emulator-boot.json and framework-crash.log')
 PY
     exit
 fi
@@ -892,6 +929,7 @@ if [[ "$mode" != host ]]; then
     [[ "$(adb -s "$device" shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]
     [[ "$(adb -s "$device" shell getprop ro.build.version.sdk | tr -d '\r')" == 36 ]]
     [[ "$(adb -s "$device" shell getconf PAGE_SIZE | tr -d '\r')" == 16384 ]]
+    bash "$0" verify-emulator-boot "$device" android/app/build/ci-evidence/connected-emulator-preflight 1
     adb -s "$device" shell pm path android | grep -q '^package:'
     bash tools/build-scripts/install-and-launch.sh
     rm -rf android/app/build/outputs/androidTest-results/connected/debug

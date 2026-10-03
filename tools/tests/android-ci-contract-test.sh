@@ -31,6 +31,7 @@ assert 'cp -r android-ci-attempt/paired-runtime android-ci-proof/paired-runtime'
 assert 'android-ci-attempt/unpaired-native-results' in android, 'original fixture-free coverage must survive paired execution'
 assert '\n            android-ci-attempt/operator\n' not in android and '\n            android-ci-attempt\n' not in android, 'do not archive the private source/dependency checkout'
 assert 'api-level: 36' in android and 'target: google_apis_ps16k' in android
+assert '-gpu swiftshader ' in android and 'swiftshader_indirect' not in android, 'use the supported software renderer, not the retired indirect mode'
 assert android.count('bash tools/run-android-checks.sh prepare-ci') == 2, 'CI must bound the working set before SDK setup and before native execution'
 image = "'system-images;android-36;google_apis_ps16k;x86_64'"
 assert image in android and android.index(image) < android.index('make check-android-host'), 'system-image precondition must run before the expensive build'
@@ -90,6 +91,7 @@ for phase in [
     assert phase in host, f'Android host runner omits required phase: {phase}'
 for phase in [
     'bash tools/build-scripts/install-and-launch.sh',
+    'bash "$0" verify-emulator-boot "$device"',
     ':app:connectedDebugAndroidTest --rerun-tasks',
     'verify_results android/app/build connected',
 ]:
@@ -106,6 +108,7 @@ import sys
 from pathlib import Path
 text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 (out / 'retired-sdk.yml').write_text(text.replace('          packages: platform-tools\n', '          packages: tools platform-tools\n'))
+(out / 'retired-renderer.yml').write_text(text.replace('-gpu swiftshader ', '-gpu swiftshader_indirect '))
 (out / 'missing-early-evidence.yml').write_text(text.replace('          mkdir -p android-ci-attempt\n', ''))
 (out / 'floating-operator.yml').write_text(re.sub(r'PAPERCUP_OPERATOR_SHA: [0-9a-f]{40}', 'PAPERCUP_OPERATOR_SHA: staging', text))
 (out / 'missing-submodule-access.yml').write_text(text.replace('          token: ${{ secrets.SUBMODULES_PAT }}\n', ''))
@@ -143,7 +146,7 @@ PY
             exit 1
         fi
     done
-    echo 'Android CI bootstrap/storage/emulator/paired-provenance mutation controls: 32 rejected'
+    echo 'Android CI bootstrap/storage/emulator/paired-provenance mutation controls: 33 rejected'
 
     # A workflow invoking "host" is insufficient if the owned runner stops
     # executing one of its required phases. Keep each omission reproducible.
@@ -168,6 +171,7 @@ phases = [
     'bash tools/tests/android-privacy-permissions-test.sh',
     'verify_results android/app/build host',
     'bash tools/build-scripts/install-and-launch.sh',
+    'bash "$0" verify-emulator-boot "$device"',
     ':app:connectedDebugAndroidTest --rerun-tasks',
     'verify_results android/app/build connected',
     'set -euo pipefail',
@@ -182,5 +186,5 @@ PY
             exit 1
         fi
     done
-    echo 'Android CI runner phase mutation controls: 19 rejected'
+    echo 'Android CI runner phase mutation controls: 20 rejected'
 fi
