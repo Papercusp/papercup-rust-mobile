@@ -771,3 +771,63 @@ external LibYuv source revision that produced the distributed native binary.
 The earlier complete LibYuv license snapshot remains a reference, not that
 missing revision proof. Native binary/source equivalence, complete obligations,
 signed-candidate notice access and actual recipient retrieval remain open.
+
+
+### WebRTC third-party notice preparation
+
+The pinned packaging revision `f126941a2667f8f1bd3ac60b1a6a4783a3310e1f`
+contains `Licenses/WEBRTC.md`, a complete upstream notice reference with 30
+top-level component headings, from WebRTC through zlib. The retained
+[788,358-byte file](https://raw.githubusercontent.com/webrtc-sdk/android/f126941a2667f8f1bd3ac60b1a6a4783a3310e1f/Licenses/WEBRTC.md) has SHA-256
+`d1f9382c6878ac024155fd6d44a5977329108bb8b0a01cea40e4a2f1d7de252e` and matches upstream Git blob
+`f371735b3a706ff1401bce870f096efc9bbb5f51`.
+
+The existing AboutLibraries module merge now links its complete, unchanged
+UTF-8 Markdown text to `io.github.webrtc-sdk:android-prefixed:137.7151.04`,
+preserving the original BSD reference. `android/config/SOURCES.json` records
+the pinned file, hash and explicit heading population. The maintained graph
+regression checks complete bytes, original license retention and missing,
+substituted or unlinked text; the native notice guard pins the same digest.
+
+This reference is separate from the empty Maven source JAR and packaging MIT
+license. Its presence at the packaging tag and the earlier four-ABI byte
+comparison do not prove that the notice was regenerated from the exact native
+engine build or covers every linked component. Full native source/build
+lineage, candidate-bound notice access, rights and recipient delivery remain
+open. The previously tested APK is unchanged.
+
+
+### JNA native source census preparation
+
+At pinned JNA 5.19.1 revision
+`1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d`, all 449 blobs in the
+`native/` subtree (2,997,685 bytes) were retrieved and matched against the
+complete, non-truncated upstream Git tree. All 66 Java entries in the Maven
+source JAR also match the corresponding Git blobs. Four upstream
+`dist/android-*.jar` native libraries match the retained Maven AAR for
+ARM64, ARMv7, x86 and x86_64. These are separate source and binary reference
+comparisons; they do not prove which source/build invocation produced the
+prebuilt libraries.
+
+Private retained receipts in the existing dependency-source directory are
+`jna-NATIVE-SOURCE-REFERENCE.json`, `jna-JAVA-SOURCE-REFERENCE.json`,
+`jna-NATIVE-BINARY-REFERENCE.json` and `jna-SELECTED-NATIVE-HEADERS.json`.
+The pinned Makefile lists dispatcher and callback objects and links libffi;
+`native/README.libffi` identifies the latter as a source subtree.
+
+A bounded inspection selected 38 dispatcher/header and libffi common,
+include, ARM, AArch64 and x86 source files, excluding test suites. It includes
+platform variants and is not an exact Android build-input list. Thirty-one
+files have an identified first block comment containing copyright, license
+or permission text, with 29 distinct complete blocks. Seven selected files
+have no such identified comment. Preserve the detailed per-file results
+instead of interpreting this lexical absence as a missing license.
+
+These comments include copyright holders beyond the retained libffi root
+LICENSE, including ARM, Oracle, CodeSourcery, Microsoft, Plausible Labs and
+The Written Word. Reconcile the applicable source-file attribution with the
+actual candidate build before claiming complete notices. The current
+collector still delivers the selected root libffi permission text; this
+source review does not silently widen that delivery claim. JNA's offered
+Apache/LGPL alternatives, actual build-input/source lineage, final notice
+access and recipient obligations remain open.
