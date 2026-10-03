@@ -189,6 +189,139 @@ for repository in repositories:
 PY
 }
 
+# Package pinned upstream inputs without treating a source snapshot as proof of
+# the invocation that produced Maven's prebuilt dispatcher. Reuse the existing
+# source archive command and selected-dependency provenance directory.
+source_archive_jna() {
+    local source_dir="$1" receipt="$REPO_ROOT/android/app/build/outputs/papercusp-jna-source-result.json"
+    rm -f "$receipt"
+    assert_clean_source
+    REPO_ROOT="$REPO_ROOT" python3 - "$source_dir" "$(source_commit)" <<'PY'
+from datetime import datetime, timezone
+import gzip
+import hashlib
+import io
+import json
+import os
+from pathlib import Path, PurePosixPath
+import subprocess
+import sys
+import tarfile
+import tempfile
+
+root = Path(os.environ['REPO_ROOT']).resolve()
+source, commit = Path(sys.argv[1]), sys.argv[2]
+outputs = root / 'android/app/build/outputs'
+tree_file = outputs / 'papercusp-android-dependency-sources/jna-NATIVE-TREE.json'
+pins_file = root / 'android/config/SOURCES.json'
+started = datetime.now(timezone.utc).isoformat()
+digest = lambda data: hashlib.sha256(data).hexdigest()
+git_hash = lambda kind, data: hashlib.sha1(kind + b' ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+pins_bytes, tree_bytes = pins_file.read_bytes(), tree_file.read_bytes()
+pins = [row for row in json.loads(pins_bytes)['licenses'] if row['key'] == 'jna-libffi']
+if len(pins) != 1:
+    raise SystemExit('JNA source pin must be unique')
+pin = pins[0]
+tree = json.loads(tree_bytes)
+if tree.get('truncated') is not False:
+    raise SystemExit('JNA source tree must be complete')
+rows = {}
+for row in tree['tree']:
+    name = row['path']
+    path = PurePosixPath(name)
+    if (not name or path.is_absolute() or '..' in path.parts or str(path) != name or
+            '\\' in name or '\0' in name or name in rows):
+        raise SystemExit('Unsafe or duplicate JNA tree path: ' + name)
+    if (row['type'], row['mode']) not in (('tree', '040000'), ('blob', '100644'), ('blob', '100755')):
+        raise SystemExit('Unsupported JNA tree entry: ' + name)
+    if len(row['sha']) != 40 or any(c not in '0123456789abcdef' for c in row['sha']):
+        raise SystemExit('Invalid JNA Git object identity: ' + name)
+    if str(path.parent) != '.' and str(path.parent) not in {r['path'] for r in tree['tree'] if r['type'] == 'tree'}:
+        raise SystemExit('JNA tree omits a parent: ' + name)
+    rows[name] = row
+# Reconstruct every Git tree, including the root. A substituted or incomplete
+# recursive response cannot pass by merely changing its descriptive sha field.
+for directory in [''] + [name for name, row in rows.items() if row['type'] == 'tree']:
+    children = [row for name, row in rows.items() if str(PurePosixPath(name).parent) == (directory or '.')]
+    children.sort(key=lambda row: (PurePosixPath(row['path']).name + ('/' if row['type'] == 'tree' else '')).encode())
+    data = b''.join(row['mode'].lstrip('0').encode() + b' ' + PurePosixPath(row['path']).name.encode() +
+                    b'\0' + bytes.fromhex(row['sha']) for row in children)
+    wanted = rows[directory]['sha'] if directory else pin['sourceTreeSha1']
+    if git_hash(b'tree', data) != wanted:
+        raise SystemExit('JNA tree identity differs from pinned source: ' + (directory or '.'))
+root_files = {'LICENSE', 'AL2.0', 'LGPL2.1', 'OTHERS', 'README.md', 'build.xml', 'common.xml', 'build-ant-tools.xml'}
+prefixes = ('native/', 'src/', 'ant-tools-src/')
+selected = {name: row for name, row in rows.items() if row['type'] == 'blob' and
+            (name in root_files or name.startswith(prefixes))}
+if not root_files <= selected.keys() or any(not any(name.startswith(prefix) for name in selected) for prefix in prefixes):
+    raise SystemExit('JNA source tree omits required build/source inputs')
+if not source.is_dir() or source.is_symlink():
+    raise SystemExit('JNA source input must be a regular directory')
+actual = set()
+for directory, directories, files in os.walk(source, followlinks=False):
+    for name in directories + files:
+        path = Path(directory) / name
+        if path.is_symlink() or (name in files and not path.is_file()):
+            raise SystemExit('JNA source input contains a symlink or special file')
+    actual.update(str((Path(directory) / name).relative_to(source)) for name in files)
+if actual != selected.keys():
+    raise SystemExit('JNA source file population differs from pinned selected inputs')
+verified, entries = [], {}
+for name, row in sorted(selected.items()):
+    data = (source / name).read_bytes()
+    if len(data) != row['size'] or git_hash(b'blob', data) != row['sha']:
+        raise SystemExit('JNA source bytes differ from pinned Git blob: ' + name)
+    entries[name] = (data, 0o755 if row['mode'] == '100755' else 0o644)
+    verified.append({'path': name, 'gitBlob': row['sha'], 'sha256': digest(data), 'size': len(data)})
+if digest(entries['native/libffi/LICENSE'][0]) != pin['sourceSha256']:
+    raise SystemExit('JNA libffi license differs from existing notice pin')
+scope = ('Selected pinned JNA native, Java, Ant-tool sources and root build/license files. '
+         'Includes foreign architectures and tests; excludes prebuilt libraries/tool JARs. '
+         'Not an exact Android compilation census, original prebuilt invocation, license election, '
+         'signed candidate, complete standalone toolchain or recipient retrieval proof.')
+metadata = {'schemaVersion': 1, 'sourceRevision': pin['sourceRevision'], 'sourceTreeSha1': pin['sourceTreeSha1'],
+            'files': verified, 'scope': scope}
+entries['SOURCE-PROVENANCE.json'] = ((json.dumps(metadata, sort_keys=True, indent=2) + '\n').encode(), 0o644)
+archive_path = outputs / 'papercusp-jna-source.tar.gz'
+with tempfile.NamedTemporaryFile(dir=outputs, delete=False) as stream:
+    temporary = Path(stream.name)
+    try:
+        with gzip.GzipFile(fileobj=stream, mode='wb', filename='', mtime=0) as compressed:
+            with tarfile.open(fileobj=compressed, mode='w', format=tarfile.PAX_FORMAT) as archive:
+                for name, (data, mode) in sorted(entries.items()):
+                    info = tarfile.TarInfo('papercusp-jna-source/' + name)
+                    info.size, info.mode = len(data), mode
+                    archive.addfile(info, io.BytesIO(data))
+        stream.flush()
+        with tarfile.open(temporary, 'r:gz') as archive:
+            members = archive.getmembers()
+            if len(members) != len(entries) or {m.name for m in members} != {'papercusp-jna-source/' + name for name in entries}:
+                raise SystemExit('Generated JNA source archive population differs')
+            for member in members:
+                data, mode = entries[member.name.removeprefix('papercusp-jna-source/')]
+                if not member.isfile() or member.mode != mode or archive.extractfile(member).read() != data:
+                    raise SystemExit('Generated JNA source archive bytes differ')
+        if pins_file.read_bytes() != pins_bytes or tree_file.read_bytes() != tree_bytes or any(
+                digest((source / row['path']).read_bytes()) != row['sha256'] for row in verified):
+            raise SystemExit('JNA source input changed during packaging')
+        if subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD']).decode().strip() != commit or subprocess.check_output(
+                ['git', '-C', str(root), 'status', '--porcelain', '--untracked-files=normal']).strip():
+            raise SystemExit('Mobile source changed during JNA packaging')
+        os.replace(temporary, archive_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+result = dict(metadata, mobileSourceCommit=commit, startedAt=started,
+              finishedAt=datetime.now(timezone.utc).isoformat(), exitCode=0,
+              producerSha256=digest((root / 'tools/build-scripts/android-release-provenance.sh').read_bytes())
+                  if (root / 'tools/build-scripts/android-release-provenance.sh').is_file() else None,
+              inputTreeSha256=digest(tree_bytes), inputPinsSha256=digest(pins_bytes),
+              archive={'path': str(archive_path.relative_to(root)), 'sha256': digest(archive_path.read_bytes()),
+                       'size': archive_path.stat().st_size}, verifiedFiles=len(verified))
+(outputs / 'papercusp-jna-source-result.json').write_text(json.dumps(result, indent=2) + '\n')
+print(json.dumps({key: value for key, value in result.items() if key != 'files'}))
+PY
+}
+
 resolve_apkanalyzer() {
     if [[ -n "${PAPERCUP_APKANALYZER:-}" ]]; then
         printf '%s\n' "$PAPERCUP_APKANALYZER"
@@ -799,12 +932,17 @@ case "${1:-}" in
         printf '%s\n' "$RECORD"
         ;;
     source-archive)
-        [[ $# -eq 1 ]] || die "usage: $0 source-archive"
-        assert_clean_source
-        commit="$(source_commit)"
-        source_archive write "$commit"
-        source_archive verify "$commit"
-        printf '%s\n' "$REPO_ROOT/$SOURCE_REL"
+        if [[ "${2:-}" == jna ]]; then
+            [[ $# -le 3 ]] || die "usage: $0 source-archive jna [source-directory]"
+            source_archive_jna "${3:-$REPO_ROOT/android/app/build/outputs/papercusp-android-dependency-sources/jna-5.19.1-source}"
+        else
+            [[ $# -eq 1 ]] || die "usage: $0 source-archive [jna [source-directory]]"
+            assert_clean_source
+            commit="$(source_commit)"
+            source_archive write "$commit"
+            source_archive verify "$commit"
+            printf '%s\n' "$REPO_ROOT/$SOURCE_REL"
+        fi
         ;;
     source-verify-build)
         [[ $# -le 2 ]] || die "usage: $0 source-verify-build [host|android|android-apk]"
@@ -817,6 +955,6 @@ case "${1:-}" in
         verify_source_build notices
         ;;
     *)
-        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive|source-notices|source-verify-build [host|android|android-apk]}"
+        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive [jna [source-directory]]|source-notices|source-verify-build [host|android|android-apk]}"
         ;;
 esac

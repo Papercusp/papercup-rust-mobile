@@ -598,4 +598,97 @@ if run_helper write 0.0.17 "$APK" "$AAB" >/dev/null 2>&1; then
     exit 1
 fi
 
+# The selected JNA source package proves its Git tree and complete selected
+# input population without requiring a native compiler or a recipient service.
+JNA_ROOT="$TMP/bin/jna-fixture"
+JNA_INPUT="$JNA_ROOT/android/app/build/outputs/papercusp-android-dependency-sources/jna-5.19.1-source"
+mkdir -p "$JNA_INPUT" "$JNA_ROOT/android/config"
+git -C "$JNA_ROOT" init -q
+git -C "$JNA_ROOT" config user.name test
+git -C "$JNA_ROOT" config user.email test@example.invalid
+printf '/android/app/build/\n' >"$JNA_ROOT/.gitignore"
+python3 - "$JNA_ROOT" "$JNA_INPUT" <<'PY'
+import hashlib,json,subprocess,sys
+from pathlib import Path
+root,source=map(Path,sys.argv[1:])
+files={name:b'Root build or license fixture\n' for name in ('LICENSE','AL2.0','LGPL2.1','OTHERS','README.md','build.xml','common.xml','build-ant-tools.xml')}
+files.update({'native/Makefile':b'all: fixture\n','native/libffi/LICENSE':b'libffi fixture permission\n',
+              'native/build-tool.sh':b'#!/bin/sh\nexit 0\n', 'src/Native.java':b'class Native {}\n',
+              'ant-tools-src/Tool.java':b'class Tool {}\n'})
+for name,data in files.items():
+ p=source/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
+(source/'native/build-tool.sh').chmod(0o755)
+subprocess.run(['git','init','-q',str(source)],check=True)
+subprocess.run(['git','-C',str(source),'add','.'],check=True)
+tree_sha=subprocess.check_output(['git','-C',str(source),'write-tree']).decode().strip()
+rows=[]
+for line in subprocess.check_output(['git','-C',str(source),'ls-tree','-rzt',tree_sha]).split(b'\0'):
+ if not line:continue
+ head,path=line.split(b'\t');mode,kind,oid=head.decode().split()
+ row={'path':path.decode(),'mode':mode,'type':kind,'sha':oid}
+ if kind=='blob':row['size']=len(files[path.decode()])
+ rows.append(row)
+import shutil
+shutil.rmtree(source/'.git')
+(source.parent/'jna-NATIVE-TREE.json').write_text(json.dumps({'sha':'descriptive-value-is-not-the-root-proof','truncated':False,'tree':rows}))
+pin={'key':'jna-libffi','sourceRevision':'ab'*20,'sourceTreeSha1':tree_sha,
+     'sourceSha256':hashlib.sha256(files['native/libffi/LICENSE']).hexdigest()}
+(root/'android/config/SOURCES.json').write_text(json.dumps({'licenses':[pin]}))
+PY
+git -C "$JNA_ROOT" add .gitignore android/config/SOURCES.json
+git -C "$JNA_ROOT" commit -qm jna-source-fixture
+run_jna_fixture() { PAPERCUP_MOBILE_ROOT="$JNA_ROOT" "$HELPER" source-archive jna; }
+run_jna_fixture >"$TMP/bin/jna-pass.json"
+JNA_ARCHIVE="$JNA_ROOT/android/app/build/outputs/papercusp-jna-source.tar.gz"
+JNA_RESULT="$JNA_ROOT/android/app/build/outputs/papercusp-jna-source-result.json"
+JNA_SHA="$(sha256sum "$JNA_ARCHIVE" | awk '{print $1}')"
+run_jna_fixture >/dev/null
+[[ "$(sha256sum "$JNA_ARCHIVE" | awk '{print $1}')" == "$JNA_SHA" ]] || fail 'JNA archive is not reproducible'
+python3 - "$JNA_ARCHIVE" "$JNA_RESULT" <<'PY'
+import hashlib,json,sys,tarfile
+record=json.load(open(sys.argv[2]));assert record['exitCode']==0 and record['verifiedFiles']==13
+assert record['archive']['sha256']==hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()
+with tarfile.open(sys.argv[1],'r:gz') as archive:
+ assert len(archive.getmembers())==14
+ assert archive.getmember('papercusp-jna-source/native/build-tool.sh').mode==0o755
+ identity=json.load(archive.extractfile('papercusp-jna-source/SOURCE-PROVENANCE.json'))
+ assert len(identity['files'])==13 and identity['sourceTreeSha1']==record['sourceTreeSha1']
+ assert {row['path'] for row in identity['files']}=={row['path'] for row in record['files']}
+PY
+cp "$JNA_INPUT/README.md" "$TMP/bin/jna-readme-backup"
+cp "$JNA_INPUT/../jna-NATIVE-TREE.json" "$TMP/bin/jna-tree-backup.json"
+for defect in changed-blob omitted-source extra-file source-symlink source-fifo truncated-tree omitted-tree-blob duplicate-tree-path changed-tree-object unsafe-tree-path changed-tree-mode; do
+    cp "$TMP/bin/jna-tree-backup.json" "$JNA_INPUT/../jna-NATIVE-TREE.json"
+    rm -f "$JNA_INPUT/README.md" "$JNA_INPUT/extra.txt"
+    cp "$TMP/bin/jna-readme-backup" "$JNA_INPUT/README.md"
+    run_jna_fixture >/dev/null
+    python3 - "$JNA_INPUT" "$defect" <<'PY'
+import json,sys
+from pathlib import Path
+source=Path(sys.argv[1]);defect=sys.argv[2];p=source.parent/'jna-NATIVE-TREE.json';d=json.loads(p.read_text())
+if defect=='changed-blob':(source/'README.md').write_text('changed bytes\n')
+if defect=='omitted-source':(source/'README.md').unlink()
+if defect=='extra-file':(source/'extra.txt').write_text('undeclared\n')
+if defect=='source-symlink':
+ (source/'README.md').unlink();(source/'README.md').symlink_to(source/'LICENSE')
+if defect=='source-fifo':
+ import os
+ (source/'README.md').unlink();os.mkfifo(source/'README.md')
+if defect=='truncated-tree':d['truncated']=True
+if defect=='omitted-tree-blob':d['tree']=[row for row in d['tree'] if row['path']!='README.md']
+if defect=='duplicate-tree-path':d['tree'].append(dict(d['tree'][0]))
+if defect=='changed-tree-object':d['tree'][0]['sha']='0'*40
+if defect=='unsafe-tree-path':d['tree'][0]['path']='../escaped'
+if defect=='changed-tree-mode':d['tree'][0]['mode']='120000'
+p.write_text(json.dumps(d))
+PY
+    if run_jna_fixture >"$TMP/bin/jna-reject.log" 2>&1; then fail "JNA package accepted $defect"; fi
+    [[ ! -e "$JNA_RESULT" ]] || fail "JNA failure kept preceding successful receipt: $defect"
+    rg -q 'JNA (source|tree)|Unsafe or duplicate JNA|Unsupported JNA' "$TMP/bin/jna-reject.log" || fail "JNA rejection lacked diagnostic: $defect"
+done
+cp "$TMP/bin/jna-tree-backup.json" "$JNA_INPUT/../jna-NATIVE-TREE.json"
+cp "$TMP/bin/jna-readme-backup" "$JNA_INPUT/README.md"
+run_jna_fixture >/dev/null
+echo 'Pinned selected JNA source archive PASS: deterministic bytes, Git tree/blob identity, executable mode, eleven rejecting controls and successful-receipt invalidation (fixture, no native build)'
+
 echo "✓ Android release provenance rejects version, source and hash drift; source archive includes pinned nested submodules and excludes local credentials"

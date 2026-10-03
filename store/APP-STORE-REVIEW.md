@@ -844,3 +844,31 @@ The native resource guard pins the complete supplement fingerprint.
 This is selected-source notice preparation. JNA's offered Apache/LGPL
 alternatives, actual build-input/source lineage, final notice access and
 recipient obligations remain open.
+
+The existing source-archive command also prepares a selected JNA build/source
+package from a local `jna-5.19.1-source` directory and the retained recursive
+`jna-NATIVE-TREE.json` in the dependency-source output directory:
+
+```sh
+tools/build-scripts/android-release-provenance.sh source-archive jna
+```
+
+It reconstructs every upstream Git tree against root tree
+`fc89bf9afa33183da9d35028855f6648b7a8b07b`, independently resolved from the
+pinned commit. It verifies every selected blob, packages all `native/`, `src/`
+and `ant-tools-src/` files plus eight root build/license files, and preserves
+executable modes. The deterministic `papercusp-jna-source.tar.gz` contains its
+per-file `SOURCE-PROVENANCE.json`; `papercusp-jna-source-result.json` records
+the archive digest and producer/input fingerprints. A failure removes a prior
+successful receipt. Maintained fixture tests reject eleven forms of changed,
+missing, substituted or unsafe source/tree input.
+
+The root Ant build generates JNI headers from Java sources and passes Android
+architecture, JNI version/checksum and optional make overrides to the native
+Makefile. Its `native-build-package` target is the upstream packaging route
+for generated headers and a configured build script. The selected source
+archive excludes prebuilt tool/library JARs and generated headers; a full
+toolchain, chosen invocation and resulting dispatcher still require separate
+verification. The native subtree includes tests and foreign architectures.
+This preparation preserves both offered license texts and does not select
+Apache versus LGPL or claim exact candidate inputs or recipient retrieval.
