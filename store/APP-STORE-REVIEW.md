@@ -718,3 +718,30 @@ No native rebuild or binary/source equivalence is established by these source
 comparisons. The retained tested debug APK still has its original five supplements.
 Final signed-candidate packaging, native notice access, full license/rights review
 and actual source-recipient retrieval/build remain open.
+
+### Porcupine engine/model terms preparation
+
+The official Picovoice general FAQ, read October 3, 2026, distinguishes
+open-source SDKs from proprietary models and inference engines. Keep the
+Porcupine SDK's Apache notice, but do not extend that label to the measured
+engine, fourteen `.ppn` resources or `porcupine_params.pv` without evidence.
+
+The official Terms of Use snapshot was last updated March 18, 2026 and became
+effective March 30, 2026. Sections 5–7 describe possible usage reporting,
+application-use licensing conditional on terms and fees, additional agreements,
+and restrictions. Trial access can end. Usage data may be stored locally and
+sent when connectivity returns; on-device inference alone is not proof of
+zero provider reporting. This is a reference review, not evidence that this
+app actually transmitted data or that its account obtained distribution rights.
+
+Private snapshots and normalized page extracts are retained in the existing
+dependency-sources directory. `picovoice-TERMS-REFERENCE.json`, SHA-256
+`95b724a12ff046f99bf8fbbb030211cc8814d6f7bdbf9e41dacf6c44a86d4fcb`,
+records the two successful official URLs, retrieval times and raw/extracted
+hashes. `android/config/SOURCES.json` adds these as `termsReferences`, not
+as replacement license grants or new bundled notices.
+
+Before the candidate is cleared, reconcile the applicable account agreement,
+engine/model distribution scope, GPL-source obligations, effective key/custom
+keyword configuration, and reporting/privacy behavior. No new approval request
+or release clearance is implied by this preparation.
