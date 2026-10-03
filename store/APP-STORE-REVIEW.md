@@ -344,6 +344,10 @@ Java/Rust versions and SDK package metadata, and inventories the resolved runtim
 compile, desugaring and project buildscript artifacts. This inventory is not a
 complete hermetic toolchain or dependency-source delivery claim.
 
+A real Gradle init/plugin/dependency preflight uses the same isolated route before
+native compilation. The generated init script lives under the Android project,
+where Gradle resolves its relative `--init-script` option with `-p android`.
+
 The generated Kotlin command replaces Gradle's unfrozen `make bindings-kotlin`
 task explicitly. The existing UniFFI ABI verifier checks the generated bindings
 against all four compiled libraries before Gradle runs. The source verifier also
@@ -351,7 +355,8 @@ checks all four packaged Rust libraries against this
 Gradle build's stripped outputs and retains a uniquely named debug APK and build
 log alongside the receipt. A failure removes the preceding successful receipt;
 a compiler/Gradle failure retains its exit code and unique log. Maintained fixture
-tests check orchestration, external-config isolation and ten rejecting controls;
+tests check orchestration, external-config isolation, ten rejecting controls and
+a private copy that reintroduces the original init-path defect before compilation;
 they do not claim real Android compilation. A separately recorded operational run
 must establish that. Debug compilation does not establish signed APK/AAB candidate
 equivalence, complete notices, licensing clearance or recipient retrieval.

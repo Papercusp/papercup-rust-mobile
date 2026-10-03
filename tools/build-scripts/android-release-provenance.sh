@@ -358,7 +358,7 @@ with tempfile.TemporaryDirectory(prefix='.source-build-', dir=outputs) as tempor
             [str(Path(java_home) / 'bin/java'), '-version'], stderr=subprocess.STDOUT, text=True).strip()
         external_inputs['rustVersion'] = subprocess.check_output(['rustc', '-vV'], text=True).strip()
         # Hash the actual resolved artifacts instead of calling the cache source.
-        (extracted / 'source-build-inputs.gradle').write_text('''
+        (extracted / 'android/source-build-inputs.gradle').write_text('''
 import groovy.json.JsonOutput
 import java.security.MessageDigest
 gradle.projectsEvaluated {
@@ -385,6 +385,7 @@ gradle.projectsEvaluated {
                 def config = project.buildscript.configurations.findByName('classpath')
                 if (config) collect(config, project.path + ':buildscript')
             }
+            app.buildDir.mkdirs()
             new File(app.buildDir, 'source-build-inputs.json').text = JsonOutput.toJson(rows.sort { a,b ->
                 (a.configuration + a.module + a.file) <=> (b.configuration + b.module + b.file)
             })
@@ -420,6 +421,9 @@ gradle.projectsEvaluated {
                 ['android/gradlew', '-p', 'android', '--offline', '--no-daemon', '--console=plain',
                  '--init-script', 'source-build-inputs.gradle', '-x', ':app:generateUniFfiKotlin',
                  ':app:assembleDebug', ':app:papercupSourceBuildInputs']])
+            # Resolve the real init script/plugins/dependencies before spending
+            # minutes compiling four Rust ABIs; reuse exactly the final route.
+            commands.insert(0, [argument for argument in commands[-1] if argument != ':app:assembleDebug'])
     log = outputs / ('papercusp-source-build-' + build_id + '.log')
     exit_code = 0
     with log.open('w') as stream:
@@ -429,6 +433,10 @@ gradle.projectsEvaluated {
             exit_code = subprocess.run(command, cwd=extracted, env=environment, stdout=stream, stderr=subprocess.STDOUT).returncode
             if exit_code:
                 break
+            if mode == 'android-apk' and command == commands[0]:
+                preflight_inputs = json.loads((extracted / 'android/app/build/source-build-inputs.json').read_text())
+                if not preflight_inputs:
+                    raise SystemExit('Gradle preflight produced no resolved artifacts')
     artifacts = []
     if not exit_code:
         for target in targets:

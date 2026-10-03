@@ -359,8 +359,11 @@ import hashlib,json,os
 from pathlib import Path
 import sys,zipfile
 assert '--offline' in sys.argv and '-x' in sys.argv
-assert ':app:assembleDebug' in sys.argv and ':app:papercupSourceBuildInputs' in sys.argv
+assert ':app:papercupSourceBuildInputs' in sys.argv
 assert ':app:generateUniFfiKotlin' in sys.argv
+project=Path(sys.argv[sys.argv.index('-p')+1])
+# Real Gradle resolves this relative option under -p, not the caller's cwd.
+assert (project/sys.argv[sys.argv.index('--init-script')+1]).is_file()
 home=Path(os.environ['GRADLE_USER_HOME'])
 assert not (home/'gradle.properties').exists() and not (home/'init.d').exists()
 assert not any(key.startswith('ORG_GRADLE_PROJECT_') for key in os.environ)
@@ -368,6 +371,11 @@ assert 'PICOVOICE_ACCESS_KEY' not in os.environ
 defect=os.environ.get('SOURCE_BUILD_FIXTURE_DEFECT')
 if defect=='gradle-error':sys.exit(23)
 build=Path('android/app/build');output=build/'outputs/apk/debug/app-debug.apk'
+build.mkdir(parents=True,exist_ok=True)
+record=[] if defect=='empty-resolution' else [{'configuration':'debugRuntimeClasspath','module':'fixture:source:1',
+    'file':'source.txt','sha256':hashlib.sha256(Path('source.txt').read_bytes()).hexdigest(),'size':7}]
+(build/'source-build-inputs.json').write_text(json.dumps(record))
+if ':app:assembleDebug' not in sys.argv:sys.exit(0)
 output.parent.mkdir(parents=True)
 with zipfile.ZipFile(output,'w') as archive:
     archive.writestr('AndroidManifest.xml','fixture manifest')
@@ -381,9 +389,6 @@ with zipfile.ZipFile(output,'w') as archive:
 if defect=='missing-apk':output.unlink()
 if defect=='changed-config':
     with open(os.environ['PAPERCUP_SOURCE_GOOGLE_SERVICES'],'a') as stream:stream.write(' ')
-record=[] if defect=='empty-resolution' else [{'configuration':'debugRuntimeClasspath','module':'fixture:source:1',
-    'file':'source.txt','sha256':hashlib.sha256(Path('source.txt').read_bytes()).hexdigest(),'size':7}]
-(build/'source-build-inputs.json').write_text(json.dumps(record))
 PY
 chmod +x "$TMP/android/gradlew"
 git -C "$TMP" add android/gradlew tools/build-scripts/resolve-java-home.sh tools/build-scripts/verify-android-uniffi-abi.sh
@@ -423,7 +428,8 @@ import hashlib,json,sys
 from pathlib import Path
 root=Path(sys.argv[1]);result=json.load(open(sys.argv[2]))
 assert result['exitCode']==0 and result['mode']=='android-apk'
-assert len(result['compiledArtifacts'])==5 and len(result['commands'])==4
+assert len(result['compiledArtifacts'])==5 and len(result['commands'])==5
+assert ':app:assembleDebug' not in result['commands'][0] and result['commands'][1][1]=='ndk'
 assert not any(argument.startswith(str(root)) for command in result['commands'] for argument in command)
 apk=result['compiledArtifacts'][-1];path=root/apk['path']
 assert path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==apk['sha256']
@@ -460,8 +466,32 @@ if run_apk_fixture >"$TMP/bin/source-apk-no-sdk.log" 2>&1; then
     fail 'exported APK accepted absent API 36 SDK'
 fi
 mv "$TMP/bin/sdk/platforms/android-36/source.properties.saved" "$TMP/bin/sdk/platforms/android-36/source.properties"
+# Reintroduce the measured production defect in a private helper copy. The
+# project-relative fixture must reject it before any expensive Cargo build.
+cp "$HELPER" "$TMP/bin/legacy-init-provenance.sh"
+python3 - "$TMP/bin/legacy-init-provenance.sh" <<'PY'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]);source=p.read_text()
+old="(extracted / 'android/source-build-inputs.gradle').write_text"
+assert source.count(old)==1
+p.write_text(source.replace(old,"(extracted / 'source-build-inputs.gradle').write_text"))
+PY
+CORRECT_HELPER="$HELPER"
+HELPER="$TMP/bin/legacy-init-provenance.sh"
+if run_apk_fixture >"$TMP/bin/source-apk-legacy-init.log" 2>&1; then
+    fail 'exported APK accepted the original misplaced init-script defect'
+fi
+python3 - "$TMP" "$BUILD_RESULT" <<'PY'
+import json,sys
+from pathlib import Path
+root=Path(sys.argv[1]);result=json.load(open(sys.argv[2]));log=(root/result['log']['path']).read_text()
+assert result['exitCode']!=0 and not result['compiledArtifacts']
+assert 'AssertionError' in log and 'Compiling ' not in log
+PY
+HELPER="$CORRECT_HELPER"
 run_apk_fixture >/dev/null
-echo 'Exported APK orchestration PASS: retained output/config hashes, isolated personal config, ten rejecting controls (fixture, not Android compilation)'
+echo 'Exported APK orchestration PASS: retained output/config hashes, isolated personal config, ten rejecting controls and original init-path mutant caught before compilation (fixture, not Android compilation)'
 
 printf 'tamper' >>"$APK"
 if run_helper verify 0.0.17 >/dev/null 2>&1; then
