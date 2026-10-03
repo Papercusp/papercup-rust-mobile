@@ -214,12 +214,14 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
 import tomllib
 import uuid
+import zipfile
 
 mode, commit = sys.argv[1:]
 root = Path(os.environ['REPO_ROOT']).resolve()
@@ -303,6 +305,93 @@ with tempfile.TemporaryDirectory(prefix='.source-build-', dir=outputs) as tempor
                 raise SystemExit('Delivered crate file checksum differs: ' + name + '/' + relative)
             verified_files += 1
     environment = dict(os.environ, CARGO_NET_OFFLINE='true', CARGO_TARGET_DIR=str(extracted / 'target'))
+    external_inputs = {}
+    gradle_inputs = []
+    build_id = uuid.uuid4().hex
+    if mode == 'android-apk':
+        # Config is deliberately supplied, never silently borrowed from a checkout.
+        configured = os.environ.get('PAPERCUP_SOURCE_GOOGLE_SERVICES')
+        if not configured or not Path(configured).is_file():
+            raise SystemExit('PAPERCUP_SOURCE_GOOGLE_SERVICES must name the external Firebase config')
+        google_services = Path(configured).resolve()
+        document = json.loads(google_services.read_text())
+        package_names = {client.get('client_info', {}).get('android_client_info', {}).get('package_name')
+                         for client in document.get('client', [])}
+        if 'com.papercuspai.operator.mobile' not in package_names:
+            raise SystemExit('External Firebase config has no matching Android application ID')
+        google_digest = digest(google_services)
+        external_inputs['googleServices'] = {'reference': 'PAPERCUP_SOURCE_GOOGLE_SERVICES',
+                                            'sha256': google_digest, 'size': google_services.stat().st_size}
+        shutil.copyfile(google_services, extracted / 'android/app/google-services.json')
+        sdk = Path(os.environ.get('ANDROID_SDK_ROOT') or os.environ.get('ANDROID_HOME') or '')
+        if not sdk.is_absolute() or not (sdk / 'platforms/android-36/source.properties').is_file():
+            raise SystemExit('Android APK source build requires an explicit API 36 Android SDK')
+        ndk = Path(os.environ.get('ANDROID_NDK_HOME') or sdk / 'ndk/27.0.12077973')
+        if not (ndk / 'source.properties').is_file():
+            raise SystemExit('Android APK source build requires an installed Android NDK')
+        java_home = subprocess.check_output(
+            ['bash', 'tools/build-scripts/resolve-java-home.sh'], cwd=extracted, text=True).strip()
+        environment.update(JAVA_HOME=java_home, ANDROID_HOME=str(sdk), ANDROID_SDK_ROOT=str(sdk),
+                           ANDROID_NDK_HOME=str(ndk), CARGO_HOME=str(extracted / '.cargo-home'))
+        # Reuse only dependency/distribution caches, not personal properties,
+        # init scripts, signing credentials or prior project build outputs.
+        cache_home = Path(os.environ.get('GRADLE_USER_HOME') or Path.home() / '.gradle')
+        isolated_home = extracted / '.gradle-user-home'
+        isolated_home.mkdir()
+        for directory in ('caches', 'wrapper'):
+            if (cache_home / directory).is_dir():
+                (isolated_home / directory).symlink_to((cache_home / directory).resolve(), target_is_directory=True)
+        environment['GRADLE_USER_HOME'] = str(isolated_home)
+        removed = []
+        for key in list(environment):
+            if key.startswith(('ORG_GRADLE_PROJECT_', 'PAPERCUP_RELEASE_')) or key in (
+                    'PICOVOICE_ACCESS_KEY', 'PAPERCUP_USE_OWW', 'GRADLE_OPTS', 'JAVA_OPTS',
+                    'JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS', '_JAVA_OPTIONS'):
+                removed.append(key)
+                del environment[key]
+        external_inputs['environment'] = {'removedOverrides': sorted(removed), 'personalGradleConfigLoaded': False,
+                                          'gradleDependencies': 'existing cache; Gradle offline resolution'}
+        external_inputs['sdkPackages'] = [
+            {'package': 'platforms/android-36', 'sourcePropertiesSha256': digest(sdk / 'platforms/android-36/source.properties')},
+            {'package': 'ndk', 'sourcePropertiesSha256': digest(ndk / 'source.properties')}]
+        external_inputs['javaVersion'] = subprocess.check_output(
+            [str(Path(java_home) / 'bin/java'), '-version'], stderr=subprocess.STDOUT, text=True).strip()
+        external_inputs['rustVersion'] = subprocess.check_output(['rustc', '-vV'], text=True).strip()
+        # Hash the actual resolved artifacts instead of calling the cache source.
+        (extracted / 'source-build-inputs.gradle').write_text('''
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+gradle.projectsEvaluated {
+    def app = gradle.rootProject.project(':app')
+    app.tasks.register('papercupSourceBuildInputs') {
+        doLast {
+            def rows = []
+            def collect = { config, label ->
+                config.resolvedConfiguration.resolvedArtifacts.each { artifact ->
+                    def md = MessageDigest.getInstance('SHA-256')
+                    artifact.file.withInputStream { stream ->
+                        byte[] buffer = new byte[65536]
+                        int count
+                        while ((count = stream.read(buffer)) > 0) md.update(buffer, 0, count)
+                    }
+                    rows.add([configuration: label, module: artifact.moduleVersion.id.toString(),
+                              file: artifact.file.name, sha256: md.digest().encodeHex().toString(), size: artifact.file.length()])
+                }
+            }
+            ['debugRuntimeClasspath', 'debugCompileClasspath', 'coreLibraryDesugaring'].each { name ->
+                collect(app.configurations.getByName(name), name)
+            }
+            gradle.rootProject.allprojects.each { project ->
+                def config = project.buildscript.configurations.findByName('classpath')
+                if (config) collect(config, project.path + ':buildscript')
+            }
+            new File(app.buildDir, 'source-build-inputs.json').text = JsonOutput.toJson(rows.sort { a,b ->
+                (a.configuration + a.module + a.file) <=> (b.configuration + b.module + b.file)
+            })
+        }
+    }
+}
+''')
     metadata = json.loads(subprocess.check_output(
         ['cargo', 'metadata', '--frozen', '--format-version', '1'], cwd=extracted, env=environment))
     resolved = [package for package in metadata['packages'] if package.get('source')]
@@ -319,10 +408,24 @@ with tempfile.TemporaryDirectory(prefix='.source-build-', dir=outputs) as tempor
         targets = ['aarch64-linux-android', 'armv7-linux-androideabi', 'i686-linux-android', 'x86_64-linux-android']
         commands = [['cargo', 'ndk', '-t', 'arm64-v8a', '-t', 'armeabi-v7a', '-t', 'x86', '-t', 'x86_64',
                      'build', '--frozen', '--release', '--lib', '-p', 'papercup-bindings']]
-    log = outputs / ('papercusp-source-build-' + uuid.uuid4().hex + '.log')
+        if mode == 'android-apk':
+            commands[0][10:10] = ['-o', 'android/app/src/main/jniLibs']
+            commands.extend([
+                ['cargo', 'run', '--frozen', '--quiet', '--bin', 'uniffi-bindgen', '--', 'generate',
+                 'crates/papercup-bindings/src/papercup.udl', '--language', 'kotlin', '--out-dir', 'android/app/src/main/kotlin'],
+                ['bash', 'tools/build-scripts/verify-android-uniffi-abi.sh',
+                 'android/app/src/main/kotlin/uniffi/papercup/papercup.kt',
+                 *['android/app/src/main/jniLibs/' + abi + '/libpapercup.so'
+                   for abi in ('arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64')]],
+                ['android/gradlew', '-p', 'android', '--offline', '--no-daemon', '--console=plain',
+                 '--init-script', 'source-build-inputs.gradle', '-x', ':app:generateUniFfiKotlin',
+                 ':app:assembleDebug', ':app:papercupSourceBuildInputs']])
+    log = outputs / ('papercusp-source-build-' + build_id + '.log')
     exit_code = 0
     with log.open('w') as stream:
         for command in commands:
+            stream.write('STEP: ' + json.dumps(command) + '\n')
+            stream.flush()
             exit_code = subprocess.run(command, cwd=extracted, env=environment, stdout=stream, stderr=subprocess.STDOUT).returncode
             if exit_code:
                 break
@@ -334,6 +437,39 @@ with tempfile.TemporaryDirectory(prefix='.source-build-', dir=outputs) as tempor
             if not path.is_file() or not path.stat().st_size:
                 raise SystemExit('Compilation produced no native library for ' + target)
             artifacts.append({'target': target, 'sha256': digest(path), 'size': path.stat().st_size})
+        if mode == 'android-apk':
+            apk = extracted / 'android/app/build/outputs/apk/debug/app-debug.apk'
+            if not apk.is_file() or not apk.stat().st_size:
+                raise SystemExit('Gradle produced no exported-source debug APK')
+            packaged_native = []
+            with zipfile.ZipFile(apk) as archive:
+                names = archive.namelist()
+                if len(names) != len(set(names)) or 'classes.dex' not in names or 'AndroidManifest.xml' not in names:
+                    raise SystemExit('Gradle output is not a complete debug APK')
+                if {name.split('/')[1] for name in names if name.startswith('lib/') and name.endswith('.so')} != {
+                        'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'}:
+                    raise SystemExit('Exported-source APK has an unexpected native ABI population')
+                for abi in ('arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'):
+                    name = 'lib/' + abi + '/libpapercup.so'
+                    native = extracted / 'android/app/build/intermediates/stripped_native_libs/debug/stripDebugDebugSymbols/out' / name
+                    expected = digest(native)
+                    if hashlib.sha256(archive.read(name)).hexdigest() != expected:
+                        raise SystemExit('APK native library differs from this Gradle build: ' + abi)
+                    packaged_native.append({'abi': abi, 'sha256': expected})
+            gradle_inputs = json.loads((extracted / 'android/app/build/source-build-inputs.json').read_text())
+            if not gradle_inputs or any(not row.get('module') or len(row.get('sha256', '')) != 64 or row.get('size', 0) <= 0
+                                       for row in gradle_inputs):
+                raise SystemExit('Gradle resolved-artifact provenance is missing or invalid')
+            binding = extracted / 'android/app/src/main/kotlin/uniffi/papercup/papercup.kt'
+            external_inputs['generatedKotlinSha256'] = digest(binding)
+            external_inputs['packagedRustLibraries'] = packaged_native
+            retained = outputs / ('papercusp-exported-app-debug-' + build_id + '.apk')
+            shutil.copyfile(apk, retained)
+            artifacts.append({'target': 'android-debug-apk', 'path': str(retained.relative_to(root)),
+                              'sha256': digest(retained), 'size': retained.stat().st_size})
+    if mode == 'android-apk' and (digest(google_services) != google_digest or
+                                 digest(extracted / 'android/app/google-services.json') != google_digest):
+        raise SystemExit('External Firebase config changed during source compilation')
     for relative, expected in inputs.items():
         if digest(root / relative) != expected:
             raise SystemExit('Delivered source input changed during compilation')
@@ -346,7 +482,9 @@ with tempfile.TemporaryDirectory(prefix='.source-build-', dir=outputs) as tempor
               'verifiedRegistryPackages': len(registry), 'verifiedVendorFiles': verified_files,
               'commands': commands, 'exitCode': exit_code, 'compiledArtifacts': artifacts,
               'log': {'path': str(log.relative_to(root)), 'sha256': digest(log)},
-              'scope': 'Offline exported-source compilation only; native app, signed candidate, license clearance and recipient retrieval remain separate.'}
+              'externalInputs': external_inputs, 'resolvedGradleArtifacts': gradle_inputs,
+              'scope': ('Exported-source Android debug APK compilation only; signed candidate, license clearance and recipient retrieval remain separate.'
+                        if mode == 'android-apk' else 'Offline exported-source compilation only; native app, signed candidate, license clearance and recipient retrieval remain separate.')}
     result_file.write_text(json.dumps(result, indent=2) + '\n')
     if exit_code:
         raise SystemExit('Exported-source compilation failed; receipt and unique log retained')
@@ -565,12 +703,12 @@ case "${1:-}" in
         printf '%s\n' "$REPO_ROOT/$SOURCE_REL"
         ;;
     source-verify-build)
-        [[ $# -le 2 ]] || die "usage: $0 source-verify-build [host|android]"
+        [[ $# -le 2 ]] || die "usage: $0 source-verify-build [host|android|android-apk]"
         mode="${2:-host}"
-        [[ "$mode" == host || "$mode" == android ]] || die "source build mode must be host or android"
+        [[ "$mode" == host || "$mode" == android || "$mode" == android-apk ]] || die "source build mode must be host, android or android-apk"
         verify_source_build "$mode"
         ;;
     *)
-        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive|source-verify-build [host|android]}"
+        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive|source-verify-build [host|android|android-apk]}"
         ;;
 esac

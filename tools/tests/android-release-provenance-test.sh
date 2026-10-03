@@ -335,6 +335,134 @@ run_helper write 0.0.17 "$APK" "$AAB" >/dev/null
 run_helper source-verify-build host >/dev/null
 echo 'Offline exported-source compilation PASS: real locked dependency and eight rejecting controls'
 
+# These controlled native/Gradle executors test archive orchestration and output
+# guards, not Android compilation. The operational full-app run is separate.
+mkdir -p "$TMP/tools/build-scripts" "$TMP/android/app" "$TMP/bin/sdk/platforms/android-36" \
+    "$TMP/bin/sdk/ndk/27.0.12077973" "$TMP/bin/gradle-cache/caches"
+cp "$ROOT/tools/build-scripts/resolve-java-home.sh" "$TMP/tools/build-scripts/"
+cat >"$TMP/tools/build-scripts/verify-android-uniffi-abi.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# == 5 ]]
+for path in "$@"; do [[ -s "$path" ]]; done
+SH
+printf 'Pkg.Revision=36\n' >"$TMP/bin/sdk/platforms/android-36/source.properties"
+printf 'Pkg.Revision=27.0.12077973\n' >"$TMP/bin/sdk/ndk/27.0.12077973/source.properties"
+printf 'ORG_GRADLE_PROJECT_fixtureSecret=must-not-load\n' >"$TMP/bin/gradle-cache/gradle.properties"
+cat >"$TMP/bin/google-services.json" <<'JSON'
+{"client":[{"client_info":{"android_client_info":{"package_name":"com.papercuspai.operator.mobile"}}}]}
+JSON
+cp "$TMP/bin/google-services.json" "$TMP/bin/google-services-backup.json"
+cat >"$TMP/android/gradlew" <<'PY'
+#!/usr/bin/env python3
+import hashlib,json,os
+from pathlib import Path
+import sys,zipfile
+assert '--offline' in sys.argv and '-x' in sys.argv
+assert ':app:assembleDebug' in sys.argv and ':app:papercupSourceBuildInputs' in sys.argv
+assert ':app:generateUniFfiKotlin' in sys.argv
+home=Path(os.environ['GRADLE_USER_HOME'])
+assert not (home/'gradle.properties').exists() and not (home/'init.d').exists()
+assert not any(key.startswith('ORG_GRADLE_PROJECT_') for key in os.environ)
+assert 'PICOVOICE_ACCESS_KEY' not in os.environ
+defect=os.environ.get('SOURCE_BUILD_FIXTURE_DEFECT')
+if defect=='gradle-error':sys.exit(23)
+build=Path('android/app/build');output=build/'outputs/apk/debug/app-debug.apk'
+output.parent.mkdir(parents=True)
+with zipfile.ZipFile(output,'w') as archive:
+    archive.writestr('AndroidManifest.xml','fixture manifest')
+    if defect!='missing-dex':archive.writestr('classes.dex','fixture dex')
+    for abi in ('arm64-v8a','armeabi-v7a','x86','x86_64'):
+        native=Path('android/app/src/main/jniLibs')/abi/'libpapercup.so'
+        stripped=build/'intermediates/stripped_native_libs/debug/stripDebugDebugSymbols/out/lib'/abi/'libpapercup.so'
+        stripped.parent.mkdir(parents=True);stripped.write_bytes(native.read_bytes())
+        if defect=='missing-abi' and abi=='x86':continue
+        archive.writestr('lib/'+abi+'/libpapercup.so',b'bad' if defect=='native-mismatch' else native.read_bytes())
+if defect=='missing-apk':output.unlink()
+if defect=='changed-config':
+    with open(os.environ['PAPERCUP_SOURCE_GOOGLE_SERVICES'],'a') as stream:stream.write(' ')
+record=[] if defect=='empty-resolution' else [{'configuration':'debugRuntimeClasspath','module':'fixture:source:1',
+    'file':'source.txt','sha256':hashlib.sha256(Path('source.txt').read_bytes()).hexdigest(),'size':7}]
+(build/'source-build-inputs.json').write_text(json.dumps(record))
+PY
+chmod +x "$TMP/android/gradlew"
+git -C "$TMP" add android/gradlew tools/build-scripts/resolve-java-home.sh tools/build-scripts/verify-android-uniffi-abi.sh
+git -C "$TMP" commit -qm exported-apk-orchestration-fixture
+run_helper write 0.0.17 "$APK" "$AAB" >/dev/null
+REAL_CARGO="$(command -v cargo)"
+cat >"$TMP/bin/cargo" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == ndk ]]; then
+    "$SOURCE_BUILD_FIXTURE_CARGO" build --frozen --release --lib
+    for row in arm64-v8a:aarch64-linux-android armeabi-v7a:armv7-linux-androideabi x86:i686-linux-android x86_64:x86_64-linux-android; do
+        abi="${row%%:*}"; target="${row#*:}"
+        mkdir -p "$CARGO_TARGET_DIR/$target/release" "android/app/src/main/jniLibs/$abi"
+        cp "$CARGO_TARGET_DIR/release/libpapercup.so" "$CARGO_TARGET_DIR/$target/release/"
+        cp "$CARGO_TARGET_DIR/release/libpapercup.so" "android/app/src/main/jniLibs/$abi/"
+    done
+elif [[ "$1" == run ]]; then
+    mkdir -p android/app/src/main/kotlin/uniffi/papercup
+    printf '// generated fixture binding\n' >android/app/src/main/kotlin/uniffi/papercup/papercup.kt
+else
+    exec "$SOURCE_BUILD_FIXTURE_CARGO" "$@"
+fi
+SH
+chmod +x "$TMP/bin/cargo"
+run_apk_fixture() {
+    PATH="$TMP/bin:$PATH" SOURCE_BUILD_FIXTURE_CARGO="$REAL_CARGO" \
+        ANDROID_SDK_ROOT="$TMP/bin/sdk" ANDROID_NDK_HOME="$TMP/bin/sdk/ndk/27.0.12077973" \
+        GRADLE_USER_HOME="$TMP/bin/gradle-cache" \
+        PAPERCUP_SOURCE_GOOGLE_SERVICES="${FIXTURE_GOOGLE_CONFIG-$TMP/bin/google-services.json}" \
+        ORG_GRADLE_PROJECT_fixtureSecret=must-not-load PICOVOICE_ACCESS_KEY=must-not-load \
+        run_helper source-verify-build android-apk
+}
+run_apk_fixture >"$TMP/bin/source-apk-pass.json"
+python3 - "$TMP" "$BUILD_RESULT" <<'PY'
+import hashlib,json,sys
+from pathlib import Path
+root=Path(sys.argv[1]);result=json.load(open(sys.argv[2]))
+assert result['exitCode']==0 and result['mode']=='android-apk'
+assert len(result['compiledArtifacts'])==5 and len(result['commands'])==4
+assert not any(argument.startswith(str(root)) for command in result['commands'] for argument in command)
+apk=result['compiledArtifacts'][-1];path=root/apk['path']
+assert path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest()==apk['sha256']
+assert result['externalInputs']['googleServices']['sha256']==hashlib.sha256((root/'bin/google-services.json').read_bytes()).hexdigest()
+assert len(result['externalInputs']['packagedRustLibraries'])==4
+assert result['externalInputs']['environment']['personalGradleConfigLoaded'] is False
+assert len(result['resolvedGradleArtifacts'])==1
+PY
+for defect in gradle-error missing-apk missing-dex missing-abi native-mismatch empty-resolution changed-config; do
+    cp "$TMP/bin/google-services-backup.json" "$TMP/bin/google-services.json"
+    if SOURCE_BUILD_FIXTURE_DEFECT="$defect" run_apk_fixture >"$TMP/bin/source-apk-$defect.log" 2>&1; then
+        fail "exported APK accepted $defect"
+    fi
+    if [[ "$defect" == gradle-error ]]; then
+        python3 - "$BUILD_RESULT" <<'PY'
+import json,sys
+result=json.load(open(sys.argv[1]));assert result['exitCode']==23 and not result['compiledArtifacts']
+PY
+    else
+        [[ ! -f "$BUILD_RESULT" ]] || fail "$defect left a stale APK success receipt"
+    fi
+done
+cp "$TMP/bin/google-services-backup.json" "$TMP/bin/google-services.json"
+if FIXTURE_GOOGLE_CONFIG='' run_apk_fixture >"$TMP/bin/source-apk-no-config.log" 2>&1; then
+    fail 'exported APK accepted absent external config'
+fi
+printf '{"client":[]}\n' >"$TMP/bin/google-services.json"
+if run_apk_fixture >"$TMP/bin/source-apk-wrong-package.log" 2>&1; then
+    fail 'exported APK accepted wrong Firebase package'
+fi
+cp "$TMP/bin/google-services-backup.json" "$TMP/bin/google-services.json"
+mv "$TMP/bin/sdk/platforms/android-36/source.properties" "$TMP/bin/sdk/platforms/android-36/source.properties.saved"
+if run_apk_fixture >"$TMP/bin/source-apk-no-sdk.log" 2>&1; then
+    fail 'exported APK accepted absent API 36 SDK'
+fi
+mv "$TMP/bin/sdk/platforms/android-36/source.properties.saved" "$TMP/bin/sdk/platforms/android-36/source.properties"
+run_apk_fixture >/dev/null
+echo 'Exported APK orchestration PASS: retained output/config hashes, isolated personal config, ten rejecting controls (fixture, not Android compilation)'
+
 printf 'tamper' >>"$APK"
 if run_helper verify 0.0.17 >/dev/null 2>&1; then
     echo "FAIL: tampered APK passed provenance verification" >&2

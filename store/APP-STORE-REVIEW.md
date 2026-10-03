@@ -325,6 +325,37 @@ test compiles a real miniature vendored dependency and rejects stale or damaged
 supplements, root-file replacement, unsafe/duplicate entries, redirected Cargo
 configuration and a real Rust compiler failure.
 
+For an actual debug APK build from the delivered source, explicitly supply the
+API 36 SDK and external Firebase configuration:
+
+```sh
+export ANDROID_SDK_ROOT="$HOME/Android/Sdk"
+export PAPERCUP_SOURCE_GOOGLE_SERVICES="/path/to/private/google-services.json"
+tools/build-scripts/android-release-provenance.sh source-verify-build android-apk
+```
+
+This mode rebuilds all four Rust ABIs and generates Kotlin bindings with frozen,
+offline Cargo resolution, then runs the delivered Gradle wrapper with offline
+dependency resolution. It shares existing Gradle dependency/distribution caches
+through an isolated user home; personal Gradle properties, init scripts, signing
+and wake-word environment overrides are excluded. The receipt hashes the external
+Firebase config without copying its contents or private path into evidence, records
+Java/Rust versions and SDK package metadata, and inventories the resolved runtime,
+compile, desugaring and project buildscript artifacts. This inventory is not a
+complete hermetic toolchain or dependency-source delivery claim.
+
+The generated Kotlin command replaces Gradle's unfrozen `make bindings-kotlin`
+task explicitly. The existing UniFFI ABI verifier checks the generated bindings
+against all four compiled libraries before Gradle runs. The source verifier also
+checks all four packaged Rust libraries against this
+Gradle build's stripped outputs and retains a uniquely named debug APK and build
+log alongside the receipt. A failure removes the preceding successful receipt;
+a compiler/Gradle failure retains its exit code and unique log. Maintained fixture
+tests check orchestration, external-config isolation and ten rejecting controls;
+they do not claim real Android compilation. A separately recorded operational run
+must establish that. Debug compilation does not establish signed APK/AAB candidate
+equivalence, complete notices, licensing clearance or recipient retrieval.
+
 ### Selected Android SDK source and notice preparation
 
 The October 2 preparation at mobile commit
