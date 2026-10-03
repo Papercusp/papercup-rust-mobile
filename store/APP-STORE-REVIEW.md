@@ -438,6 +438,10 @@ SHA-256, upstream source URL and digest, retrieval time, and the selected module
 versions which reference it. The maintained metadata check verifies the actual
 debug/release output against these files and rejects missing, substituted or
 unlinked text. No new notice viewer or separate generation pipeline was added.
+The cache-transition check uses a temporary app build directory, preserving
+the normal packaging resources even when it runs from the automatic pre-push
+gate. It asserts that both preparation tasks keep their outputs in that
+directory.
 
 | Reference | Retained text and scope |
 | --- | --- |

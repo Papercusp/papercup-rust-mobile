@@ -14,6 +14,14 @@ import groovy.json.JsonSlurper
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import java.security.MessageDigest
 
+// Keep add/remove fixtures out of application packaging outputs, including
+// when this maintained check runs from the automatic pre-push gate.
+def noticeBuildDir = System.getProperty('papercup.notices.buildDir')
+assert noticeBuildDir: 'Notice regression requires isolated outputs'
+gradle.beforeProject { project ->
+    if (project.path == ':app') project.layout.buildDirectory.set(new File(noticeBuildDir))
+}
+
 def fixtureRepo = System.getProperty('papercup.notices.fixtureRepo')
 if (fixtureRepo) {
     gradle.settingsEvaluated { settings ->
@@ -26,7 +34,12 @@ gradle.projectsEvaluated {
     app.tasks.register('verifyReleaseLibraryMetadata') {
         dependsOn ':app:prepareLibraryDefinitionsRelease', ':app:prepareLibraryDefinitionsDebug'
         doLast {
+            def isolated = new File(noticeBuildDir).canonicalFile
+            assert app.buildDir.canonicalFile == isolated: 'Notice fixture escaped isolated build directory'
             ['release', 'debug'].each { variant ->
+            def producer = app.tasks.getByName("prepareLibraryDefinitions${variant.capitalize()}")
+            assert producer.outputs.files.files.every { it.canonicalPath.startsWith(isolated.path + File.separator) }:
+                'Notice producer output escaped isolated build directory'
             def source = new File(app.buildDir, "generated/aboutLibraries/$variant/res/raw/aboutlibraries.json")
             assert source.isFile(): 'Generated release library resource is missing'
             def document = new JsonSlurper().parse(source)
@@ -116,6 +129,7 @@ gradle.projectsEvaluated {
 GRADLE
 
 "$ROOT/android/gradlew" -p "$ROOT/android" --console=plain \
+    "-Dpapercup.notices.buildDir=$TMP/build" \
     --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
 
 # Exercise the actual producer's up-to-date behavior across an add/remove
@@ -136,8 +150,10 @@ with zipfile.ZipFile(sys.argv[1], 'w') as archive:
     archive.writestr('META-INF/MANIFEST.MF', 'Manifest-Version: 1.0\n')
 PY
 "$ROOT/android/gradlew" -p "$ROOT/android" --console=plain \
+    "-Dpapercup.notices.buildDir=$TMP/build" \
     "-Dpapercup.notices.fixtureRepo=$TMP/repository" \
     --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
 "$ROOT/android/gradlew" -p "$ROOT/android" --console=plain \
+    "-Dpapercup.notices.buildDir=$TMP/build" \
     --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
-echo 'Release notice collector cached add/remove graph transitions PASS'
+echo 'Release notice collector isolated cached add/remove graph transitions PASS'
