@@ -69,6 +69,16 @@ explicit emulator/loopback endpoints enforced by `EndpointSecurity`.
 
 ### Run the Android app on emulator/device
 
+For headless emulator checks, use `-gpu swiftshader -feature
+GLDirectMem,HasSharedSlotsHostMemoryAllocator`. API 36.1's Goldfish mapper
+requires the DMA color-buffer readback extension; choosing a renderer alone
+does not supply it. The maintained `verify-emulator-boot` phase checks that
+extension on API 36.1+, stable framework services, and at least 512 MiB free
+inside `/data` before installing test fixtures. Host AVD-space preflight and
+the boot-completed property do not establish guest readiness. If an existing
+AVD fails guest-space admission, create an owned temporary AVD with fresh
+userdata; preserve the original SDK and AVD rather than wiping them.
+
 ```sh
 make install-android
 adb shell am start -n com.papercuspai.operator.mobile.debug/com.papercuspai.operator.mobile.MainActivity

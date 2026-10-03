@@ -792,6 +792,39 @@ if proof['bootCompleted']:
                      r'FATAL EXCEPTION IN SYSTEM PROCESS|'
                      r'Process: system_server|hasReadColorBufferDma', crash):
             raise RuntimeError('Native framework crash detected before app execution')
+        sdk = adb('shell', 'getprop', 'ro.build.version.sdk_full') or adb(
+            'shell', 'getprop', 'ro.build.version.sdk')
+        if not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', sdk):
+            raise RuntimeError('Native SDK version is unmeasured')
+        version = tuple(int(part) for part in sdk.split('.'))
+        proof['graphics'] = {'sdkVersion': sdk, 'dmaReadbackRequired': version >= (36, 1)}
+        if proof['graphics']['dmaReadbackRequired']:
+            graphics = adb('shell', 'dumpsys', '-t', '3', 'SurfaceFlinger')
+            (out / 'framework-graphics.txt').write_text(graphics + '\n')
+            required = ('ANDROID_EMU_read_color_buffer_dma', 'ANDROID_EMU_direct_mem',
+                        'ANDROID_EMU_has_shared_slots_host_memory_allocator')
+            extensions = set(graphics.split())
+            proof['graphics']['requiredExtensions'] = list(required)
+            proof['graphics']['missingExtensions'] = [name for name in required if name not in extensions]
+            if proof['graphics']['missingExtensions']:
+                raise RuntimeError('Native graphics lacks DMA readback; launch with '
+                                   '-feature GLDirectMem,HasSharedSlotsHostMemoryAllocator')
+        storage = adb('shell', 'df', '-k', '/data')
+        (out / 'guest-data-space.txt').write_text(storage + '\n')
+        rows = [line.split() for line in storage.splitlines()[1:] if line.strip()]
+        if (len(rows) != 1 or len(rows[0]) != 6
+                or not all(value.isdigit() for value in rows[0][1:4])
+                or not rows[0][5].startswith('/data')):
+            raise RuntimeError('Native userdata free space is unmeasured')
+        # Cover the app, instrumentation, package installation and retained
+        # output inside the guest; host AVD allocation alone cannot prove this.
+        available = int(rows[0][3]) * 1024
+        required = 512 * 1024**2
+        proof['guestStorage'] = {'availableBytes': available, 'requiredBytes': required,
+                                 'sufficient': available >= required}
+        if available < required:
+            raise RuntimeError('Insufficient native userdata space; use owned fresh userdata, '
+                               'never erase a pre-existing AVD')
         proof['frameworkReady'] = True
     except (RuntimeError, subprocess.TimeoutExpired) as error:
         proof['frameworkErrors'].append(str(error))

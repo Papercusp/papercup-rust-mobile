@@ -448,7 +448,10 @@ assert args[:2] == ['-s', 'emulator-5556']
 args = args[2:]
 private = Path('private-fixture.json')
 if args == ['shell', 'getprop', 'sys.boot_completed']: print('1')
+elif args == ['shell', 'getprop', 'ro.build.version.sdk_full']: print('36')
 elif args == ['shell', 'getprop', 'ro.build.version.sdk']: print('36')
+elif args == ['shell', 'df', '-k', '/data']:
+    print('Filesystem 1K-blocks Used Available Use% Mounted on\\n/dev/block/test 1048576 0 1048576 0% /data')
 elif args == ['shell', 'getconf', 'PAGE_SIZE']: print('4096' if case == 'native-preflight-fail' else '16384')
 elif args[:2] == ['shell', 'pidof']: print('123')
 elif args == ['shell', 'settings', 'get', 'global', 'airplane_mode_on']: print('0')
@@ -780,19 +783,41 @@ elif [[ "$*" == *'logcat -b crash -d' ]]; then
         echo 'Fatal signal 6 (SIGABRT) in tid 843 (RegionSampling), pid 762 (surfaceflinger)'
         echo "Abort message: 'Assertion failed: !rcEnc->featureInfo()->hasReadColorBufferDma'"
     fi
+elif [[ "$*" == *'shell getprop ro.build.version.sdk_full' ]]; then
+    if [[ "${TEST_BOOT_CASE:-}" == sdk-fallback ]]; then echo; else echo 36.1; fi
+elif [[ "$*" == *'shell getprop ro.build.version.sdk' ]]; then
+    echo 36
+elif [[ "$*" == *'shell dumpsys -t 3 SurfaceFlinger' ]]; then
+    [[ "${TEST_BOOT_CASE:-}" != sdk-fallback ]] || exit 91
+    if [[ "${TEST_BOOT_CASE:-}" == graphics-missing ]]; then
+        echo 'GLES: GL_EXT_buffer_storage'
+    elif [[ "${TEST_BOOT_CASE:-}" == graphics-partial ]]; then
+        echo 'ANDROID_EMU_read_color_buffer_dma_suffix ANDROID_EMU_direct_mem'
+    else
+        echo 'ANDROID_EMU_read_color_buffer_dma ANDROID_EMU_direct_mem ANDROID_EMU_has_shared_slots_host_memory_allocator'
+    fi
+elif [[ "$*" == *'shell df -k /data' ]]; then
+    [[ "${TEST_BOOT_CASE:-}" != storage-read-fail ]] || exit 224
+    echo 'Filesystem 1K-blocks Used Available Use% Mounted on'
+    if [[ "${TEST_BOOT_CASE:-}" == storage-unknown ]]; then echo unavailable
+    elif [[ "${TEST_BOOT_CASE:-}" == storage-full ]]; then echo '/dev/block/dm-55 792608 755268 4572 100% /data/user/0'
+    elif [[ "${TEST_BOOT_CASE:-}" == storage-small ]]; then echo '/dev/block/test 1048576 524289 524287 50% /data'
+    else echo '/dev/block/test 1048576 524288 524288 50% /data'; fi
 else
     echo "unexpected boot fixture command: $*" >&2; exit 1
 fi
 SH
 chmod +x "$TMP_ROOT/boot-bin/adb"
 TEST_BOOT_READY=1 PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 "$TMP_ROOT/boot-pass" 1
-for case in missing restart settings crash; do
+for case in missing restart settings crash graphics-missing graphics-partial storage-full storage-small storage-unknown storage-read-fail; do
     if TEST_BOOT_READY=1 TEST_BOOT_CASE="$case" TEST_BOOT_COUNTER="$TMP_ROOT/boot-counter" \
         PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 \
         "$TMP_ROOT/boot-$case" 1 > "$TMP_ROOT/output" 2>&1; then
         echo "FAIL: sticky boot flag admitted unhealthy framework: $case" >&2; exit 1
     fi
 done
+TEST_BOOT_READY=1 TEST_BOOT_CASE=sdk-fallback PATH="$TMP_ROOT/boot-bin:$PATH" \
+    bash "$runner" verify-emulator-boot emulator-5584 "$TMP_ROOT/boot-sdk-fallback" 1
 if PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 "$TMP_ROOT/boot-fail" 1 > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: missing ADB transport accepted as a booted emulator' >&2; exit 1
 fi
@@ -802,14 +827,20 @@ from pathlib import Path
 root = Path(sys.argv[1])
 assert json.loads((root / 'boot-pass/emulator-boot.json').read_text())['bootCompleted'] is True
 assert json.loads((root / 'boot-pass/emulator-boot.json').read_text())['frameworkReady'] is True
-for case in ['missing', 'restart', 'settings', 'crash']:
+good = json.loads((root / 'boot-pass/emulator-boot.json').read_text())
+assert good['graphics']['missingExtensions'] == []
+assert good['guestStorage']['availableBytes'] == good['guestStorage']['requiredBytes']
+fallback = json.loads((root / 'boot-sdk-fallback/emulator-boot.json').read_text())
+assert fallback['frameworkReady'] and not fallback['graphics']['dmaReadbackRequired']
+for case in ['missing', 'restart', 'settings', 'crash', 'graphics-missing', 'graphics-partial',
+             'storage-full', 'storage-small', 'storage-unknown', 'storage-read-fail']:
     proof = json.loads((root / f'boot-{case}/emulator-boot.json').read_text())
     assert proof['bootCompleted'] and not proof['frameworkReady'] and proof['frameworkErrors']
 bad = json.loads((root / 'boot-fail/emulator-boot.json').read_text())
 assert bad['bootCompleted'] is False and 'device not found' in bad['adbError']
 assert (root / 'boot-fail/boot-transports.txt').is_file()
 PY
-echo 'Android native framework readiness: healthy accepted; missing/restarting/broken-service/crashing controls rejected'
+echo 'Android native readiness: healthy and API36 fallback accepted; 10 process/service/crash/graphics/userdata controls rejected'
 if TEST_EMULATOR_MISSING_LIB=1 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/missing-lib-proof" > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: missing emulator shared library was accepted' >&2
     exit 1
