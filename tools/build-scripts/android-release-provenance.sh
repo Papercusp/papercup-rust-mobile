@@ -200,6 +200,160 @@ resolve_apkanalyzer() {
     printf '%s\n' "$analyzer"
 }
 
+# Exercise the exported source, not the checkout's populated Cargo cache or
+# target directory. The locked dependency supplement is prepared separately.
+verify_source_build() {
+    local mode="$1" commit
+    rm -f "$REPO_ROOT/android/app/build/outputs/papercusp-source-build-result.json"
+    assert_clean_source
+    commit="$(source_commit)"
+    source_archive verify "$commit"
+    REPO_ROOT="$REPO_ROOT" SOURCE_REL="$SOURCE_REL" python3 - "$mode" "$commit" <<'PY'
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import subprocess
+import sys
+import tarfile
+import tempfile
+import tomllib
+import uuid
+
+mode, commit = sys.argv[1:]
+root = Path(os.environ['REPO_ROOT']).resolve()
+outputs = root / 'android/app/build/outputs'
+source = root / os.environ['SOURCE_REL']
+dependencies = outputs / 'papercusp-rust-dependencies.tar.gz'
+result_file = outputs / 'papercusp-source-build-result.json'
+# A failed attempt must never leave a preceding successful receipt current.
+result_file.unlink(missing_ok=True)
+started = datetime.now(timezone.utc).isoformat()
+
+def digest(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+inputs = {str(path.relative_to(root)): digest(path) for path in (source, dependencies)}
+prefix = 'papercusp-mobile-source'
+vendor_rel = 'android/app/build/outputs/papercusp-rust-dependencies'
+inventory_rel = vendor_rel + '-provenance.json'
+supplement_rel = 'android/app/build/outputs/papercusp-rust-license-supplements'
+config = {'source': {'crates-io': {'replace-with': 'vendored-sources'},
+                     'vendored-sources': {'directory': vendor_rel}}}
+
+def extract(archive_path, destination, supplement=False):
+    seen = set()
+    with tarfile.open(archive_path, 'r:gz') as archive:
+        for entry in archive:
+            path = PurePosixPath(entry.name)
+            if path.is_absolute() or '..' in path.parts or not path.parts or path.parts[0] != prefix:
+                raise SystemExit('Unsafe delivered source path: ' + entry.name)
+            if entry.name in seen:
+                raise SystemExit('Duplicate delivered source path: ' + entry.name)
+            seen.add(entry.name)
+            if supplement and not entry.isdir():
+                relative = str(path.relative_to(prefix))
+                allowed = relative in ('.cargo/config.toml', inventory_rel) or any(
+                    relative.startswith(directory + '/') for directory in (vendor_rel, supplement_rel))
+                if not allowed or not entry.isfile():
+                    raise SystemExit('Unexpected dependency supplement entry: ' + entry.name)
+                if (destination / entry.name).exists():
+                    raise SystemExit('Dependency supplement overwrites root source: ' + entry.name)
+            # Python's maintained filter refuses escaping links and special files.
+            archive.extract(entry, destination, filter='data')
+
+with tempfile.TemporaryDirectory(prefix='.source-build-', dir=outputs) as temporary:
+    destination = Path(temporary)
+    extract(source, destination)
+    extracted = destination / prefix
+    extract(dependencies, destination, supplement=True)
+    if tomllib.loads((extracted / '.cargo/config.toml').read_text()) != config:
+        raise SystemExit('Delivered Cargo config differs from the offline vendor recipe')
+    inventory = json.loads((extracted / inventory_rel).read_text())
+    if inventory.get('cargoLockSha256') != digest(extracted / 'Cargo.lock'):
+        raise SystemExit('Dependency supplement is stale for the delivered Cargo.lock')
+    lock = tomllib.loads((extracted / 'Cargo.lock').read_text())
+    registry = {}
+    for package in lock['package']:
+        if package.get('source'):
+            if package['source'] != 'registry+https://github.com/rust-lang/crates.io-index':
+                raise SystemExit('Unsupported locked source requires explicit preparation: ' + package['name'])
+            registry[(package['name'], package['version'])] = package['checksum']
+    rows = inventory['packages']
+    if len(rows) != len(registry) or {(row['name'], row['version']) for row in rows} != set(registry):
+        raise SystemExit('Dependency supplement does not cover the locked registry population')
+    vendor = extracted / vendor_rel
+    if {path.name for path in vendor.iterdir()} != {name + '-' + version for name, version in registry}:
+        raise SystemExit('Delivered vendor directory differs from the locked registry population')
+    verified_files = 0
+    for row in rows:
+        name, version = row['name'], row['version']
+        package = vendor / (name + '-' + version)
+        checksums = json.loads((package / '.cargo-checksum.json').read_text())
+        if checksums['package'] != registry[(name, version)] or row['packageChecksum'] != registry[(name, version)]:
+            raise SystemExit('Delivered registry checksum differs from Cargo.lock: ' + name)
+        actual = {str(path.relative_to(package)) for path in package.rglob('*') if path.is_file()}
+        if actual != set(checksums['files']) | {'.cargo-checksum.json'}:
+            raise SystemExit('Delivered crate file population differs: ' + name)
+        for relative, expected in checksums['files'].items():
+            path = PurePosixPath(relative)
+            if path.is_absolute() or '..' in path.parts or digest(package / relative) != expected:
+                raise SystemExit('Delivered crate file checksum differs: ' + name + '/' + relative)
+            verified_files += 1
+    environment = dict(os.environ, CARGO_NET_OFFLINE='true', CARGO_TARGET_DIR=str(extracted / 'target'))
+    metadata = json.loads(subprocess.check_output(
+        ['cargo', 'metadata', '--frozen', '--format-version', '1'], cwd=extracted, env=environment))
+    resolved = [package for package in metadata['packages'] if package.get('source')]
+    if {(package['name'], package['version']) for package in resolved} != set(registry):
+        raise SystemExit('Extracted Cargo graph differs from the locked registry population')
+    if any(not Path(package['manifest_path']).resolve().is_relative_to(vendor) for package in resolved):
+        raise SystemExit('Cargo resolved a registry dependency outside the delivered source')
+    if mode == 'host':
+        version = subprocess.check_output(['rustc', '-vV'], text=True)
+        target = next(line.removeprefix('host: ') for line in version.splitlines() if line.startswith('host: '))
+        commands = [['cargo', 'build', '--frozen', '--release', '--lib', '-p', 'papercup-bindings', '--target', target]]
+        targets = [target]
+    else:
+        targets = ['aarch64-linux-android', 'armv7-linux-androideabi', 'i686-linux-android', 'x86_64-linux-android']
+        commands = [['cargo', 'ndk', '-t', 'arm64-v8a', '-t', 'armeabi-v7a', '-t', 'x86', '-t', 'x86_64',
+                     'build', '--frozen', '--release', '--lib', '-p', 'papercup-bindings']]
+    log = outputs / ('papercusp-source-build-' + uuid.uuid4().hex + '.log')
+    exit_code = 0
+    with log.open('w') as stream:
+        for command in commands:
+            exit_code = subprocess.run(command, cwd=extracted, env=environment, stdout=stream, stderr=subprocess.STDOUT).returncode
+            if exit_code:
+                break
+    artifacts = []
+    if not exit_code:
+        for target in targets:
+            filename = 'papercup.dll' if 'windows' in target else 'libpapercup.dylib' if 'darwin' in target else 'libpapercup.so'
+            path = extracted / 'target' / target / 'release' / filename
+            if not path.is_file() or not path.stat().st_size:
+                raise SystemExit('Compilation produced no native library for ' + target)
+            artifacts.append({'target': target, 'sha256': digest(path), 'size': path.stat().st_size})
+    for relative, expected in inputs.items():
+        if digest(root / relative) != expected:
+            raise SystemExit('Delivered source input changed during compilation')
+    if subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip() != commit or subprocess.check_output(
+            ['git', '-C', str(root), 'status', '--porcelain', '--untracked-files=normal']).strip():
+        raise SystemExit('Source checkout changed during compilation')
+    result = {'schemaVersion': 1, 'sourceCommit': commit, 'mode': mode,
+              'startedAt': started, 'finishedAt': datetime.now(timezone.utc).isoformat(),
+              'inputSha256': inputs, 'cargoLockSha256': inventory['cargoLockSha256'],
+              'verifiedRegistryPackages': len(registry), 'verifiedVendorFiles': verified_files,
+              'commands': commands, 'exitCode': exit_code, 'compiledArtifacts': artifacts,
+              'log': {'path': str(log.relative_to(root)), 'sha256': digest(log)},
+              'scope': 'Offline exported-source compilation only; native app, signed candidate, license clearance and recipient retrieval remain separate.'}
+    result_file.write_text(json.dumps(result, indent=2) + '\n')
+    if exit_code:
+        raise SystemExit('Exported-source compilation failed; receipt and unique log retained')
+    print(json.dumps(result))
+PY
+}
+
 assert_canonical_artifact() {
     local supplied="$1" expected_rel="$2" supplied_real expected_real
     [[ -f "$supplied" ]] || die "required Android release artifact missing: $supplied"
@@ -410,7 +564,13 @@ case "${1:-}" in
         source_archive verify "$commit"
         printf '%s\n' "$REPO_ROOT/$SOURCE_REL"
         ;;
+    source-verify-build)
+        [[ $# -le 2 ]] || die "usage: $0 source-verify-build [host|android]"
+        mode="${2:-host}"
+        [[ "$mode" == host || "$mode" == android ]] || die "source build mode must be host or android"
+        verify_source_build "$mode"
+        ;;
     *)
-        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive}"
+        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive|source-verify-build [host|android]}"
         ;;
 esac

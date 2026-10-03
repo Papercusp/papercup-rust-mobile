@@ -303,6 +303,28 @@ This proves local source extraction and Cargo graph resolution for the recorded
 revision. Compilation, Android/Gradle/native SDK source obligations, final
 notices, licensing clearance and actual recipient retrieval remain open.
 
+The existing source-provenance helper provides a repeatable exported-source
+compilation check, after the root archive and locked Rust supplement are prepared:
+
+```sh
+tools/build-scripts/android-release-provenance.sh source-verify-build host
+tools/build-scripts/android-release-provenance.sh source-verify-build android
+```
+
+It verifies the root archive against the current committed source, extracts both
+archives into a temporary directory, verifies the complete locked registry and
+file checksums, and resolves Cargo dependencies exclusively from delivered
+source. Compilation uses `--frozen` with offline mode and an empty target
+directory. Android mode builds the Rust native library for all four supported
+ABIs through cargo-ndk. A successful receipt records archive, lockfile, output
+and unique log hashes in
+`android/app/build/outputs/papercusp-source-build-result.json`. Native app
+compilation, signed-candidate equivalence, complete notices, license clearance
+and recipient retrieval require separate evidence. The maintained provenance
+test compiles a real miniature vendored dependency and rejects stale or damaged
+supplements, root-file replacement, unsafe/duplicate entries, redirected Cargo
+configuration and a real Rust compiler failure.
+
 ### Selected Android SDK source and notice preparation
 
 The October 2 preparation at mobile commit

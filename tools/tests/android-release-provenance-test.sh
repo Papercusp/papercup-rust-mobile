@@ -217,6 +217,124 @@ done <<'PATTERNS'
 replaces the hashes
 PATTERNS
 
+# Compile a real tiny cdylib and locked dependency from the delivered archives.
+mkdir -p "$TMP/src"
+cat >"$TMP/Cargo.toml" <<'TOML'
+[package]
+name = "papercup-bindings"
+version = "0.1.0"
+edition = "2021"
+[lib]
+name = "papercup"
+crate-type = ["cdylib"]
+[dependencies]
+source_proof_dependency = "=1.0.0"
+TOML
+printf '#[no_mangle]\npub extern "C" fn delivered_value() -> u32 { source_proof_dependency::value() }\n' >"$TMP/src/lib.rs"
+cat >"$TMP/Cargo.lock" <<'LOCK'
+version = 3
+[[package]]
+name = "papercup-bindings"
+version = "0.1.0"
+dependencies = ["source_proof_dependency"]
+[[package]]
+name = "source_proof_dependency"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abababababababababababababababababababababababababababababababab"
+LOCK
+git -C "$TMP" add Cargo.toml Cargo.lock src/lib.rs
+git -C "$TMP" commit -qm source-build-fixture
+run_helper write 0.0.17 "$APK" "$AAB" >/dev/null
+
+DEPENDENCIES="$TMP/android/app/build/outputs/papercusp-rust-dependencies.tar.gz"
+python3 - "$TMP" "$DEPENDENCIES" <<'PY'
+import hashlib, io, json
+from pathlib import Path
+import sys, tarfile
+root, output = map(Path, sys.argv[1:])
+prefix = 'papercusp-mobile-source/'
+vendor = 'android/app/build/outputs/papercusp-rust-dependencies'
+files = {'Cargo.toml': b'[package]\nname="source_proof_dependency"\nversion="1.0.0"\nedition="2021"\n',
+         'src/lib.rs': b'pub fn value() -> u32 { 42 }\n'}
+checksum = 'ab' * 32
+files['.cargo-checksum.json'] = json.dumps({'package': checksum, 'files': {
+    name: hashlib.sha256(data).hexdigest() for name, data in files.items()}}).encode()
+entries = {vendor + '/source_proof_dependency-1.0.0/' + name: data for name, data in files.items()}
+entries[vendor + '-provenance.json'] = json.dumps({
+    'cargoLockSha256': hashlib.sha256((root/'Cargo.lock').read_bytes()).hexdigest(),
+    'packages': [{'name': 'source_proof_dependency', 'version': '1.0.0', 'packageChecksum': checksum}]}).encode()
+entries['.cargo/config.toml'] = ('[source.crates-io]\nreplace-with="vendored-sources"\n'
+                               '[source.vendored-sources]\ndirectory="' + vendor + '"\n').encode()
+with tarfile.open(output, 'w:gz') as archive:
+    for name, data in entries.items():
+        entry = tarfile.TarInfo(prefix + name); entry.size = len(data)
+        archive.addfile(entry, io.BytesIO(data))
+PY
+cp "$DEPENDENCIES" "$TMP/bin/dependencies-backup.tar.gz"
+run_helper source-verify-build host >"$TMP/bin/source-build-pass.json"
+BUILD_RESULT="$TMP/android/app/build/outputs/papercusp-source-build-result.json"
+python3 - "$BUILD_RESULT" <<'PY'
+import json,sys
+result=json.load(open(sys.argv[1]))
+assert result['exitCode']==0 and result['verifiedRegistryPackages']==1 and result['verifiedVendorFiles']==2
+assert len(result['compiledArtifacts'])==1 and result['compiledArtifacts'][0]['size']>0
+assert '--frozen' in result['commands'][0]
+PY
+
+for defect in stale-lock changed-file extra-file overlay-root escaping-path duplicate-entry redirected-config; do
+    cp "$TMP/bin/dependencies-backup.tar.gz" "$DEPENDENCIES"
+    python3 - "$DEPENDENCIES" "$defect" <<'PY'
+import io,json,sys,tarfile
+path,defect=sys.argv[1:]
+with tarfile.open(path,'r:gz') as archive:
+    rows=[(entry,archive.extractfile(entry).read()) for entry in archive]
+vendor='papercusp-mobile-source/android/app/build/outputs/papercusp-rust-dependencies'
+changed=[]
+for entry,data in rows:
+    if defect=='stale-lock' and entry.name.endswith('-provenance.json'):
+        record=json.loads(data); record['cargoLockSha256']='0'*64; data=json.dumps(record).encode()
+    if defect=='changed-file' and entry.name.endswith('/src/lib.rs'):data=b'pub fn value() -> u32 { 99 }\n'
+    if defect=='redirected-config' and entry.name.endswith('.cargo/config.toml'):data=b'[source.crates-io]\nreplace-with="outside"\n'
+    entry.size=len(data);changed.append((entry,data))
+if defect in ('extra-file','overlay-root','escaping-path'):
+    name={'extra-file':vendor+'/source_proof_dependency-1.0.0/extra.txt',
+          'overlay-root':'papercusp-mobile-source/Cargo.toml',
+          'escaping-path':'papercusp-mobile-source/../../escape.txt'}[defect]
+    entry=tarfile.TarInfo(name);entry.size=5;changed.append((entry,b'extra'))
+if defect=='duplicate-entry':changed.append(changed[0])
+with tarfile.open(path,'w:gz') as archive:
+    for entry,data in changed:archive.addfile(entry,io.BytesIO(data))
+PY
+    if run_helper source-verify-build host >"$TMP/bin/source-build-$defect.log" 2>&1; then
+        fail "source build accepted $defect dependency supplement"
+    fi
+    [[ ! -f "$BUILD_RESULT" ]] || fail "$defect left a stale successful build receipt"
+done
+cp "$TMP/bin/dependencies-backup.tar.gz" "$DEPENDENCIES"
+
+# A compiler failure must retain a failed receipt and its unique log.
+printf 'this does not compile\n' >"$TMP/src/lib.rs"
+git -C "$TMP" add src/lib.rs
+git -C "$TMP" commit -qm broken-source-build-fixture
+run_helper source-archive >/dev/null
+if run_helper source-verify-build host >"$TMP/bin/source-build-compiler-error.log" 2>&1; then
+    fail 'source compilation accepted invalid Rust'
+fi
+python3 - "$TMP" "$BUILD_RESULT" <<'PY'
+import json,sys
+from pathlib import Path
+root=Path(sys.argv[1]);result=json.load(open(sys.argv[2]))
+assert result['exitCode']!=0 and not result['compiledArtifacts']
+assert 'error:' in (root/result['log']['path']).read_text()
+PY
+printf '#[no_mangle]\npub extern "C" fn delivered_value() -> u32 { source_proof_dependency::value() }\n' >"$TMP/src/lib.rs"
+git -C "$TMP" add src/lib.rs
+git -C "$TMP" commit -qm restore-source-build-fixture
+run_helper write 0.0.17 "$APK" "$AAB" >/dev/null
+run_helper source-verify-build host >/dev/null
+echo 'Offline exported-source compilation PASS: real locked dependency and eight rejecting controls'
+
 printf 'tamper' >>"$APK"
 if run_helper verify 0.0.17 >/dev/null 2>&1; then
     echo "FAIL: tampered APK passed provenance verification" >&2
