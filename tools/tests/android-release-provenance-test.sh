@@ -603,6 +603,8 @@ fi
 JNA_ROOT="$TMP/bin/jna-fixture"
 JNA_INPUT="$JNA_ROOT/android/app/build/outputs/papercusp-android-dependency-sources/jna-5.19.1-source"
 mkdir -p "$JNA_INPUT" "$JNA_ROOT/android/config"
+mkdir -p "$JNA_ROOT/tools/build-scripts"
+cp "$HELPER" "$JNA_ROOT/tools/build-scripts/android-release-provenance.sh"
 git -C "$JNA_ROOT" init -q
 git -C "$JNA_ROOT" config user.name test
 git -C "$JNA_ROOT" config user.email test@example.invalid
@@ -612,9 +614,13 @@ import hashlib,json,subprocess,sys
 from pathlib import Path
 root,source=map(Path,sys.argv[1:])
 files={name:b'Root build or license fixture\n' for name in ('LICENSE','AL2.0','LGPL2.1','OTHERS','README.md','build.xml','common.xml','build-ant-tools.xml')}
+files['build.xml']=b'''<project><target name="compile"><javac release="${javac.release}" nativeheaderdir="${headers}"/></target><target name="javah" depends="compile"/><target name="native"/><target name="native-build-package"/></project>'''
+files['common.xml']=b'''<project><property name="javac.release" value="8"/><property name="jni.major" value="7"/><property name="jni.minor" value="0"/><property name="jni.revision" value="4"/><property name="jni.md5" value="5fb98531302accd485c534c452dd952a"/></project>'''
+files['build-ant-tools.xml']=b'''<project><target><javac classpath="lib/ant.jar:lib/asm-8.0.1.jar"/></target></project>'''
 files.update({'native/Makefile':b'all: fixture\n','native/libffi/LICENSE':b'libffi fixture permission\n',
               'native/build-tool.sh':b'#!/bin/sh\nexit 0\n', 'src/Native.java':b'class Native {}\n',
-              'ant-tools-src/Tool.java':b'class Tool {}\n'})
+              'ant-tools-src/Tool.java':b'class Tool {}\n',
+              'lib/ant.jar':b'fixture ant','lib/asm-8.0.1.jar':b'fixture asm'})
 for name,data in files.items():
  p=source/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
 (source/'native/build-tool.sh').chmod(0o755)
@@ -630,12 +636,15 @@ for line in subprocess.check_output(['git','-C',str(source),'ls-tree','-rzt',tre
  rows.append(row)
 import shutil
 shutil.rmtree(source/'.git')
+shutil.rmtree(source/'lib')
 (source.parent/'jna-NATIVE-TREE.json').write_text(json.dumps({'sha':'descriptive-value-is-not-the-root-proof','truncated':False,'tree':rows}))
 pin={'key':'jna-libffi','sourceRevision':'ab'*20,'sourceTreeSha1':tree_sha,
-     'sourceSha256':hashlib.sha256(files['native/libffi/LICENSE']).hexdigest()}
+     'sourceSha256':hashlib.sha256(files['native/libffi/LICENSE']).hexdigest(),
+     'buildToolInputs':[{'path':name,'gitBlob':hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest(),'size':len(data)}
+                       for name,data in [('lib/ant.jar',b'fixture ant'),('lib/asm-8.0.1.jar',b'fixture asm')]]}
 (root/'android/config/SOURCES.json').write_text(json.dumps({'licenses':[pin]}))
 PY
-git -C "$JNA_ROOT" add .gitignore android/config/SOURCES.json
+git -C "$JNA_ROOT" add .gitignore android/config/SOURCES.json tools/build-scripts/android-release-provenance.sh
 git -C "$JNA_ROOT" commit -qm jna-source-fixture
 run_jna_fixture() { PAPERCUP_MOBILE_ROOT="$JNA_ROOT" "$HELPER" source-archive jna; }
 run_jna_fixture >"$TMP/bin/jna-pass.json"
@@ -690,5 +699,81 @@ cp "$TMP/bin/jna-tree-backup.json" "$JNA_INPUT/../jna-NATIVE-TREE.json"
 cp "$TMP/bin/jna-readme-backup" "$JNA_INPUT/README.md"
 run_jna_fixture >/dev/null
 echo 'Pinned selected JNA source archive PASS: deterministic bytes, Git tree/blob identity, executable mode, eleven rejecting controls and successful-receipt invalidation (fixture, no native build)'
+
+run_jna_inputs() { PAPERCUP_MOBILE_ROOT="$JNA_ROOT" "$HELPER" source-verify-build jna-inputs; }
+JNA_INPUT_RESULT="$JNA_ROOT/android/app/build/outputs/papercusp-jna-build-inputs-result.json"
+run_jna_inputs >"$TMP/bin/jna-inputs-pass.json"
+python3 - "$JNA_INPUT_RESULT" <<'PY'
+import json,sys
+r=json.load(open(sys.argv[1]));assert r['verifiedFiles']==13 and r['rootRecipe']['jniVersion']=='7.0.4'
+assert r['rootRecipe']['javacRelease']=='8' and r['rootRecipe']['jniChecksum']=='5fb98531302accd485c534c452dd952a'
+assert all(t['status']=='missing' for t in r['externalToolInputs'])
+assert all(r[k] is False for k in ('buildExecuted','standaloneToolchainVerified','originalInvocationVerified','recipientRetrievalVerified'))
+PY
+mkdir -p "$(dirname "$JNA_ARCHIVE")/lib"
+printf 'fixture ant' >"$(dirname "$JNA_ARCHIVE")/lib/ant.jar"
+printf 'fixture asm' >"$(dirname "$JNA_ARCHIVE")/lib/asm-8.0.1.jar"
+run_jna_inputs >/dev/null
+python3 - "$JNA_INPUT_RESULT" <<'PY'
+import json,sys
+r=json.load(open(sys.argv[1]));assert all(t['status']=='supplied-blob-verified' and len(t['sha256'])==64 for t in r['externalToolInputs'])
+assert r['standaloneToolchainVerified'] is False and r['buildExecuted'] is False
+PY
+cp "$JNA_ARCHIVE" "$TMP/bin/jna-package-backup.tar.gz"
+cp "$JNA_RESULT" "$TMP/bin/jna-reference-backup.json"
+for defect in wrong-archive-digest missing-member changed-source changed-manifest self-consistent-forgery changed-tree changed-mode duplicate-member escaping-member special-member wrong-pin failed-reference changed-tool linked-tool; do
+    cp "$TMP/bin/jna-package-backup.tar.gz" "$JNA_ARCHIVE"
+    cp "$TMP/bin/jna-reference-backup.json" "$JNA_RESULT"
+    cp "$TMP/bin/jna-tree-backup.json" "$JNA_INPUT/../jna-NATIVE-TREE.json"
+    rm -f "$(dirname "$JNA_ARCHIVE")/lib/ant.jar"
+    printf 'fixture ant' >"$(dirname "$JNA_ARCHIVE")/lib/ant.jar"
+    run_jna_inputs >/dev/null
+    python3 - "$JNA_ARCHIVE" "$JNA_RESULT" "$defect" <<'PY'
+import hashlib,io,json,sys,tarfile
+from pathlib import Path
+path,ref=map(Path,sys.argv[1:3]);defect=sys.argv[3];r=json.loads(ref.read_text())
+if defect=='wrong-archive-digest':r['archive']['sha256']='0'*64
+elif defect=='wrong-pin':r['sourceRevision']='0'*40
+elif defect=='failed-reference':r['exitCode']=1
+elif defect=='changed-tree':
+ p=path.parent/'papercusp-android-dependency-sources/jna-NATIVE-TREE.json'
+ t=json.loads(p.read_text());t['tree'][0]['sha']='0'*40;p.write_text(json.dumps(t))
+elif defect=='changed-tool':(path.parent/'lib/ant.jar').write_bytes(b'changed')
+elif defect=='linked-tool':
+ p=path.parent/'lib/ant.jar';p.unlink();p.symlink_to('asm-8.0.1.jar')
+else:
+ with tarfile.open(path,'r:gz') as a:entries=[(m,a.extractfile(m).read()) for m in a]
+ if defect=='missing-member':entries=[(m,d) for m,d in entries if not m.name.endswith('/README.md')]
+ if defect in ('changed-source','changed-manifest'):
+  suffix='/README.md' if defect=='changed-source' else '/SOURCE-PROVENANCE.json'
+  entries=[(m,b'{}\n' if m.name.endswith(suffix) else d) for m,d in entries]
+ if defect=='self-consistent-forgery':
+  data=b'self-consistent but not pinned upstream\n'
+  row=next(row for row in r['files'] if row['path']=='README.md')
+  row.update(size=len(data),sha256=hashlib.sha256(data).hexdigest(),gitBlob=hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest())
+  metadata={key:r[key] for key in ('schemaVersion','sourceRevision','sourceTreeSha1','files','scope')}
+  entries=[(m,data if m.name.endswith('/README.md') else json.dumps(metadata).encode() if m.name.endswith('/SOURCE-PROVENANCE.json') else d) for m,d in entries]
+ if defect=='duplicate-member':entries.append(entries[0])
+ if defect=='changed-mode':next(m for m,d in entries if m.name.endswith('/README.md')).mode=0o755
+ if defect=='escaping-member':
+  m=tarfile.TarInfo('papercusp-jna-source/../escape');entries.append((m,b'bad'))
+ if defect=='special-member':entries[0][0].type=tarfile.SYMTYPE
+ with tarfile.open(path,'w:gz') as a:
+  for m,d in entries:
+   m.size=len(d) if m.isfile() else 0;a.addfile(m,io.BytesIO(d) if m.isfile() else None)
+ r['archive'].update(sha256=hashlib.sha256(path.read_bytes()).hexdigest(),size=path.stat().st_size)
+ref.write_text(json.dumps(r))
+PY
+    if run_jna_inputs >"$TMP/bin/jna-inputs-reject.log" 2>&1; then fail "JNA input verifier accepted $defect"; fi
+    [[ ! -e "$JNA_INPUT_RESULT" ]] || fail "JNA input failure retained preceding successful result: $defect"
+    rg -q 'JNA ' "$TMP/bin/jna-inputs-reject.log" || fail "JNA input rejection lacked diagnostic: $defect"
+done
+cp "$TMP/bin/jna-package-backup.tar.gz" "$JNA_ARCHIVE"
+cp "$TMP/bin/jna-reference-backup.json" "$JNA_RESULT"
+cp "$TMP/bin/jna-tree-backup.json" "$JNA_INPUT/../jna-NATIVE-TREE.json"
+rm -f "$(dirname "$JNA_ARCHIVE")/lib/ant.jar"
+printf 'fixture ant' >"$(dirname "$JNA_ARCHIVE")/lib/ant.jar"
+run_jna_inputs >/dev/null
+echo 'JNA offline input consumption PASS: pinned Git tree, selected source/reference and root header/version/checksum recipe, missing/supplied tool distinction, fourteen rejecting controls incl self-consistent forgery, failed-result invalidation, no build/delivery claim'
 
 echo "✓ Android release provenance rejects version, source and hash drift; source archive includes pinned nested submodules and excludes local credentials"

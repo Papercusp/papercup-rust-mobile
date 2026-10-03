@@ -210,6 +210,18 @@
       "sourceUrl": "https://raw.githubusercontent.com/java-native-access/jna/1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d/native/libffi/LICENSE",
       "sourceRevision": "1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d",
       "sourceTreeSha1": "fc89bf9afa33183da9d35028855f6648b7a8b07b",
+      "buildToolInputs": [
+        {
+          "path": "lib/ant.jar",
+          "gitBlob": "3bebb5c8836a49e3c572fbd678497bbf116555ff",
+          "size": 2029794
+        },
+        {
+          "path": "lib/asm-8.0.1.jar",
+          "gitBlob": "744fecc0252eb14db15e2cf76a7e0f3558c70ed8",
+          "size": 121772
+        }
+      ],
       "sourceSha256": "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388",
       "extraction": "Complete retained upstream release-tag text, byte-for-byte UTF-8; selected reference attribution, not complete native binary/source or rights clearance",
       "hash": "papercusp-jna-libffi",

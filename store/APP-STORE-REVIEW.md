@@ -909,3 +909,32 @@ Java/Ant/ASM and native toolchain, execute the configured upstream route,
 retain generated headers and build-script inputs, and verify the resulting
 dispatcher and recipient retrieval against the exact candidate. The original
 prebuilt invocation and license election still require their own evidence.
+
+The existing provenance command can independently consume that retained
+package and its reference receipt without rebuilding or re-exporting it:
+
+```sh
+tools/build-scripts/android-release-provenance.sh source-verify-build jna-inputs
+# An independently obtained package directory may be passed as the third argument.
+```
+
+This offline check validates the archive digest, complete per-file population,
+SHA-256/Git blob identities, embedded provenance and required build/license
+inputs against the pinned root reconstructed from the retained recursive
+`papercusp-android-dependency-sources/jna-NATIVE-TREE.json` sidecar. That
+sidecar is an additional input, not part of the earlier selected archive;
+even a self-consistently changed archive/receipt cannot substitute new blobs.
+It checks the root Java-release/header-generation and JNI
+version/checksum recipe. The existing source ledger pins both excluded helper
+JARs. If `lib/ant.jar` or `lib/asm-8.0.1.jar` is supplied beside the archive,
+its size and Git blob must match; otherwise the result explicitly lists it as
+missing. Symlinks, special archive members, changed/substituted inputs and
+stale successful results are rejected by maintained tests.
+
+`papercusp-jna-build-inputs-result.json` distinguishes supplied tool bytes
+from missing prerequisites and always records that no build, standalone
+toolchain validation, original invocation verification or recipient retrieval
+was performed. A successful local input check is not a buildable-package,
+license-clearance or publication claim. Actual recipient retrieval/build,
+generated inputs, original invocation and exact-candidate comparisons remain
+required.
