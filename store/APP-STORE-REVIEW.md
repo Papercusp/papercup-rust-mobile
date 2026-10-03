@@ -1004,3 +1004,66 @@ This command proves local compilation only for its listed ABIs. It does not exec
 the dispatcher or establish the original prebuilt invocation, license election,
 complete source/notice rights, exact-candidate equivalence or recipient retrieval.
 Those release requirements remain open.
+
+### JNA distribution license choice
+
+For Android release preparation, Papercusp selects **Apache-2.0** for the
+JNA 5.19.1 portions covered by the upstream alternative grant. The root
+`LICENSE` expressly permits this choice, as do the retained `dispatch.c`
+and `callback.c` headers. This selects one offered grant; it does not relicense
+libffi, other third-party code, the mobile application or separately delivered
+build/test tools. Preserve the original Apache/LGPL offer and source notices.
+
+The October 3 read bound the grant to these retained inputs without rebuilding
+the APK or dispatcher:
+
+| Input | Verified identity |
+| --- | --- |
+| Resolved JNA 5.19.1 AAR | SHA-256 `b57125cb7d16253f0d65a80f7d3a4c3664effa711b8bdbb7f87fb572ce1624ed`; equals the retained exported-debug build's `debugRuntimeClasspath` inventory. |
+| AAR `classes.jar!/META-INF/LICENSE` | SHA-256 `07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1`; byte-identical to the pinned JNA root `LICENSE`. |
+| Pinned root `LICENSE` | Git blob `9d95afbeb58a153669393e633af39b48fd4ca94c`, at revision `1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d`. |
+| Pinned `AL2.0` | Git blob `f433b1a53f5b830a205fd2df78e2b34974656c7b`; SHA-256 `0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594`. |
+| Pinned `LGPL2.1`, retained as offered | Git blob `3b204400cf3d548f93a0f4f8e85d41d7e39ecb59`; SHA-256 `eea173a556abac0370461e57e12aab266894ea6be3874c2be05fd87871f75449`. |
+
+The final signed candidate must independently match the resolved JNA version,
+artifact and grant before this choice is applied to its distribution. Deliver
+the complete Apache-2.0 text, retain applicable copyright/attribution and any
+upstream NOTICE, and identify modifications if any. The existing collector's
+original Apache/LGPL labels remain reference metadata; this packet records
+Papercusp's choice. The selected libffi permission text and per-file attribution
+remain separate obligations. The retained `native/libffi/LICENSE-BUILDTOOLS`
+also distinguishes separately licensed build/test helpers from libffi itself;
+shipping source tools requires preserving their own grants and notices.
+
+This resolves the preparation choice for the verified JNA alternative grant.
+It does not establish the prebuilt dispatcher's original invocation, complete
+third-party rights/notices, account entitlements or final-candidate acceptance.
+Earlier source/archive/build receipts keep their original no-election scope.
+
+### Recipient source delivery acceptance
+
+Use the existing release-provenance and source-verifier surfaces for the final
+delivery. Local outputs and private repository URLs remain preparation only.
+Before claiming corresponding-source delivery complete:
+
+1. Bind the signed candidate's source commit and exact APK/AAB identities to
+   the root source archive, recursively pinned token-kit source, applicable
+   dependency sources/notices and required build instructions/tool inputs.
+   Preserve separate license grants for source and build/test components.
+2. Make the applicable source package available through the actual supported
+   recipient-accessible destination, recording its URL and archive digests.
+   A private cache, local path or operator-authenticated download is insufficient.
+3. Retrieve the package with the recipient's permitted access, without private
+   repository credentials or the developer's dependency cache. Record the
+   retrieval result and compare the retrieved bytes with the candidate-bound
+   manifest; retain unavailable or omitted inputs as explicit failures.
+4. Compile the retrieved inputs through the existing source verifier in a fresh
+   build directory. Supply and fingerprint its real prerequisites, including
+   the pinned Ant/ASM helpers and NDK when exercising the JNA source route.
+   Do not substitute a local successful build for this recipient build.
+5. Verify the final candidate's notice access and packaged populations, then
+   retain the candidate, delivery, retrieval and build evidence together.
+
+No recipient destination, publication, retrieval or recipient build is claimed
+by this preparation update. Provider/reviewer journeys, current hosted CI,
+physical-phone and Play acceptance remain required.
