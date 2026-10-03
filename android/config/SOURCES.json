@@ -293,5 +293,37 @@
         }
       ]
     }
+  ],
+  "termsReferences": [
+    {
+      "key": "picovoice-engine-model-terms",
+      "sourceUrl": "https://picovoice.ai/docs/terms-of-use/",
+      "retrievedAt": "2026-10-03T06:32:24.133789+00:00",
+      "lastUpdated": "2026-03-18",
+      "effectiveDate": "2026-03-30",
+      "sourceSha256": "20559fa4e41401e62f787b4096b7a7e9482a1b638d4c856e95a1a2d123118ef4",
+      "textSha256": "8c854c744bf9e3c306923d2b3b8aa346c93d4c696418c7158975783c06f9aec1",
+      "reviewedSections": ["2", "3", "4", "5", "6", "7", "9"],
+      "modules": [
+        {"module": "ai.picovoice:porcupine-android", "version": "4.0.0"}
+      ],
+      "retainedReceipt": "android/app/build/outputs/papercusp-android-dependency-sources/picovoice-TERMS-REFERENCE.json",
+      "retainedReceiptSha256": "95b724a12ff046f99bf8fbbb030211cc8814d6f7bdbf9e41dacf6c44a86d4fcb",
+      "scope": "Current provider reference, not account entitlement, distribution clearance, actual runtime transmission or final-candidate evidence. Separate from the SDK Apache license and bundled notice definitions."
+    },
+    {
+      "key": "picovoice-engine-model-faq",
+      "sourceUrl": "https://picovoice.ai/docs/faq/general/",
+      "retrievedAt": "2026-10-03T06:32:25.319964+00:00",
+      "sourceSha256": "a59e8a02b0d0b73db31637762747b2cb4aa5670082b60a48f2ff84e7b264d68f",
+      "textSha256": "83b0a26e61bf5e1071379918ed78149c2823726502fb648b7bd6cbcfaa0a7655",
+      "reviewedTopics": [
+        "Technical Questions / Is Picovoice open-source?",
+        "Business Model & Pricing / personal or non-commercial use"
+      ],
+      "retainedReceipt": "android/app/build/outputs/papercusp-android-dependency-sources/picovoice-TERMS-REFERENCE.json",
+      "retainedReceiptSha256": "95b724a12ff046f99bf8fbbb030211cc8814d6f7bdbf9e41dacf6c44a86d4fcb",
+      "scope": "Provider explanation distinguishing open-source SDKs from proprietary models/inference engines; not an artifact-specific license grant."
+    }
   ]
 }
