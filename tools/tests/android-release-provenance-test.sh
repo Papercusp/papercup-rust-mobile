@@ -842,8 +842,8 @@ echo 'JNA configured native census PASS: upstream/default exclusions distinguish
 # Execute the production command against real GNU make and a real host compiler:
 # configure must compile an executable while dispatcher-only output/shared flags
 # stay outside both configure and recursive make. No Android success is mocked.
-python3 - "$HELPER" "$TMP/bin" <<'PY'
-import ast, hashlib, os, re, shlex, shutil, struct, subprocess, sys
+python3 - "$HELPER" "$TMP/bin" "$JNA_ROOT" <<'PY'
+import ast, hashlib, io, json, os, re, shlex, shutil, struct, subprocess, sys, zipfile
 from pathlib import Path
 script=Path(sys.argv[1]).read_text()
 body=script.split('verify_jna_inputs() {',1)[1].split("<<'PY'\n",1)[1].split('\nPY\n}',1)[0]
@@ -852,7 +852,7 @@ functions=[node for node in parsed.body if isinstance(node,ast.FunctionDef) and 
 assert len(functions)==4
 namespace=dict(globals(),digest=lambda data:hashlib.sha256(data).hexdigest())
 exec(compile(ast.Module(body=functions,type_ignores=[]),'<production-jna-native-functions>','exec'),namespace)
-preflight,command,verify=(namespace[name] for name in ('jna_native_preflight','jna_native_command','jna_native_elf'))
+preflight,command,verify,stub=(namespace[name] for name in ('jna_native_preflight','jna_native_command','jna_native_elf','jna_native_stub'))
 root=Path(sys.argv[2])/'jna-native-guards';root.mkdir()
 tools=root/'tools';tools.mkdir()
 names=('make','autoreconf','autoconf','automake','aclocal','autoheader','libtoolize','m4','perl','makeinfo','sed','awk','grep','patch')
@@ -872,6 +872,37 @@ for name in names:
  finally:(tools/(name+'.saved')).rename(p)
 inventory,_,_=preflight(environment,ndk)
 assert {row['name'] for row in inventory}==set(names) and all(row['sha256'] and row['version'] for row in inventory)
+# The full consumer must invalidate old success and retain its own preflight
+# failure; every previous attempt directory must survive unchanged.
+jna_root=Path(sys.argv[3]);outputs=jna_root/'android/app/build/outputs'
+configuration=json.loads((outputs/'papercusp-jna-build-inputs-result.json').read_text())
+configuration.update(mode='jna-configure',configuration={'packages':[]})
+(outputs/'papercusp-jna-configure-result.json').write_text(json.dumps(configuration))
+for name in ('bash','python3','git','rm','cat'):(tools/name).symlink_to(shutil.which(name))
+prior=outputs/'papercusp-jna-native-prior-fixture';prior.mkdir();(prior/'native-build-result.json').write_text('retained failed prior attempt')
+success=outputs/'papercusp-jna-native-result.json';success.write_text('{"exitCode":0,"stale":true}')
+(tools/'makeinfo').unlink()
+result=subprocess.run([str(Path(sys.argv[1]).resolve()),'source-verify-build','jna-native',str(outputs),'arm64-v8a'],
+ env=dict(environment,PAPERCUP_MOBILE_ROOT=str(jna_root),ANDROID_NDK_HOME=str(ndk)),capture_output=True,text=True)
+assert result.returncode!=0 and 'JNA native prerequisite missing: makeinfo' in result.stderr,result.stdout+result.stderr
+assert not success.exists() and (prior/'native-build-result.json').read_text()=='retained failed prior attempt'
+attempts=[p for p in outputs.glob('papercusp-jna-native-*/native-build-result.json') if p.parent!=prior]
+assert len(attempts)==1
+failure=json.loads(attempts[0].read_text())
+assert failure['exitCode']!=0 and failure['phase']=='preflight' and failure['packages']==[] and 'makeinfo' in failure['error']
+(tools/'makeinfo').write_text('#!/bin/sh\nprintf "fixture prerequisite version\\n"\n');(tools/'makeinfo').chmod(0o755)
+# The upstream configured ZIP includes a manifest-only native-payload stub.
+# It is an input, never native compilation proof.
+for defect in ('valid','wrong-version','native-payload'):
+ stream=io.BytesIO()
+ with zipfile.ZipFile(stream,'w') as jar:
+  jar.writestr('META-INF/',b'')
+  jar.writestr('META-INF/MANIFEST.MF','Manifest-Version: 1.0\r\nSpecification-Version: '+('0.0.0' if defect=='wrong-version' else '7.0.4')+'\r\n\r\n')
+  if defect=='native-payload':jar.writestr('libjnidispatch.so',b'unproved payload')
+ try:stub(stream.getvalue(),'7.0.4')
+ except SystemExit:
+  assert defect!='valid'
+ else:assert defect=='valid'
 for defect in ('wrong-ndk','missing-jni'):
  if defect=='wrong-ndk':(ndk/'source.properties').write_text('Pkg.Revision = 26.0.0\n')
  else:(llvm/'sysroot/usr/include/jni.h').unlink()
@@ -889,7 +920,7 @@ work=root/'make work';(work/'native').mkdir(parents=True);(work/'headers').mkdir
 ''')
 (work/'native/configure').write_text('''set -eu
 test -z "$LDFLAGS"
-test -z "$MAKEFLAGS"
+case "$MAKEFLAGS" in *LDFLAGS*) exit 1;; esac
 printf 'int main(void){return 0;}\\n' >conftest.c
 eval "$CC $CFLAGS $CPPFLAGS conftest.c $LDFLAGS -o conftest"
 test -x conftest
@@ -933,6 +964,6 @@ for defect in ('not-elf','wrong-class','wrong-machine','wrong-type','short-heade
 library.write_bytes(data)
 assert verify(library,2,machine,readelf,'7.0.4',checksum)['sha256']==hashlib.sha256(data).hexdigest()
 PY
-echo 'JNA native guards PASS: fourteen missing-tool controls, NDK/sysroot controls, real make/compiler scoped-vs-leaked flags, real ELF plus nine rejecting controls (host fixture, no Android build)'
+echo 'JNA native guards PASS: fourteen missing-tool controls, retained preflight failure/stale invalidation, stub JAR controls, NDK/sysroot controls, real make/compiler scoped-vs-leaked flags, real ELF plus nine rejecting controls (host fixture, no Android build)'
 
 echo "✓ Android release provenance rejects version, source and hash drift; source archive includes pinned nested submodules and excludes local credentials"

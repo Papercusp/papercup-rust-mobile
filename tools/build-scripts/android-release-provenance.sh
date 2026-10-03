@@ -464,6 +464,15 @@ def jna_native_command(make, llvm, work, arch, compiler, version, checksum):
             'FFI_ENV=LDFLAGS= CC="$(CC)" CPP="$(CPP)" CFLAGS="$(COPT) $(CDEBUG) $(CINCLUDES)" CPPFLAGS="$(CDEFINES) $(CINCLUDES)" LIBS="$(LIBS)" AR="$(AR)" RANLIB="$(RANLIB)"',
             '../build/libjnidispatch.so']
 
+def jna_native_stub(data, version):
+    import io
+    with zipfile.ZipFile(io.BytesIO(data)) as jar:
+        if sorted(jar.namelist()) != ['META-INF/', 'META-INF/MANIFEST.MF']:
+            raise SystemExit('JNA configured stub JAR population differs')
+        manifest = jar.read('META-INF/MANIFEST.MF').decode().replace('\r\n', '\n')
+        if '\nSpecification-Version: ' + version + '\n' not in manifest:
+            raise SystemExit('JNA configured stub JAR version differs')
+
 def jna_native_elf(path, elf_class, machine, readelf, version, checksum):
     data = path.read_bytes()
     if len(data) < 64 or data[:4] != b'\x7fELF' or data[4:6] != bytes((elf_class, 1)):
@@ -748,8 +757,11 @@ if mode == 'jna-native':
         if not environment.get('ANDROID_NDK_HOME'):
             raise SystemExit('JNA native requires explicit ANDROID_NDK_HOME')
         tools, llvm, sysroot = jna_native_preflight(environment, Path(environment['ANDROID_NDK_HOME']).resolve())
-        native.update(hostTools=tools, ndkSourcePropertiesSha256=digest((llvm.parents[3] / 'source.properties').read_bytes()),
-                      sysroot=str(sysroot), toolchainInputs=[])
+        for tool in tools:
+            if digest(read(Path(tool['path']))) != tool['sha256']:
+                raise SystemExit('JNA native host tool changed during preflight: ' + tool['name'])
+        native.update(hostTools=tools, ndkSourcePropertiesSha256=digest(read(llvm.parents[3] / 'source.properties')),
+                      sysroot=str(sysroot), jniHeaderSha256=digest(read(sysroot / 'usr/include/jni.h')), toolchainInputs=[])
         paths = {tool['name']: tool['path'] for tool in tools}
         prepared = []
         included, excluded = jna_configured_native_files(build, files)
@@ -758,17 +770,20 @@ if mode == 'jna-native':
             compiler = llvm / ('bin/' + triple + '24-clang')
             for name, path in [('clang', compiler), ('ar', llvm / 'bin/llvm-ar'),
                                ('ranlib', llvm / 'bin/llvm-ranlib'), ('strip', llvm / 'bin/llvm-strip'),
-                               ('readelf', llvm / 'bin/llvm-readelf')]:
+                               ('readelf', llvm / 'bin/llvm-readelf'), ('clang-backend', llvm / 'bin/clang'),
+                               ('linker', llvm / 'bin/ld.lld')]:
                 if not path.is_file() or not os.access(path, os.X_OK):
                     raise SystemExit('JNA native NDK executable missing: ' + str(path))
                 completed = subprocess.run([str(path), '--version'], capture_output=True, text=True, env=environment, check=True)
                 native['toolchainInputs'].append(dict(abi=abi, name=name, path=str(path),
-                    resolvedPath=str(path.resolve()), sha256=digest(path.read_bytes()),
+                    resolvedPath=str(path.resolve()), sha256=digest(read(path.resolve())),
                     version=(completed.stdout + completed.stderr).strip()))
             if not (sysroot / 'usr/lib' / ('arm-linux-androideabi' if abi == 'armeabi-v7a' else triple) / '24/libc.so').is_file():
                 raise SystemExit('JNA native NDK API 24 sysroot library missing: ' + abi)
+            native['toolchainInputs'].append(dict(abi=abi, name='api24-libc',
+                sha256=digest(read(sysroot / 'usr/lib' / ('arm-linux-androideabi' if abi == 'armeabi-v7a' else triple) / '24/libc.so'))))
             matches = [row for row in configuration['configuration']['packages'] if row['abi'] == abi]
-            if len(matches) != 1 or matches[0]['makeArch'] != arch:
+            if len(matches) != 1 or matches[0]['makeArch'] != arch or matches[0]['osPrefix'] != 'android-' + arch:
                 raise SystemExit('JNA configured ABI population differs: ' + abi)
             row = matches[0]
             archive = Path(row['archivePath'])
@@ -793,8 +808,10 @@ if mode == 'jna-native':
                     raise SystemExit('JNA configured native population differs')
                 if any(entries[name] != data for name, data in included.items()):
                     raise SystemExit('JNA configured native bytes differ')
-                if set(entries) - set(included) - {'build.sh', 'headers/jni.properties'} != {'headers/' + header['path'] for header in row['headers']}:
+                stub_name = row['osPrefix'] + '.jar'
+                if set(entries) - set(included) - {'build.sh', 'headers/jni.properties', stub_name} != {'headers/' + header['path'] for header in row['headers']}:
                     raise SystemExit('JNA configured generated-input population differs')
+                jna_native_stub(entries[stub_name], jni_version)
                 if digest(entries['build.sh']) != row['buildScriptSha256'] or any(
                         digest(entries['headers/' + header['path']]) != header['sha256'] for header in row['headers']):
                     raise SystemExit('JNA configured script/header fingerprint differs')
