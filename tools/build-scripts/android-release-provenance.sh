@@ -345,33 +345,43 @@ resolve_apkanalyzer() {
 # Consume an already retained selected JNA package. This is an offline input
 # check, deliberately not an Ant/native build or a recipient-delivery claim.
 verify_jna_inputs() {
-    local package_dir="$1" receipt="$REPO_ROOT/android/app/build/outputs/papercusp-jna-build-inputs-result.json"
+    local package_dir="$1" mode="${2:-jna-inputs}" receipt
+    if [[ "$mode" == jna-configure ]]; then
+        receipt="$REPO_ROOT/android/app/build/outputs/papercusp-jna-configure-result.json"
+    else
+        receipt="$REPO_ROOT/android/app/build/outputs/papercusp-jna-build-inputs-result.json"
+    fi
     rm -f "$receipt"
     assert_clean_source
-    REPO_ROOT="$REPO_ROOT" JNA_TREE_VALIDATION_CODE="$(jna_tree_validation_code)" python3 - "$package_dir" "$(source_commit)" <<'PY'
+    REPO_ROOT="$REPO_ROOT" JNA_TREE_VALIDATION_CODE="$(jna_tree_validation_code)" python3 - "$package_dir" "$(source_commit)" "$mode" <<'PY'
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import fnmatch
 import subprocess
 import sys
 import tarfile
+import tempfile
 import xml.etree.ElementTree as ET
+import zipfile
 
 root, package = Path(os.environ['REPO_ROOT']).resolve(), Path(sys.argv[1])
 commit = sys.argv[2]
+mode = sys.argv[3]
 started = datetime.now(timezone.utc).isoformat()
 digest = lambda data: hashlib.sha256(data).hexdigest()
 blob = lambda data: hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
 snapshots = {}
 
-def read(path):
+def read(path, remember=True):
     if path.is_symlink() or not path.is_file():
         raise SystemExit('JNA input must be a regular file: ' + str(path))
     data = path.read_bytes()
-    snapshots[path] = data
+    if remember:
+        snapshots[path] = data
     return data
 
 def safe(name):
@@ -472,13 +482,139 @@ for row in tool_pins:
             raise SystemExit('JNA supplied build tool differs from pinned blob: ' + name)
         entry.update(status='supplied-blob-verified', sha256=digest(data))
     tool_inputs.append(entry)
+    configured = None
+if mode == 'jna-configure':
+    if any(row['status'] == 'missing' for row in tool_inputs):
+        raise SystemExit('JNA configuration requires both pinned helper JARs')
+    # These root templates are outside the retained selected archive, but the
+    # unmodified root Ant route copies them before compiling its JNI headers.
+    recipe_inputs = []
+    for name in ('pom-jna.xml', 'pom-jna-platform.xml', 'pom-jna-jpms.xml', 'pom-jna-platform-jpms.xml'):
+        original = tree_rows.get(name, {})
+        data = read(package / name)
+        if original.get('type') != 'blob' or original.get('sha') != blob(data) or original.get('size') != len(data):
+            raise SystemExit('JNA supplied root template differs from pinned blob: ' + name)
+        recipe_inputs.append(dict(path=name, gitBlob=blob(data), sha256=digest(data), size=len(data)))
+    java_home = Path(os.environ.get('JAVA_HOME', '')).resolve()
+    ant_home = Path(os.environ.get('ANT_HOME', '')).resolve()
+    if not os.environ.get('JAVA_HOME') or not os.environ.get('ANT_HOME'):
+        raise SystemExit('JNA configuration requires explicit JAVA_HOME and ANT_HOME')
+    executables = [java_home / 'bin' / name for name in ('java', 'javac')]
+    jars = []
+    for pattern in ('ant.jar', 'ant-launcher.jar'):
+        candidates = [ant_home / 'lib' / pattern]
+        if not candidates[0].is_file():
+            candidates = sorted((ant_home / 'lib').glob(pattern.removesuffix('.jar') + '-[0-9]*.jar'))
+        if len(candidates) != 1:
+            raise SystemExit('JNA Ant runtime JAR must resolve uniquely: ' + pattern)
+        jars.append(candidates[0])
+    expected_runtime = pin.get('configurationRuntimeInputs', [])
+    if len(expected_runtime) != 2:
+        raise SystemExit('JNA Ant execution runtime pins must be complete')
+    for path in jars:
+        data = read(path)
+        if not any(row.get('size') == len(data) and row.get('sha256') == digest(data) for row in expected_runtime):
+            raise SystemExit('JNA Ant execution runtime differs from pinned input: ' + str(path))
+    runtime_inputs = []
+    for path in executables + jars:
+        # JDK executable symlinks are conventional; fingerprint their actual
+        # targets and retain both paths instead of rejecting normal JDK installs.
+        resolved = path.resolve(strict=True)
+        data = read(resolved)
+        runtime_inputs.append(dict(path=str(path), resolvedPath=str(resolved), sha256=digest(data), size=len(data)))
+    environment = os.environ.copy()
+    for key in ('JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS', 'ANT_OPTS', 'ANT_ARGS', 'CLASSPATH'):
+        environment.pop(key, None)
+    versions = {}
+    for path in executables:
+        completed = subprocess.run([str(path), '-version'], env=environment, capture_output=True, text=True, check=True)
+        versions[path.name] = (completed.stdout + completed.stderr).strip()
+    classpath = os.pathsep.join(map(str, jars))
+    ant_command = [str(executables[0]), '-cp', classpath, 'org.apache.tools.ant.Main']
+    completed = subprocess.run(ant_command + ['-version'], env=environment, capture_output=True, text=True, check=True)
+    versions['ant'] = (completed.stdout + completed.stderr).strip()
+    output_dir = root / 'android/app/build/outputs'
+    run_id = started.replace(':', '').replace('+', '').replace('.', '')
+    work = Path(tempfile.mkdtemp(prefix='papercusp-jna-configure-', dir=output_dir))
+    source = work / 'source'
+    source.mkdir()
+    native_exclusions = [row.attrib['name'] for row in targets['native-build-package'].findall('.//zipfileset[@dir="native"]/exclude')]
+    excluded_native_sources = [name for name in sorted(files) if name.startswith('native/') and
+                               any(fnmatch.fnmatchcase(name.removeprefix('native/'), pattern) for pattern in native_exclusions)]
+    # Materialize only the validated regular files, never tar.extractall().
+    for name, data in files.items():
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        path.chmod(modes[name])
+    for row in tool_inputs + recipe_inputs:
+        path = source / row['path']
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(read(package / row['path']))
+    packages = []
+    for abi, prefix, arch in (('armeabi-v7a', 'android-armv7', 'armv7'), ('arm64-v8a', 'android-aarch64', 'aarch64'),
+                               ('x86', 'android-x86', 'x86'), ('x86_64', 'android-x86-64', 'x86-64')):
+        command = ant_command + ['-f', 'build.xml', '-Drelease=true', '-Dbuild-native=true',
+                                 '-Dos.prefix=' + prefix, '-DARCH=' + arch, 'native-build-package']
+        log = output_dir / ('papercusp-jna-configure-' + run_id + '-' + abi + '.log')
+        with log.open('wb') as stream:
+            completed = subprocess.run(command, cwd=source, env=environment, stdout=stream, stderr=subprocess.STDOUT)
+        if completed.returncode:
+            raise SystemExit('JNA upstream configuration failed for ' + abi + '; retained log: ' + str(log))
+        build_dir = source / 'build'
+        headers = sorted((build_dir / 'headers').glob('*.h'))
+        properties_file = build_dir / 'headers/jni.properties'
+        properties_text = read(properties_file, remember=False).decode()
+        generated_properties = dict(line.split('=', 1) for line in properties_text.splitlines()
+                                    if line and not line.startswith('#') and '=' in line)
+        if (not headers or generated_properties.get('version') != jni_version or
+                generated_properties.get('checksum') != properties['jni.md5']):
+            raise SystemExit('JNA generated header version/checksum differs from pinned recipe')
+        script = read(build_dir / 'build.sh', remember=False)
+        for expected in ('OS=android', 'ARCH=' + arch, 'JNA_JNI_VERSION=' + jni_version, 'CHECKSUM=' + properties['jni.md5']):
+            if expected.encode() not in script:
+                raise SystemExit('JNA configured build script omits expected input: ' + expected)
+        filename = 'build-package-' + prefix + '-' + jni_version + '.zip'
+        package_bytes = read(build_dir / filename)
+        destination = output_dir / ('papercusp-jna-configured-' + run_id + '-' + filename)
+        destination.write_bytes(package_bytes)
+        with zipfile.ZipFile(destination) as archive:
+            names = archive.namelist()
+            if len(names) != len(set(names)):
+                raise SystemExit('JNA configured archive has duplicate entries')
+            archive_prefix = filename.removesuffix('.zip') + '/'
+            for name in names:
+                safe(name.rstrip('/'))
+                if not name.startswith(archive_prefix):
+                    raise SystemExit('JNA configured archive has unexpected prefix')
+            expected_bytes = {'build.sh': script}
+            expected_bytes.update({'headers/' + str(path.relative_to(build_dir / 'headers')): read(path, remember=False)
+                                   for path in sorted((build_dir / 'headers').rglob('*')) if path.is_file()})
+            expected_bytes.update({'native/' + name.removeprefix('native/'): data for name, data in files.items()
+                                   if name.startswith('native/') and name not in excluded_native_sources})
+            actual_native = {name.removeprefix(archive_prefix) for name in names
+                             if name.startswith(archive_prefix + 'native/') and not name.endswith('/')}
+            if actual_native != {name for name in expected_bytes if name.startswith('native/')}:
+                raise SystemExit('JNA configured archive native-source population differs from upstream exclusions')
+            for name, data in expected_bytes.items():
+                if archive.read(archive_prefix + name) != data:
+                    raise SystemExit('JNA configured archive input differs: ' + name)
+        packages.append(dict(abi=abi, osPrefix=prefix, makeArch=arch, command=command, logPath=str(log),
+                             logSha256=digest(read(log)), archivePath=str(destination), archiveSha256=digest(package_bytes),
+                             archiveSize=len(package_bytes), verifiedArchiveFiles=len(expected_bytes),
+                             buildScriptSha256=digest(script), headers=[dict(path=path.name, sha256=digest(read(path, remember=False))) for path in headers],
+                             jniVersion=generated_properties['version'], jniChecksum=generated_properties['checksum']))
+    configured = dict(recipeInputs=recipe_inputs, runtimeInputs=runtime_inputs, runtimeVersions=versions,
+                      workPath=str(work), packages=packages, upstreamExcludedNativeSources=excluded_native_sources,
+                      javaCompilationExecuted=True, generatedHeadersVerified=True,
+                      nativeCompilationExecuted=False, nativeExecutionPerformed=False)
 if any(read(path) != data for path, data in list(snapshots.items())):
     raise SystemExit('JNA inputs changed during verification')
 if subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD']).decode().strip() != commit or subprocess.check_output(
         ['git', '-C', str(root), 'status', '--porcelain', '--untracked-files=normal']).strip():
     raise SystemExit('Mobile source changed during JNA input verification')
 result = {
-    'schemaVersion': 1, 'mode': 'jna-inputs', 'exitCode': 0, 'startedAt': started,
+    'schemaVersion': 1, 'mode': mode, 'exitCode': 0, 'startedAt': started,
     'finishedAt': datetime.now(timezone.utc).isoformat(), 'mobileSourceCommit': commit,
     'sourceRevision': pin['sourceRevision'], 'sourceTreeSha1': pin['sourceTreeSha1'],
     'archiveSha256': digest(archive_data), 'referenceSha256': digest(reference_data),
@@ -496,7 +632,13 @@ result = {
     'scope': 'Offline local consumption of a retained selected source package and root recipe inputs, not a native build, complete toolchain, rights or recipient-delivery proof.'
 }
 result['remaining'][:0] = [row['path'] for row in tool_inputs if row['status'] == 'missing']
-(root / 'android/app/build/outputs/papercusp-jna-build-inputs-result.json').write_text(json.dumps(result, indent=2) + '\n')
+if configured is not None:
+    result['configuration'] = configured
+    result['remaining'] = ['native toolchain and actual dispatcher compilation', 'original prebuilt invocation and license election',
+                           'exact-candidate comparison and recipient retrieval/build']
+    result['scope'] = 'Local pinned-source upstream Ant Java/header and four-ABI build-package preparation, without native compilation/execution, original invocation, rights, candidate or recipient proof.'
+receipt_name = 'papercusp-jna-configure-result.json' if mode == 'jna-configure' else 'papercusp-jna-build-inputs-result.json'
+(root / 'android/app/build/outputs' / receipt_name).write_text(json.dumps(result, indent=2) + '\n')
 print(json.dumps(result))
 PY
 }
@@ -1113,12 +1255,12 @@ case "${1:-}" in
         fi
         ;;
     source-verify-build)
-        [[ $# -le 3 ]] || die "usage: $0 source-verify-build [host|android|android-apk|jna-inputs [package-directory]]"
+        [[ $# -le 3 ]] || die "usage: $0 source-verify-build [host|android|android-apk|jna-inputs|jna-configure [package-directory]]"
         mode="${2:-host}"
-        if [[ "$mode" == jna-inputs ]]; then
-            verify_jna_inputs "${3:-$REPO_ROOT/android/app/build/outputs}"
+        if [[ "$mode" == jna-inputs || "$mode" == jna-configure ]]; then
+            verify_jna_inputs "${3:-$REPO_ROOT/android/app/build/outputs}" "$mode"
         else
-            [[ $# -le 2 && ( "$mode" == host || "$mode" == android || "$mode" == android-apk ) ]] || die "source build mode must be host, android, android-apk or jna-inputs"
+            [[ $# -le 2 && ( "$mode" == host || "$mode" == android || "$mode" == android-apk ) ]] || die "source build mode must be host, android, android-apk, jna-inputs or jna-configure"
             verify_source_build "$mode"
         fi
         ;;
@@ -1127,6 +1269,6 @@ case "${1:-}" in
         verify_source_build notices
         ;;
     *)
-        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive [jna [source-directory]]|source-notices|source-verify-build [host|android|android-apk|jna-inputs [package-directory]]}"
+        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive [jna [source-directory]]|source-notices|source-verify-build [host|android|android-apk|jna-inputs|jna-configure [package-directory]]}"
         ;;
 esac

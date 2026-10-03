@@ -621,6 +621,8 @@ files.update({'native/Makefile':b'all: fixture\n','native/libffi/LICENSE':b'libf
               'native/build-tool.sh':b'#!/bin/sh\nexit 0\n', 'src/Native.java':b'class Native {}\n',
               'ant-tools-src/Tool.java':b'class Tool {}\n',
               'lib/ant.jar':b'fixture ant','lib/asm-8.0.1.jar':b'fixture asm'})
+for name in ('pom-jna.xml','pom-jna-platform.xml','pom-jna-jpms.xml','pom-jna-platform-jpms.xml'):
+ files[name]=b'<project>template fixture</project>\n'
 for name,data in files.items():
  p=source/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
 (source/'native/build-tool.sh').chmod(0o755)
@@ -637,11 +639,15 @@ for line in subprocess.check_output(['git','-C',str(source),'ls-tree','-rzt',tre
 import shutil
 shutil.rmtree(source/'.git')
 shutil.rmtree(source/'lib')
+for name in tuple(files):
+ if name.startswith('pom-'):(source/name).unlink()
 (source.parent/'jna-NATIVE-TREE.json').write_text(json.dumps({'sha':'descriptive-value-is-not-the-root-proof','truncated':False,'tree':rows}))
 pin={'key':'jna-libffi','sourceRevision':'ab'*20,'sourceTreeSha1':tree_sha,
      'sourceSha256':hashlib.sha256(files['native/libffi/LICENSE']).hexdigest(),
      'buildToolInputs':[{'path':name,'gitBlob':hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest(),'size':len(data)}
-                       for name,data in [('lib/ant.jar',b'fixture ant'),('lib/asm-8.0.1.jar',b'fixture asm')]]}
+                       for name,data in [('lib/ant.jar',b'fixture ant'),('lib/asm-8.0.1.jar',b'fixture asm')]],
+     'configurationRuntimeInputs':[{'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+                                  for data in (b'fixture runtime core',b'fixture runtime launcher')]}
 (root/'android/config/SOURCES.json').write_text(json.dumps({'licenses':[pin]}))
 PY
 git -C "$JNA_ROOT" add .gitignore android/config/SOURCES.json tools/build-scripts/android-release-provenance.sh
@@ -775,5 +781,41 @@ rm -f "$(dirname "$JNA_ARCHIVE")/lib/ant.jar"
 printf 'fixture ant' >"$(dirname "$JNA_ARCHIVE")/lib/ant.jar"
 run_jna_inputs >/dev/null
 echo 'JNA offline input consumption PASS: pinned Git tree, selected source/reference and root header/version/checksum recipe, missing/supplied tool distinction, fourteen rejecting controls incl self-consistent forgery, failed-result invalidation, no build/delivery claim'
+
+# Configured-build preparation must fail before executing Java when its new
+# prerequisite population is missing, altered, linked, or runtime-unpinned.
+# The real upstream Ant/header execution is recorded separately; this fixture
+# exercises the consumer's rejection boundary without mocking a successful build.
+JNA_CONFIGURE_RESULT="$JNA_ROOT/android/app/build/outputs/papercusp-jna-configure-result.json"
+for defect in missing-helper missing-template changed-template linked-template unset-runtime wrong-runtime; do
+    for name in pom-jna.xml pom-jna-platform.xml pom-jna-jpms.xml pom-jna-platform-jpms.xml; do
+        rm -f "$(dirname "$JNA_ARCHIVE")/$name"
+        printf '<project>template fixture</project>\n' >"$(dirname "$JNA_ARCHIVE")/$name"
+    done
+    printf 'fixture ant' >"$(dirname "$JNA_ARCHIVE")/lib/ant.jar"
+    case "$defect" in
+        missing-helper) rm "$(dirname "$JNA_ARCHIVE")/lib/ant.jar" ;;
+        missing-template) rm "$(dirname "$JNA_ARCHIVE")/pom-jna.xml" ;;
+        changed-template) printf 'changed' >"$(dirname "$JNA_ARCHIVE")/pom-jna.xml" ;;
+        linked-template) rm "$(dirname "$JNA_ARCHIVE")/pom-jna.xml"; ln -s pom-jna-jpms.xml "$(dirname "$JNA_ARCHIVE")/pom-jna.xml" ;;
+        wrong-runtime) mkdir -p "$TMP/bin/ant-runtime/lib"; printf 'untrusted' >"$TMP/bin/ant-runtime/lib/ant.jar"; printf 'untrusted' >"$TMP/bin/ant-runtime/lib/ant-launcher.jar" ;;
+    esac
+    printf '{"exitCode":0,"stale":true}\n' >"$JNA_CONFIGURE_RESULT"
+    if PAPERCUP_MOBILE_ROOT="$JNA_ROOT" JAVA_HOME="${JAVA_HOME:-/usr}" \
+        ANT_HOME="$([[ "$defect" == wrong-runtime ]] && printf '%s' "$TMP/bin/ant-runtime")" \
+        "$HELPER" source-verify-build jna-configure >"$TMP/bin/jna-configure-reject.log" 2>&1; then
+        fail "JNA configuration accepted $defect"
+    fi
+    [[ ! -e "$JNA_CONFIGURE_RESULT" ]] || fail "JNA configuration failure retained stale success: $defect"
+    case "$defect" in
+        missing-helper) expected='requires both pinned helper JARs' ;;
+        missing-template|linked-template) expected='must be a regular file' ;;
+        changed-template) expected='root template differs from pinned blob' ;;
+        unset-runtime) expected='requires explicit JAVA_HOME and ANT_HOME' ;;
+        wrong-runtime) expected='Ant execution runtime differs from pinned input' ;;
+    esac
+    rg -F "$expected" "$TMP/bin/jna-configure-reject.log" >/dev/null || fail "JNA configuration rejection lacked diagnostic: $defect"
+done
+echo 'JNA configuration prerequisites PASS: six rejecting controls; stale-success invalidation; no mocked build acceptance'
 
 echo "✓ Android release provenance rejects version, source and hash drift; source archive includes pinned nested submodules and excludes local credentials"

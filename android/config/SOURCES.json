@@ -222,6 +222,20 @@
           "size": 121772
         }
       ],
+      "configurationRuntimeInputs": [
+        {
+          "name": "Apache Ant 1.10.15",
+          "url": "https://repo.maven.apache.org/maven2/org/apache/ant/ant/1.10.15/ant-1.10.15.jar",
+          "sha256": "763acda4a69588c9ea8817a952851ff0c2fc4bffa1d081c2565dc407f29d5794",
+          "size": 2304360
+        },
+        {
+          "name": "Apache Ant launcher 1.10.15",
+          "url": "https://repo.maven.apache.org/maven2/org/apache/ant/ant-launcher/1.10.15/ant-launcher-1.10.15.jar",
+          "sha256": "5c8551990307a032336d98ddaed549a39a689f07d4d4c6b950601bf22b3d6a1b",
+          "size": 18870
+        }
+      ],
       "sourceSha256": "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388",
       "extraction": "Complete retained upstream release-tag text, byte-for-byte UTF-8; selected reference attribution, not complete native binary/source or rights clearance",
       "hash": "papercusp-jna-libffi",

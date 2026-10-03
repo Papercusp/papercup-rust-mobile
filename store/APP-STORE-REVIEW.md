@@ -938,3 +938,31 @@ was performed. A successful local input check is not a buildable-package,
 license-clearance or publication claim. Actual recipient retrieval/build,
 generated inputs, original invocation and exact-candidate comparisons remain
 required.
+
+The existing source consumer also supports local upstream configured-package
+preparation, using the same retained archive and pinned recursive tree:
+
+```sh
+JAVA_HOME=/path/to/jdk ANT_HOME=/path/to/ant \
+  tools/build-scripts/android-release-provenance.sh source-verify-build jna-configure
+```
+
+Supply the two pinned helper JARs beside the archive and the four root
+`pom-jna*.xml` templates. The consumer verifies each template against its
+original tree blob. `ANT_HOME/lib` must contain the source-ledger-pinned Ant
+1.10.15 core and launcher JARs (versioned or ordinary names); Java and Ant
+versions and actual executable/JAR fingerprints are retained. This modern
+Ant execution runtime is separate from the upstream pinned `lib/ant.jar`
+used to compile helper sources.
+
+In a fresh local directory the command runs the unmodified upstream root
+`native-build-package` target for the four application ABIs. It compiles Java
+8 classes and JNI headers, checks the generated JNI version/checksum, and
+verifies the generated script, headers and native source bytes in each
+configured ZIP. It retains per-ABI logs and ZIPs and writes a separate
+`papercusp-jna-configure-result.json`; the earlier input-only result is
+preserved. It never runs the generated script or compiles a native dispatcher.
+This prepares configured build inputs locally. Native compiler/sysroot
+validation, dispatcher compilation, original prebuilt invocation, license
+election, complete source/notice rights, exact-candidate comparison and actual
+recipient retrieval/build remain required.
