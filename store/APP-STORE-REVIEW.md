@@ -1191,3 +1191,37 @@ full corresponding engine/dependency source or original build invocation.
 Complete sources and patches, source-to-binary reproduction, final notices,
 recipient delivery/build and every existing signed-candidate/provider/reviewer/
 hosted-CI/physical-phone/Play requirement remain open.
+
+### Retained WebRTC engine and builder implementation sources
+
+The private dependency-source directory now also retains the pinned repository
+source archives below. This supplements the header/binary build package; it
+does not include external dependency checkouts or establish corresponding-source
+delivery for the final candidate.
+
+| Repository source | Revision | Archive SHA-256 | Verified files |
+| --- | --- | --- | --- |
+| WebRTC engine | `f4967efc183c371ff984632f8909ba022ee275cd` | `994c4575917a4589756d92e2a3de7a93c69e981387f4d41e11597112576c2b9c` | 7,368 |
+| WebRTC builder | `fd0db0bb3982a48b67ffb436b266492f90a4fda8` | `09a5cdf2b433260b851228092bcf5f9186cb2a49d7556c6b3e01f461360ce577` | 68 |
+
+The files are `webrtc-engine-f4967efc-source.tar.gz` (40,084,452 bytes) and
+`webrtc-builder-fd0db0bb-source.tar.gz` (51,971 bytes). The existing
+`webrtc-BUILD-SOURCE-REFERENCE.json` records every source path, Git blob,
+SHA-256, size and mode. Every archive file matched the complete, non-truncated
+pinned Git tree; path-set equality, unique safe paths and executable/symlink
+modes passed. Archive readback hashes also passed. Source was inspected as data.
+
+The pinned builder's `android_prefixed` recipe lists, in order,
+`add_license_dav1d.patch`, `android_webrtc_version.patch`, `fix_mocks.patch`
+and `jni_prefix.patch`. All four patch texts, `.gclient` and the package-install
+script are retained with their blob and content fingerprints. The recipe
+applies each patch with `-p1` after `gclient sync`. The JNI-prefix patch also
+changes files under external `third_party/jni_zero`; the engine repository
+archive alone therefore cannot supply all patch inputs.
+
+No patch, upstream script, hook, compiler or native payload was executed in
+this preparation. External DEPS/CIPD sources and tool inputs, the actual applied
+checkout, generated version source, original GN arguments/output and source-to-binary
+reproduction remain required. Complete final notices/rights, exact signed-candidate
+binding and actual recipient retrieval/fresh build remain open, alongside every
+existing provider/reviewer/hosted-CI/physical-phone/Play requirement.
