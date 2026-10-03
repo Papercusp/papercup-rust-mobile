@@ -872,3 +872,40 @@ toolchain, chosen invocation and resulting dispatcher still require separate
 verification. The native subtree includes tests and foreign architectures.
 This preparation preserves both offered license texts and does not select
 Apache versus LGPL or claim exact candidate inputs or recipient retrieval.
+
+For recipient build preparation, use the pinned root `build.xml` route above.
+Its `compile` target creates Java 8 classes and JNI headers through
+`javac release="8"` and `nativeheaderdir`; the target named `javah` then
+derives the JNI checksum from those headers. The separate
+`native/build.xml` contains a legacy `javah` task and module properties;
+it is not the same root build route. `common.xml` supplies dispatcher version
+`7.0.4` and the expected checksum. Preserve these version and checksum inputs
+when preparing a configured package.
+
+The root build first compiles the Ant helper sources using `lib/ant.jar` and
+`lib/asm-8.0.1.jar`. Both tool JARs are outside the selected source archive.
+The retained upstream tree identifies them as Git blobs
+`3bebb5c8836a49e3c572fbd678497bbf116555ff` and
+`744fecc0252eb14db15e2cf76a7e0f3558c70ed8`, respectively. These are input
+references, not verification that tools have been supplied to a recipient.
+
+The inspected root Ant and native Makefile map the four application ABIs as
+follows. These are supported source recipe mappings, not evidence of the
+invocation that produced the cached dispatcher binaries.
+
+| Application ABI | Ant `os.prefix` | Make `ARCH` |
+|---|---|---|
+| `armeabi-v7a` | `android-armv7` | `armv7` |
+| `arm64-v8a` | `android-aarch64` | `aarch64` |
+| `x86` | `android-x86` | `x86` |
+| `x86_64` | `android-x86-64` | `x86-64` |
+
+The Makefile defaults to NDK r10e's GCC tools and Android 21 platform sysroots;
+it already specifies 16 KB maximum and common linker page sizes. Ant passes
+`EXTRA_MAKE_OPTS` as make overrides. Do not substitute the application's
+current NDK and infer that this upstream recipe works unchanged. Before
+claiming a buildable recipient package, supply and fingerprint its actual
+Java/Ant/ASM and native toolchain, execute the configured upstream route,
+retain generated headers and build-script inputs, and verify the resulting
+dispatcher and recipient retrieval against the exact candidate. The original
+prebuilt invocation and license election still require their own evidence.
