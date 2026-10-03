@@ -1225,3 +1225,32 @@ checkout, generated version source, original GN arguments/output and source-to-b
 reproduction remain required. Complete final notices/rights, exact signed-candidate
 binding and actual recipient retrieval/fresh build remain open, alongside every
 existing provider/reviewer/hosted-CI/physical-phone/Play requirement.
+
+### Retained external JNI-prefix patch inputs
+
+The pinned engine's `DEPS` selects `src/third_party` revision
+`8062e0e102496ff14a8c58b586f014527424953d`, which also matches the retained
+build package's `VERSIONS` record. The private
+`webrtc-jni-zero-8062e0e1-source.json` now retains the complete pristine texts
+of both `third_party/jni_zero` files targeted by `jni_prefix.patch`.
+
+| Patch input | Git blob | Source SHA-256 |
+| --- | --- | --- |
+| `jni_zero.gni` | `31c1392fad4873cf49594cbb3d2a8987d6911c1e` | `ac2f533d6698f4a10bb9b3c3f72337706cca1f899b7b0b86427c7c35d405bcec` |
+| `parse.py` | `9195137abec229257444f96813fee9b1d86fecea` | `10af81a7b58aef221eb810adcfe4068726b5a5a51cbe2920cd5721991a6ff846` |
+
+Their complete Git blob identities match the patch's old-index prefixes.
+Readback checked each text's size, SHA-256 and Git blob identity, and verified
+that these two paths exactly cover the patch's external JNI-zero targets.
+The receipt SHA-256 is
+`d2eafba08aea558fd50cf96c40e8d9547e78a82ec39c45c92ad47dcdc6c96b59`;
+the existing private build-source reference binds that receipt.
+
+The full JNI-zero subtree download was rate-limited with HTTP 429 before a
+source archive was written. The receipt explicitly marks full-subtree source
+retention and archive creation false. Future retrieval must retain verified
+blobs incrementally and respect server rate signals. These two patch inputs
+do not complete that subtree, other external DEPS/CIPD sources, applied-source
+verification or build reproduction. No upstream script, hook, patch, compiler
+or native payload was executed; all final notice/rights, exact-candidate,
+recipient and existing release requirements remain open.
