@@ -365,15 +365,17 @@ resolve_apkanalyzer() {
 # Consume an already retained selected JNA package. This is an offline input
 # check, deliberately not an Ant/native build or a recipient-delivery claim.
 verify_jna_inputs() {
-    local package_dir="$1" mode="${2:-jna-inputs}" receipt
+    local package_dir="$1" mode="${2:-jna-inputs}" abi="${3:-all}" receipt
     if [[ "$mode" == jna-configure ]]; then
         receipt="$REPO_ROOT/android/app/build/outputs/papercusp-jna-configure-result.json"
+    elif [[ "$mode" == jna-native ]]; then
+        receipt="$REPO_ROOT/android/app/build/outputs/papercusp-jna-native-result.json"
     else
         receipt="$REPO_ROOT/android/app/build/outputs/papercusp-jna-build-inputs-result.json"
     fi
     rm -f "$receipt"
     assert_clean_source
-    REPO_ROOT="$REPO_ROOT" JNA_TREE_VALIDATION_CODE="$(jna_tree_validation_code)" python3 - "$package_dir" "$(source_commit)" "$mode" <<'PY'
+    REPO_ROOT="$REPO_ROOT" JNA_TREE_VALIDATION_CODE="$(jna_tree_validation_code)" python3 - "$package_dir" "$(source_commit)" "$mode" "$abi" <<'PY'
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -381,6 +383,9 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import fnmatch
+import shutil
+import shlex
+import struct
 import subprocess
 import sys
 import tarfile
@@ -409,6 +414,92 @@ def safe(name):
     if not name or path.is_absolute() or '..' in path.parts or str(path) != name or '\\' in name or '\0' in name:
         raise SystemExit('Unsafe JNA input path: ' + name)
     return name
+
+def jna_native_preflight(environment, ndk):
+    # autogen.sh execs autoreconf; regenerated libffi documentation needs texinfo.
+    # Check the entire host-tool population before invoking any native make.
+    names = ('make', 'autoreconf', 'autoconf', 'automake', 'aclocal', 'autoheader',
+             'libtoolize', 'm4', 'perl', 'makeinfo', 'sed', 'awk', 'grep', 'patch')
+    paths = {}
+    for name in names:
+        path = shutil.which(name, path=environment.get('PATH'))
+        if not path:
+            raise SystemExit('JNA native prerequisite missing: ' + name)
+        paths[name] = Path(path).resolve()
+    tools = []
+    for name, path in paths.items():
+        arguments = ['-W', 'version'] if name == 'awk' else ['--version']
+        completed = subprocess.run([str(path)] + arguments, env=environment,
+                                   capture_output=True, text=True)
+        if completed.returncode:
+            raise SystemExit('JNA native prerequisite version failed: ' + name)
+        tools.append(dict(name=name, path=str(path), sha256=digest(path.read_bytes()),
+                          version=(completed.stdout + completed.stderr).strip()))
+    properties = ndk / 'source.properties'
+    if not properties.is_file() or not re.search(r'^Pkg.Revision\s*=\s*27\.0\.12077973\s*$', properties.read_text(), re.M):
+        raise SystemExit('JNA native requires NDK 27.0.12077973')
+    llvm = ndk / 'toolchains/llvm/prebuilt/linux-x86_64'
+    sysroot = llvm / 'sysroot'
+    if not (sysroot / 'usr/include/jni.h').is_file():
+        raise SystemExit('JNA native NDK sysroot/JNI headers missing')
+    return tools, llvm, sysroot
+
+def jna_native_command(make, llvm, work, arch, compiler, version, checksum):
+    # Command-line variables are exported to configure AND recursive make.
+    # FFI_ENV clears link/output flags for configure; MAKEOVERRIDES prevents
+    # the dispatcher's target-specific overrides entering libffi's make.
+    quote = lambda path: shlex.quote(str(path))
+    cc = quote(compiler)
+    includes = '-I' + quote(work / 'headers') + ' -I' + quote(work / 'build/libffi/include')
+    return [str(make), '-j2', 'OS=android', 'ARCH=' + arch, 'BUILD=../build',
+            'JAVAH=' + str(work / 'headers'), 'JNA_JNI_VERSION=' + version,
+            'CHECKSUM=' + checksum, 'DYNAMIC_LIBFFI=false', 'DEBUG=false', 'CFLAGS_EXTRA=',
+            'CC=' + cc, 'CPP=' + cc + ' -E', 'LD=' + cc,
+            'AR=' + quote(llvm / 'bin/llvm-ar'), 'RANLIB=' + quote(llvm / 'bin/llvm-ranlib'),
+            'STRIP=' + quote(llvm / 'bin/llvm-strip') + ' -x', 'CINCLUDES=' + includes,
+            'COPT=-O2 -fno-omit-frame-pointer -fno-strict-aliasing -Wno-implicit-function-declaration -fpic -ffunction-sections -funwind-tables -fno-short-enums',
+            'LIBS=-lc -ldl -lm',
+            'LDFLAGS=-o $@ -shared -Wl,-Bsymbolic -Wl,--build-id=sha1 -Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384',
+            'MAKEOVERRIDES=',
+            'FFI_ENV=LDFLAGS= CC="$(CC)" CPP="$(CPP)" CFLAGS="$(COPT) $(CDEBUG) $(CINCLUDES)" CPPFLAGS="$(CDEFINES) $(CINCLUDES)" LIBS="$(LIBS)" AR="$(AR)" RANLIB="$(RANLIB)"',
+            '../build/libjnidispatch.so']
+
+def jna_native_elf(path, elf_class, machine, readelf, version, checksum):
+    data = path.read_bytes()
+    if len(data) < 64 or data[:4] != b'\x7fELF' or data[4:6] != bytes((elf_class, 1)):
+        raise SystemExit('JNA native output is not the required little-endian ELF class')
+    if struct.unpack_from('<HH', data, 16) != (3, machine):
+        raise SystemExit('JNA native ELF type/machine differs')
+    if elf_class == 2:
+        offset = struct.unpack_from('<Q', data, 32)[0]
+        size, count = struct.unpack_from('<HH', data, 54)
+        layout = '<IIQQQQQQ'
+    else:
+        offset = struct.unpack_from('<I', data, 28)[0]
+        size, count = struct.unpack_from('<HH', data, 42)
+        layout = '<IIIIIIII'
+    if size != struct.calcsize(layout) or not count or offset + size * count > len(data):
+        raise SystemExit('JNA native ELF program headers invalid')
+    loads = []
+    for index in range(count):
+        row = struct.unpack_from(layout, data, offset + index * size)
+        if row[0] != 1:
+            continue
+        file_offset, address, alignment = (row[2], row[3], row[7]) if elf_class == 2 else (row[1], row[2], row[7])
+        if alignment < 16384 or alignment & (alignment - 1) or (address - file_offset) % 16384:
+            raise SystemExit('JNA native ELF LOAD is not 16 KB aligned')
+        loads.append(dict(offset=file_offset, address=address, alignment=alignment))
+    if not loads:
+        raise SystemExit('JNA native ELF has no LOAD segments')
+    completed = subprocess.run([str(readelf), '--dyn-syms', '--wide', str(path)],
+                               capture_output=True, text=True, check=True)
+    symbols = {row.split()[-1].split('@')[0] for row in completed.stdout.splitlines()
+               if len(row.split()) >= 8 and row.split()[6] != 'UND'}
+    required = {'JNI_OnLoad', 'Java_com_sun_jna_Native_getNativeVersion', 'Java_com_sun_jna_Native_getAPIChecksum'}
+    if not required <= symbols or version.encode() + b'\0' not in data or checksum.encode() + b'\0' not in data:
+        raise SystemExit('JNA native JNI exports/version/checksum missing')
+    return dict(elfClass=elf_class, machine=machine, loadSegments=loads, requiredExports=sorted(required),
+                sha256=digest(data), size=len(data))
 
 if package.is_symlink() or not package.is_dir():
     raise SystemExit('JNA package directory must be regular')
@@ -625,6 +716,127 @@ if mode == 'jna-configure':
                       workPath=str(work), packages=packages, upstreamExcludedNativeSources=excluded_native_sources,
                       javaCompilationExecuted=True, generatedHeadersVerified=True,
                       nativeCompilationExecuted=False, nativeExecutionPerformed=False)
+native = None
+if mode == 'jna-native':
+    configuration_data = read(package / 'papercusp-jna-configure-result.json')
+    configuration = json.loads(configuration_data)
+    if (configuration.get('exitCode') != 0 or configuration.get('mode') != 'jna-configure' or
+            any(configuration.get(key) != value for key, value in
+                (('sourceRevision', pin['sourceRevision']), ('sourceTreeSha1', pin['sourceTreeSha1']),
+                 ('archiveSha256', digest(archive_data)), ('inputTreeSha256', digest(tree_data)),
+                 ('inputPinsSha256', digest(pins_data))))):
+        raise SystemExit('JNA configured receipt differs from validated source inputs')
+    abi_specs = {'arm64-v8a': ('aarch64', 'aarch64-linux-android', 2, 183),
+                 'armeabi-v7a': ('armv7', 'armv7a-linux-androideabi', 1, 40),
+                 'x86': ('x86', 'i686-linux-android', 1, 3),
+                 'x86_64': ('x86-64', 'x86_64-linux-android', 2, 62)}
+    wanted = list(abi_specs) if sys.argv[4] == 'all' else [sys.argv[4]]
+    if any(abi not in abi_specs for abi in wanted):
+        raise SystemExit('JNA native ABI must be all, arm64-v8a, armeabi-v7a, x86 or x86_64')
+    output_dir = root / 'android/app/build/outputs'
+    work = Path(tempfile.mkdtemp(prefix='papercusp-jna-native-', dir=output_dir))
+    native = dict(workPath=str(work), configurationReceiptSha256=digest(configuration_data),
+                  packages=[], phase='preflight', exitCode=1, nativeExecutionPerformed=False,
+                  originalInvocationVerified=False, candidateComparisonPerformed=False, recipientRetrievalVerified=False)
+    try:
+        environment = dict(os.environ)
+        for name in ('MAKEFLAGS', 'MFLAGS', 'MAKEOVERRIDES', 'CC', 'CPP', 'LD', 'AR', 'RANLIB', 'STRIP',
+                     'CFLAGS', 'CPPFLAGS', 'LDFLAGS', 'LIBS', 'CONFIG_SITE', 'MAKEINFO', 'AUTORECONF',
+                     'AUTOCONF', 'AUTOMAKE', 'ACLOCAL', 'AUTOHEADER', 'LIBTOOLIZE', 'M4', 'PERL'):
+            environment.pop(name, None)
+        environment['CONFIG_SITE'] = '/dev/null'
+        if not environment.get('ANDROID_NDK_HOME'):
+            raise SystemExit('JNA native requires explicit ANDROID_NDK_HOME')
+        tools, llvm, sysroot = jna_native_preflight(environment, Path(environment['ANDROID_NDK_HOME']).resolve())
+        native.update(hostTools=tools, ndkSourcePropertiesSha256=digest((llvm.parents[3] / 'source.properties').read_bytes()),
+                      sysroot=str(sysroot), toolchainInputs=[])
+        paths = {tool['name']: tool['path'] for tool in tools}
+        prepared = []
+        included, excluded = jna_configured_native_files(build, files)
+        for abi in wanted:
+            arch, triple, elf_class, machine = abi_specs[abi]
+            compiler = llvm / ('bin/' + triple + '24-clang')
+            for name, path in [('clang', compiler), ('ar', llvm / 'bin/llvm-ar'),
+                               ('ranlib', llvm / 'bin/llvm-ranlib'), ('strip', llvm / 'bin/llvm-strip'),
+                               ('readelf', llvm / 'bin/llvm-readelf')]:
+                if not path.is_file() or not os.access(path, os.X_OK):
+                    raise SystemExit('JNA native NDK executable missing: ' + str(path))
+                completed = subprocess.run([str(path), '--version'], capture_output=True, text=True, env=environment, check=True)
+                native['toolchainInputs'].append(dict(abi=abi, name=name, path=str(path),
+                    resolvedPath=str(path.resolve()), sha256=digest(path.read_bytes()),
+                    version=(completed.stdout + completed.stderr).strip()))
+            if not (sysroot / 'usr/lib' / ('arm-linux-androideabi' if abi == 'armeabi-v7a' else triple) / '24/libc.so').is_file():
+                raise SystemExit('JNA native NDK API 24 sysroot library missing: ' + abi)
+            matches = [row for row in configuration['configuration']['packages'] if row['abi'] == abi]
+            if len(matches) != 1 or matches[0]['makeArch'] != arch:
+                raise SystemExit('JNA configured ABI population differs: ' + abi)
+            row = matches[0]
+            archive = Path(row['archivePath'])
+            # Receipts produced elsewhere are portable by basename in package_dir.
+            if not archive.is_file():
+                archive = package / archive.name
+            data = read(archive)
+            if digest(data) != row['archiveSha256'] or len(data) != row['archiveSize']:
+                raise SystemExit('JNA configured ZIP digest differs: ' + abi)
+            abi_work = work / abi
+            abi_work.mkdir()
+            with zipfile.ZipFile(archive) as zipped:
+                members = [item for item in zipped.infolist() if not item.is_dir()]
+                entries = {}
+                for item in members:
+                    safe(item.filename)
+                    name = '/'.join(item.filename.split('/')[1:])
+                    if not name or name in entries or ((item.external_attr >> 16) & 0o170000) not in (0, 0o100000):
+                        raise SystemExit('JNA configured ZIP unsafe member')
+                    entries[name] = zipped.read(item)
+                if {name for name in entries if name.startswith('native/')} != set(included):
+                    raise SystemExit('JNA configured native population differs')
+                if any(entries[name] != data for name, data in included.items()):
+                    raise SystemExit('JNA configured native bytes differ')
+                if set(entries) - set(included) - {'build.sh', 'headers/jni.properties'} != {'headers/' + header['path'] for header in row['headers']}:
+                    raise SystemExit('JNA configured generated-input population differs')
+                if digest(entries['build.sh']) != row['buildScriptSha256'] or any(
+                        digest(entries['headers/' + header['path']]) != header['sha256'] for header in row['headers']):
+                    raise SystemExit('JNA configured script/header fingerprint differs')
+                generated = dict(line.split('=', 1) for line in entries['headers/jni.properties'].decode().splitlines()
+                                 if line and not line.startswith('#') and '=' in line)
+                if generated.get('version') != jni_version or generated.get('checksum') != properties['jni.md5']:
+                    raise SystemExit('JNA configured JNI identity differs')
+                for name, data in entries.items():
+                    path = abi_work / safe(name)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(data)
+                    path.chmod(0o755 if name.startswith('native/') and modes[name] == 0o755 else 0o644)
+            (abi_work / 'build').mkdir()
+            prepared.append((abi, arch, compiler, elf_class, machine, abi_work, row))
+        native['phase'] = 'native-make'
+        for abi, arch, compiler, elf_class, machine, abi_work, row in prepared:
+            command = jna_native_command(paths['make'], llvm, abi_work, arch, compiler, jni_version, properties['jni.md5'])
+            log = abi_work / 'native-build.log'
+            outcome = dict(abi=abi, archiveSha256=row['archiveSha256'], command=command,
+                           logPath=str(log), exitCode=None)
+            native['packages'].append(outcome)
+            with log.open('wb') as stream:
+                completed = subprocess.run(command, cwd=abi_work / 'native', env=environment,
+                                           stdout=stream, stderr=subprocess.STDOUT)
+            outcome.update(exitCode=completed.returncode, logSha256=digest(log.read_bytes()))
+            config = abi_work / 'build/libffi/config.log'
+            if config.is_file():
+                outcome.update(configLogPath=str(config), configLogSha256=digest(config.read_bytes()))
+            if completed.returncode:
+                raise SystemExit('JNA native make failed for ' + abi + '; retained log: ' + str(log))
+            library = abi_work / 'build/libjnidispatch.so'
+            if not library.is_file() or library.is_symlink():
+                raise SystemExit('JNA native make produced no regular dispatcher: ' + abi)
+            outcome['library'] = dict(path=str(library), **jna_native_elf(library, elf_class, machine,
+                                     llvm / 'bin/llvm-readelf', jni_version, properties['jni.md5']))
+        native.update(exitCode=0, phase='verified-elf')
+    except BaseException as error:
+        native['error'] = str(error)
+        raise
+    finally:
+        native['finishedAt'] = datetime.now(timezone.utc).isoformat()
+        (work / 'native-build-result.json').write_text(json.dumps(native, indent=2) + '\n')
 if any(read(path) != data for path, data in list(snapshots.items())):
     raise SystemExit('JNA inputs changed during verification')
 if subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD']).decode().strip() != commit or subprocess.check_output(
@@ -654,7 +866,13 @@ if configured is not None:
     result['remaining'] = ['native toolchain and actual dispatcher compilation', 'original prebuilt invocation and license election',
                            'exact-candidate comparison and recipient retrieval/build']
     result['scope'] = 'Local pinned-source upstream Ant Java/header and four-ABI build-package preparation, without native compilation/execution, original invocation, rights, candidate or recipient proof.'
-receipt_name = 'papercusp-jna-configure-result.json' if mode == 'jna-configure' else 'papercusp-jna-build-inputs-result.json'
+if native is not None:
+    result['native'] = native
+    result.update(buildExecuted=True, standaloneToolchainVerified=True)
+    result['remaining'] = ['original prebuilt invocation and license election', 'complete source/notice rights',
+                           'exact-candidate comparison', 'native execution', 'recipient retrieval/build']
+    result['scope'] = 'Local retained configured-source dispatcher compilation and ELF validation for the listed ABIs; no native execution, original invocation, rights, candidate or recipient proof.'
+receipt_name = {'jna-configure': 'papercusp-jna-configure-result.json', 'jna-native': 'papercusp-jna-native-result.json'}.get(mode, 'papercusp-jna-build-inputs-result.json')
 (root / 'android/app/build/outputs' / receipt_name).write_text(json.dumps(result, indent=2) + '\n')
 print(json.dumps(result))
 PY
@@ -1272,10 +1490,11 @@ case "${1:-}" in
         fi
         ;;
     source-verify-build)
-        [[ $# -le 3 ]] || die "usage: $0 source-verify-build [host|android|android-apk|jna-inputs|jna-configure [package-directory]]"
+        [[ $# -le 4 ]] || die "usage: $0 source-verify-build [host|android|android-apk|jna-inputs|jna-configure|jna-native [package-directory [abi]]]"
         mode="${2:-host}"
-        if [[ "$mode" == jna-inputs || "$mode" == jna-configure ]]; then
-            verify_jna_inputs "${3:-$REPO_ROOT/android/app/build/outputs}" "$mode"
+        if [[ "$mode" == jna-inputs || "$mode" == jna-configure || "$mode" == jna-native ]]; then
+            [[ "$mode" == jna-native || $# -le 3 ]] || die 'abi selection is only supported for jna-native'
+            verify_jna_inputs "${3:-$REPO_ROOT/android/app/build/outputs}" "$mode" "${4:-all}"
         else
             [[ $# -le 2 && ( "$mode" == host || "$mode" == android || "$mode" == android-apk ) ]] || die "source build mode must be host, android, android-apk, jna-inputs or jna-configure"
             verify_source_build "$mode"
@@ -1286,6 +1505,6 @@ case "${1:-}" in
         verify_source_build notices
         ;;
     *)
-        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive [jna [source-directory]]|source-notices|source-verify-build [host|android|android-apk|jna-inputs|jna-configure [package-directory]]}"
+        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive [jna [source-directory]]|source-notices|source-verify-build [host|android|android-apk|jna-inputs|jna-configure|jna-native [package-directory [abi]]]}"
         ;;
 esac

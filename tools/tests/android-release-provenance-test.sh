@@ -839,4 +839,100 @@ assert included['native/libffi/.must-ship']==b'pinned source'
 PY
 echo 'JNA configured native census PASS: upstream/default exclusions distinguished from required hidden and ordinary source files'
 
+# Execute the production command against real GNU make and a real host compiler:
+# configure must compile an executable while dispatcher-only output/shared flags
+# stay outside both configure and recursive make. No Android success is mocked.
+python3 - "$HELPER" "$TMP/bin" <<'PY'
+import ast, hashlib, os, re, shlex, shutil, struct, subprocess, sys
+from pathlib import Path
+script=Path(sys.argv[1]).read_text()
+body=script.split('verify_jna_inputs() {',1)[1].split("<<'PY'\n",1)[1].split('\nPY\n}',1)[0]
+parsed=ast.parse(body)
+functions=[node for node in parsed.body if isinstance(node,ast.FunctionDef) and node.name.startswith('jna_native_')]
+assert len(functions)==4
+namespace=dict(globals(),digest=lambda data:hashlib.sha256(data).hexdigest())
+exec(compile(ast.Module(body=functions,type_ignores=[]),'<production-jna-native-functions>','exec'),namespace)
+preflight,command,verify=(namespace[name] for name in ('jna_native_preflight','jna_native_command','jna_native_elf'))
+root=Path(sys.argv[2])/'jna-native-guards';root.mkdir()
+tools=root/'tools';tools.mkdir()
+names=('make','autoreconf','autoconf','automake','aclocal','autoheader','libtoolize','m4','perl','makeinfo','sed','awk','grep','patch')
+for name in names:
+ p=tools/name;p.write_text('#!/bin/sh\nprintf "fixture prerequisite version\\n"\n');p.chmod(0o755)
+ndk=root/'ndk';llvm=ndk/'toolchains/llvm/prebuilt/linux-x86_64'
+(llvm/'sysroot/usr/include').mkdir(parents=True)
+(llvm/'sysroot/usr/include/jni.h').write_text('fixture JNI input')
+(ndk/'source.properties').write_text('Pkg.Revision = 27.0.12077973\n')
+environment=dict(os.environ,PATH=str(tools))
+for name in names:
+ p=tools/name;p.rename(tools/(name+'.saved'))
+ try:
+  try:preflight(environment,ndk)
+  except SystemExit as error:assert str(error)=='JNA native prerequisite missing: '+name
+  else:raise AssertionError('missing prerequisite accepted: '+name)
+ finally:(tools/(name+'.saved')).rename(p)
+inventory,_,_=preflight(environment,ndk)
+assert {row['name'] for row in inventory}==set(names) and all(row['sha256'] and row['version'] for row in inventory)
+for defect in ('wrong-ndk','missing-jni'):
+ if defect=='wrong-ndk':(ndk/'source.properties').write_text('Pkg.Revision = 26.0.0\n')
+ else:(llvm/'sysroot/usr/include/jni.h').unlink()
+ try:preflight(environment,ndk)
+ except SystemExit as error:assert 'JNA native' in str(error)
+ else:raise AssertionError('NDK defect accepted: '+defect)
+ (ndk/'source.properties').write_text('Pkg.Revision = 27.0.12077973\n')
+ (llvm/'sysroot/usr/include/jni.h').write_text('fixture JNI input')
+work=root/'make work';(work/'native').mkdir(parents=True);(work/'headers').mkdir();(work/'build/libffi/include').mkdir(parents=True)
+(work/'native/Makefile').write_text('''CDEFINES=-DFFI_STATIC_BUILD
+../build/libjnidispatch.so:
+\tcd ../build/libffi && $(FFI_ENV) /bin/sh ../../native/configure
+\t$(MAKE) -C ../build/libffi
+\ttouch $@
+''')
+(work/'native/configure').write_text('''set -eu
+test -z "$LDFLAGS"
+test -z "$MAKEFLAGS"
+printf 'int main(void){return 0;}\\n' >conftest.c
+eval "$CC $CFLAGS $CPPFLAGS conftest.c $LDFLAGS -o conftest"
+test -x conftest
+printf 'LDFLAGS=\\nall:\\n\\t@test -z "$(LDFLAGS)"\\n\\t@test -z "$(MAKEOVERRIDES)"\\n' >Makefile
+''')
+cmd=command(shutil.which('make'),llvm,work,'aarch64',Path(shutil.which('cc')),'7.0.4','a'*32)
+result=subprocess.run(cmd,cwd=work/'native',capture_output=True,text=True)
+assert result.returncode==0,result.stdout+result.stderr
+# Reproduce the original defect by dropping both scope guards from that command.
+unscoped=[arg for arg in cmd if not arg.startswith(('MAKEOVERRIDES=','FFI_ENV='))]
+unscoped.insert(-1,'FFI_ENV=CC="$(CC)" CFLAGS="$(COPT)"')
+(work/'build/libjnidispatch.so').unlink()
+result=subprocess.run(unscoped,cwd=work/'native',capture_output=True,text=True)
+assert result.returncode!=0,'real make failed to distinguish leaked target flags'
+source=root/'exports.c';checksum='5fb98531302accd485c534c452dd952a'
+source.write_text('const char version[]="7.0.4";const char checksum[]="'+checksum+'";\n'+
+ '\n'.join('void '+name+'(void){}' for name in ('JNI_OnLoad','Java_com_sun_jna_Native_getNativeVersion','Java_com_sun_jna_Native_getAPIChecksum')))
+library=root/'exports.so';readelf=Path(shutil.which('readelf'))
+subprocess.run(['cc','-shared','-nostdlib','-fPIC','-Wl,-z,max-page-size=16384','-o',str(library),str(source)],check=True)
+data=library.read_bytes();machine=struct.unpack_from('<H',data,18)[0]
+assert data[4]==2,'native ELF fixture requires 64-bit host'
+assert verify(library,2,machine,readelf,'7.0.4',checksum)['loadSegments']
+for defect in ('not-elf','wrong-class','wrong-machine','wrong-type','short-headers','unaligned','missing-version','missing-checksum','missing-export'):
+ changed=bytearray(data)
+ if defect=='not-elf':changed[:4]=b'nope'
+ if defect=='wrong-class':changed[4]=1
+ if defect=='wrong-machine':struct.pack_into('<H',changed,18,0)
+ if defect=='wrong-type':struct.pack_into('<H',changed,16,2)
+ if defect=='short-headers':struct.pack_into('<Q',changed,32,len(data))
+ if defect=='unaligned':
+  offset=struct.unpack_from('<Q',changed,32)[0];size,count=struct.unpack_from('<HH',changed,54)
+  for index in range(count):
+   if struct.unpack_from('<I',changed,offset+index*size)[0]==1:struct.pack_into('<Q',changed,offset+index*size+48,4096);break
+ if defect=='missing-version':changed=changed.replace(b'7.0.4\0',b'0.0.0\0')
+ if defect=='missing-checksum':changed=changed.replace(checksum.encode(),b'x'*32)
+ if defect=='missing-export':changed=changed.replace(b'JNI_OnLoad',b'JNI_Absent')
+ library.write_bytes(changed)
+ try:verify(library,2,machine,readelf,'7.0.4',checksum)
+ except (SystemExit,subprocess.CalledProcessError):pass
+ else:raise AssertionError('ELF defect accepted: '+defect)
+library.write_bytes(data)
+assert verify(library,2,machine,readelf,'7.0.4',checksum)['sha256']==hashlib.sha256(data).hexdigest()
+PY
+echo 'JNA native guards PASS: fourteen missing-tool controls, NDK/sysroot controls, real make/compiler scoped-vs-leaked flags, real ELF plus nine rejecting controls (host fixture, no Android build)'
+
 echo "✓ Android release provenance rejects version, source and hash drift; source archive includes pinned nested submodules and excludes local credentials"

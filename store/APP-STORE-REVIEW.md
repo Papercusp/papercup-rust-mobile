@@ -971,3 +971,36 @@ This prepares configured build inputs locally. Native compiler/sysroot
 validation, dispatcher compilation, original prebuilt invocation, license
 election, complete source/notice rights, exact-candidate comparison and actual
 recipient retrieval/build remain required.
+
+The retained configured ZIPs can now be consumed by the same provenance tool
+without repeating Ant preparation:
+
+```sh
+ANDROID_NDK_HOME=/path/to/android-ndk/27.0.12077973 \
+  tools/build-scripts/android-release-provenance.sh source-verify-build jna-native
+# Optional third argument: retained package directory; fourth: all or one app ABI.
+```
+
+The Linux host requires GNU make, autoreconf, autoconf, automake, aclocal,
+autoheader, libtoolize, m4, Perl, texinfo's `makeinfo`, sed, awk, grep and patch.
+On Ubuntu these are provided by `build-essential autoconf automake libtool
+m4 perl texinfo patch`; the maintained preflight checks every executable before
+native make and records its version and SHA-256. Documentation is built normally;
+`MAKEINFO=true` is not a supported substitute. The NDK revision, API 24 sysroot,
+JNI headers and each selected Clang/binutils executable are checked and retained.
+
+The consumer validates each ZIP against the pinned native-source population and
+retained generated script/header fingerprints, then uses a fresh per-ABI directory.
+It invokes the upstream Makefile's dispatcher target directly: the generated script
+does not reliably propagate a failed make exit. Dispatcher link/output flags are
+cleared for libffi configure and excluded from recursive make; include paths are
+absolute. Each attempt retains its command, build log and result, including failures.
+Successful output must be a shared little-endian ELF for the selected ABI with
+16 KB aligned LOAD segments, the JNI version/checksum and required JNI exports.
+`papercusp-jna-native-result.json` is written only after that validation and current
+source/input checks. The two earlier failed ARM64 attempts remain separate evidence.
+
+This command proves local compilation only for its listed ABIs. It does not execute
+the dispatcher or establish the original prebuilt invocation, license election,
+complete source/notice rights, exact-candidate equivalence or recipient retrieval.
+Those release requirements remain open.
