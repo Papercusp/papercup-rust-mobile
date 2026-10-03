@@ -515,3 +515,23 @@ binary/source matching, recipient-accessible source delivery and distribution
 rights remain open. Refresh the source/version review for the final signed
 candidate; these local snapshots do not satisfy Play or physical-phone
 acceptance.
+
+On October 3 UTC, the retained exported-source debug APK was checked without
+rebuilding its app/native bytes. Four maintained native notice tests passed on
+an owned read-only API 36 / 16 KB emulator with networking disabled. The new
+test compares all five complete supplemental texts with their source-pinned
+hashes, opens their bundled-library dialogs without pairing, and returns to
+the pairing screen. A private APK copy with one supplemental text removed
+failed the same test; restoring the exact original APK restored the pass.
+The proof distinguishes app commit `68bc8893` from test commit `131ce62f` and
+retains both APK hashes. This is debug preparation, not signed-candidate,
+complete rights/notices, recipient retrieval, physical-phone or Play acceptance.
+
+The existing native runner now checks framework processes, settings-service
+responses and crash-buffer evidence in addition to the boot flag before
+installation. Its maintained suite rejects missing/restarting processes,
+broken service responses and the observed SurfaceFlinger DMA assertion.
+The API 36.1 image crashed with that assertion using both indirect and current
+SwiftShader renderers; its runtime origin remains open on
+`EI-24926092400277910`. The separate API 36 image passed. Removing the deprecated
+CI renderer option is not represented as a fix for the API 36.1 failure.
