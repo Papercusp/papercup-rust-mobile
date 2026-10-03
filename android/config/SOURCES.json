@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "retrievedAt": "2026-10-03T00:32:02.028733+00:00",
+  "scope": "Five generated link-only Android license references supplemented through the existing AboutLibraries config. Upstream native-license snapshots do not establish exact binary/source correspondence; current Google terms do not establish account acceptance. JAIN SIP API copyright is retained separately from NIST public-domain conditions. Complete transitive/native/model/Rust notices, source compilation, recipient retrieval and release rights remain open.",
+  "licenses": [
+    {
+      "key": "libyuv",
+      "name": "BSD License",
+      "url": "https://chromium.googlesource.com/libyuv/libyuv/+/refs/heads/main/README.chromium",
+      "sourceUrl": "https://chromium.googlesource.com/libyuv/libyuv/+/aa6cedb39c87910b4c28e5c71c2121fc45fd234b/LICENSE?format=TEXT",
+      "sourceSha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f",
+      "sourceRevision": "aa6cedb39c87910b4c28e5c71c2121fc45fd234b",
+      "extraction": "Base64 Gitiles LICENSE bytes decoded as UTF-8; upstream reference snapshot, not binary source equivalence",
+      "hash": "44d1a25c593283261968a15c8cc213cd",
+      "contentSha256": "2b2cc1180c7e6988328ad2033b04b80117419db9c4c584918bbb3cfec7e9364f",
+      "file": "android/config/licenses/libyuv.json",
+      "modules": [
+        {
+          "module": "androidx.camera:camera-core",
+          "version": "1.4.0"
+        }
+      ]
+    },
+    {
+      "key": "webrtc",
+      "name": "The 3-Clause BSD License",
+      "url": "https://opensource.org/license/bsd-3-clause/",
+      "sourceUrl": "https://webrtc.googlesource.com/src/+/cec4daea7ed5da94fc38d790bd12694c86865447/LICENSE?format=TEXT",
+      "sourceSha256": "ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482",
+      "sourceRevision": "cec4daea7ed5da94fc38d790bd12694c86865447",
+      "extraction": "Base64 Gitiles LICENSE bytes decoded as UTF-8; upstream reference snapshot, not binary source equivalence",
+      "hash": "58a0fed5c0bf6a367ee905fc49842212",
+      "contentSha256": "ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482",
+      "file": "android/config/licenses/webrtc.json",
+      "modules": [
+        {
+          "module": "io.github.webrtc-sdk:android-prefixed",
+          "version": "137.7151.04"
+        }
+      ]
+    },
+    {
+      "key": "mlkit",
+      "name": "ML Kit Terms of Service",
+      "url": "https://developers.google.com/ml-kit/terms",
+      "sourceUrl": "https://developers.google.com/ml-kit/terms",
+      "sourceSha256": "63bb38de7ac8a6c48b3197e9e16892a05f843831f53f01fa54d1f1b82000ed8b",
+      "extraction": "Entire devsite-article-body HTML converted to paragraphs, anchors retained as absolute URLs; retrieved current terms snapshot, not account acceptance",
+      "hash": "9962f44671a86e167c028415c7e21548",
+      "contentSha256": "b1efdb95a59c9170929d5bf81f2c0b34cc61f6fa7dcf26635079644606817e89",
+      "file": "android/config/licenses/mlkit.json",
+      "modules": [
+        {
+          "module": "com.google.android.gms:play-services-mlkit-barcode-scanning",
+          "version": "18.3.1"
+        },
+        {
+          "module": "com.google.mlkit:barcode-scanning",
+          "version": "17.3.0"
+        },
+        {
+          "module": "com.google.mlkit:barcode-scanning-common",
+          "version": "17.0.0"
+        },
+        {
+          "module": "com.google.mlkit:common",
+          "version": "18.11.0"
+        },
+        {
+          "module": "com.google.mlkit:vision-common",
+          "version": "17.3.0"
+        },
+        {
+          "module": "com.google.mlkit:vision-interfaces",
+          "version": "16.3.0"
+        }
+      ]
+    },
+    {
+      "key": "android-sdk",
+      "name": "Android Software Development Kit License",
+      "url": "https://developer.android.com/studio/terms.html",
+      "sourceUrl": "https://developer.android.com/studio/terms.html",
+      "sourceSha256": "19ebcb1300faff97bf17eb32a3adb602b29a8e1bf511b1f9c07bf7db89b80055",
+      "extraction": "Entire devsite-article-body HTML converted to paragraphs, anchors retained as absolute URLs; retrieved current terms snapshot, not account acceptance",
+      "hash": "ASDKL",
+      "contentSha256": "f046c8bbdfc36989e98e40b5915b2a09545d06c3ce204dd1f53f188604902976",
+      "file": "android/config/licenses/android-sdk.json",
+      "modules": [
+        {
+          "module": "com.google.android.gms:play-services-ads-identifier",
+          "version": "18.0.0"
+        },
+        {
+          "module": "com.google.android.gms:play-services-base",
+          "version": "18.5.0"
+        },
+        {
+          "module": "com.google.android.gms:play-services-basement",
+          "version": "18.4.0"
+        },
+        {
+          "module": "com.google.android.gms:play-services-cloud-messaging",
+          "version": "17.2.0"
+        },
+        {
+          "module": "com.google.android.gms:play-services-measurement",
+          "version": "22.1.2"
+        },
+        {
+          "module": "com.google.android.gms:play-services-measurement-api",
+          "version": "22.1.2"
+        },
+        {
+          "module": "com.google.android.gms:play-services-measurement-base",
+          "version": "22.1.2"
+        },
+        {
+          "module": "com.google.android.gms:play-services-measurement-impl",
+          "version": "22.1.2"
+        },
+        {
+          "module": "com.google.android.gms:play-services-measurement-sdk",
+          "version": "22.1.2"
+        },
+        {
+          "module": "com.google.android.gms:play-services-measurement-sdk-api",
+          "version": "22.1.2"
+        },
+        {
+          "module": "com.google.android.gms:play-services-stats",
+          "version": "17.0.2"
+        },
+        {
+          "module": "com.google.android.gms:play-services-tasks",
+          "version": "18.2.0"
+        },
+        {
+          "module": "com.google.android.odml:image",
+          "version": "1.0.0-beta1"
+        },
+        {
+          "module": "com.google.firebase:firebase-analytics",
+          "version": "22.1.2"
+        },
+        {
+          "module": "com.google.firebase:firebase-analytics-ktx",
+          "version": "22.1.2"
+        },
+        {
+          "module": "com.google.firebase:firebase-iid-interop",
+          "version": "17.1.0"
+        },
+        {
+          "module": "com.google.firebase:firebase-measurement-connector",
+          "version": "20.0.1"
+        }
+      ]
+    },
+    {
+      "key": "jain-sip",
+      "name": "Public Domain",
+      "url": "http://www.gnu.org/licenses/license-list.html#PublicDomain",
+      "sourceUrl": "https://repo.maven.apache.org/maven2/javax/sip/android-jain-sip-ri/1.3.0-91/android-jain-sip-ri-1.3.0-91-sources.jar",
+      "sourceSha256": "87976b02556950c47cba4f4a1d8f33fe526858688ba8a5e4aad99459d94505ce",
+      "sourceEntries": [
+        {
+          "path": "gov/nist/javax/sip/stack/SIPTransaction.java",
+          "sha256": "04be4f9f6be7f82ab66a10ca41500a26efcf5b0d94a337c16cb305cd46460741"
+        },
+        {
+          "path": "javax/sip/copyright.html",
+          "sha256": "f3e051079eda33cfe5e8d57e92e99197ffebefbd71c606f488590042b54e9f40"
+        }
+      ],
+      "extraction": "Original NIST comment including original spelling; full copyright HTML text. Public-domain POM label does not cover every API notice or establish distribution rights.",
+      "hash": "fa7f33c49aa6110f3cedeb2975e140e0",
+      "contentSha256": "dc6bd4b4a6fd417e4245b55d6f532cf482e56500350f8f8ac1890caaf8eec702",
+      "file": "android/config/licenses/jain-sip.json",
+      "modules": [
+        {
+          "module": "javax.sip:android-jain-sip-ri",
+          "version": "1.3.0-91"
+        }
+      ]
+    }
+  ]
+}

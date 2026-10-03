@@ -11,6 +11,10 @@ plugins {
 // Generate dependency/license resources with the maintained collector. Native
 // engine/model notices and Rust licenses are supplemental release requirements.
 aboutLibraries {
+    collect {
+        // Versioned upstream text supplements for otherwise linked-only records.
+        configPath.set(file("../config"))
+    }
     export {
         variant.set("release")
         prettyPrint.set(true)

@@ -428,3 +428,28 @@ failure message. These are current debug UI checks, not signed-candidate,
 physical-phone, complete corresponding-source, distribution-rights, or Play
 acceptance. The release packet still requires final candidate binding and the
 supplemental native/model/Rust notices and recipient retrieval described above.
+
+### Supplemental Android notice text
+
+The collector now reuses its supported `collect.configPath` overrides in
+`android/config/licenses`. Five previously linked-only records have bundled
+text. `android/config/SOURCES.json` records each original license ID, content
+SHA-256, upstream source URL and digest, retrieval time, and the selected module
+versions which reference it. The maintained metadata check verifies the actual
+debug/release output against these files and rejects missing, substituted or
+unlinked text. No new notice viewer or separate generation pipeline was added.
+
+| Reference | Retained text and scope |
+| --- | --- |
+| CameraX libyuv BSD reference | Full LibYuv LICENSE at upstream revision `aa6cedb39c87910b4c28e5c71c2121fc45fd234b`, including copyright and disclaimer. This upstream license snapshot does not identify the exact native source revision compiled into CameraX 1.4.0. The resolved CameraX AAR's own LICENSE contains Apache-2.0 text. |
+| WebRTC BSD reference | Full WebRTC LICENSE at branch-7151 revision `cec4daea7ed5da94fc38d790bd12694c86865447`, including copyright and disclaimer. This complements the retained native byte comparison; it does not prove complete third-party native-source/notice coverage. |
+| ML Kit terms | The complete official Terms & Privacy article retrieved October 3 UTC, last modified May 14, 2025, with referenced URLs preserved in the text. It incorporates Google API terms and describes performance/utilization metrics sent to Google; processor/privacy and account acceptance still require separate review. |
+| Android SDK terms | The complete official SDK agreement retrieved October 3 UTC, dated April 28, 2026, including sections 1–14. The snapshot is readable offline; it does not establish account acceptance or determine distribution rights for every Google dependency. |
+| JAIN SIP | Exact published `android-jain-sip-ri:1.3.0-91` source JAR's NIST Conditions Of Use header and full `javax/sip/copyright.html` text. The latter reserves Sun/BEA API copyrights and says use is subject to license terms. The POM's public-domain label must not erase that distinct notice or be taken as blanket redistribution clearance. |
+
+These supplements preserve the cited text for in-app access. Complete
+transitive/native/model/Rust notices, applicable source compilation, precise
+binary/source matching, recipient-accessible source delivery and distribution
+rights remain open. Refresh the source/version review for the final signed
+candidate; these local snapshots do not satisfy Play or physical-phone
+acceptance.
