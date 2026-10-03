@@ -114,6 +114,29 @@ class LibraryNoticesScreenTest {
     }
 
     @Test
+    fun bundledRustSourceNoticeOpensWithoutPairing() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val libraries = context.resources.openRawResource(R.raw.aboutlibraries).bufferedReader().use {
+            parseLibraryNotices(it.readText())
+        }
+        val library = libraries.libraries.single { it.uniqueId == "rust:uniffi:0.32.2" }
+        val license = library.licenses.single { it.hash == "rust-1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5" }
+        val text = requireNotNull(license.licenseContent)
+        val digest = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        assertEquals("1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5", digest)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText("Third-party licenses").performClick()
+            compose.waitUntil(15_000) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(library.name))
+            compose.onAllNodes(hasText(library.name) and hasClickAction())[0].performClick()
+            compose.onNodeWithText(text).assertExists()
+            compose.onNodeWithText("OK").performClick()
+            assertNull(CredentialStore(context).load())
+        }
+    }
+
+    @Test
     fun dialogPreservesMultipleLicenseTextsAndLinkedOnlyTerms() {
         val libraries = parseLibraryNotices("""{
             "libraries":[{"uniqueId":"fixture:library","name":"Fixture library","artifactVersion":"1",

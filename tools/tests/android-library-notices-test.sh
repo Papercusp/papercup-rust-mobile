@@ -10,6 +10,14 @@ trap 'rm -rf "$TMP"' EXIT
 JAVA_HOME="$("$ROOT/tools/build-scripts/resolve-java-home.sh")"
 export JAVA_HOME
 
+python3 - "$ROOT/Cargo.lock" "$TMP/cargo-registry.json" <<'PY'
+import hashlib, json, pathlib, sys, tomllib
+source = pathlib.Path(sys.argv[1]).read_bytes()
+packages = [p for p in tomllib.loads(source.decode())['package'] if p.get('source')]
+assert all(p['source'] == 'registry+https://github.com/rust-lang/crates.io-index' for p in packages)
+pathlib.Path(sys.argv[2]).write_text(json.dumps({'sha256': hashlib.sha256(source).hexdigest(), 'packages': packages}))
+PY
+
 cat > "$TMP/notices-test.gradle" <<'GRADLE'
 import groovy.json.JsonSlurper
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
@@ -49,6 +57,39 @@ gradle.projectsEvaluated {
                 .collectEntries { [("${it.id.group}:${it.id.module}".toString()): it.id.version] }
             assert !expected.isEmpty(): 'Release dependency graph is empty'
             def config = new File(app.projectDir, '../config')
+            def rust = new JsonSlurper().parse(new File(config, 'RUST-SOURCES.json'))
+            def lockedRust = new JsonSlurper().parse(new File(System.getProperty('papercup.notices.cargoRegistry')))
+            def validateRustSource = { sourceInventory ->
+                assert sourceInventory.cargoLockSha256 == lockedRust.sha256: 'Rust notices are stale for Cargo.lock'
+                def declared = sourceInventory.packages.collectEntries { [("${it.name}:${it.version}".toString()): it.packageChecksum] }
+                def locked = lockedRust.packages.collectEntries { [("${it.name}:${it.version}".toString()): it.checksum] }
+                assert declared.size() == sourceInventory.packages.size() && declared == locked:
+                    'Rust notice source/checksum population differs from Cargo.lock'
+            }
+            validateRustSource(rust)
+            def rustLibraries = rust.packages.collectEntries { pkg ->
+                def definition = new JsonSlurper().parse(new File(app.projectDir, "../../${pkg.libraryFile}"))
+                assert definition.uniqueId == "rust:${pkg.name}:${pkg.version}".toString() && definition.artifactVersion == pkg.version:
+                    'Rust collector definition lost its exact package identity'
+                assert definition.description.contains("declared license: ${pkg.declaredLicense ?: 'see declared license file'}"):
+                    'Rust collector definition lost the source license declaration'
+                assert definition.licenses.toSet() == pkg.texts.collect { it.licenseId }.toSet() && !definition.licenses.isEmpty():
+                    'Rust collector definition lost a notice reference'
+                [(definition.uniqueId): definition]
+            }
+            def rustLicenses = rust.packages.collectMany { it.texts }.collectEntries { text ->
+                def definition = new JsonSlurper().parse(new File(app.projectDir, "../../${text.licenseFile}"))
+                assert definition.hash == text.licenseId: 'Rust notice text ID differs from source receipt'
+                def digest = MessageDigest.getInstance('SHA-256').digest(definition.content.getBytes('UTF-8')).encodeHex().toString()
+                assert digest == text.sha256 && definition.content.trim(): 'Rust notice text differs from source bytes'
+                [(text.licenseId): definition]
+            }
+            assert rustLibraries.size() == rust.verifiedRegistryPackages && rustLicenses.size() == rust.uniqueNoticeTexts:
+                'Rust collector source receipt counts differ from definitions'
+            def configRustIds = new File(config, 'libraries').listFiles().findAll { it.name.startsWith('rust-') }.collect {
+                new JsonSlurper().parse(it).uniqueId
+            }.toSet()
+            assert configRustIds == rustLibraries.keySet(): 'Stale or omitted Rust collector definition'
             def provenance = new JsonSlurper().parse(new File(config, 'SOURCES.json'))
             def supplements = provenance.licenses.collectEntries { provenanceRow ->
                 def definition = new JsonSlurper().parse(new File(app.projectDir, "../../${provenanceRow.file}"))
@@ -92,7 +133,7 @@ gradle.projectsEvaluated {
                 assert data.libraries instanceof List && !data.libraries.isEmpty(): 'Library metadata is empty'
                 def rows = data.libraries.collectEntries { [(it.uniqueId): it] }
                 assert rows.size() == data.libraries.size(): 'Duplicate library IDs'
-                assert rows.keySet() == expected.keySet(): "Notice module population differs: $variant"
+                assert rows.keySet() == expected.keySet() + rustLibraries.keySet(): "Notice module/source population differs: $variant"
                 expected.each { id, version ->
                     assert rows.containsKey(id): "Release module missing: $id"
                     assert rows[id].artifactVersion == version: "Release module version differs: $id"
@@ -125,6 +166,15 @@ gradle.projectsEvaluated {
                 }
                 assert rows['net.java.dev.jna:jna'].licenses.contains('LGPL-2.1-or-later'):
                     'JNA upstream notice lost the existing alternative license'
+                rustLibraries.each { id, definition ->
+                    assert rows[id].artifactVersion == definition.artifactVersion && rows[id].description == definition.description:
+                        "Rust collector changed package identity or scope: $id"
+                    assert rows[id].licenses.toSet() == definition.licenses.toSet(): "Rust collector lost notice references: $id"
+                }
+                rustLicenses.each { id, definition ->
+                    assert data.licenses[id]?.content == definition.content && data.licenses[id].name == definition.name:
+                        "Rust collector changed source notice text: $id"
+                }
                 def sipText = data.licenses['fa7f33c49aa6110f3cedeb2975e140e0'].content
                 assert sipText.contains('NIST MAKES NO WARRANTY') && sipText.contains('BEA Systems') &&
                     sipText.contains('Sun Microsystems') && sipText.contains('Use is subject to license terms'):
@@ -156,7 +206,22 @@ gradle.projectsEvaluated {
                 def id = 'fa7f33c49aa6110f3cedeb2975e140e0'
                 it.licenses[id].content = it.licenses[id].content.split('JAIN SIP API copyright notice')[0]
             }
-            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${document.libraries.size()} records; eight offline supplements; twenty-nine rejecting controls"
+            def firstRustId = rustLibraries.keySet().first()
+            def firstRustLicense = rustLicenses.keySet().first()
+            expectRejected('an omitted Rust source package') { it.libraries.removeAll { row -> row.uniqueId == firstRustId } }
+            expectRejected('a stale Rust source version') { it.libraries.find { row -> row.uniqueId == firstRustId }.artifactVersion = 'stale' }
+            expectRejected('an unlinked Rust notice') { it.libraries.find { row -> row.uniqueId == firstRustId }.licenses.clear() }
+            expectRejected('changed Rust text') { it.licenses[firstRustLicense].content = 'Substituted text' }
+            expectRejected('missing Rust text') { it.licenses.remove(firstRustLicense) }
+            ['lock', 'checksum'].each { defect ->
+                def changed = new JsonSlurper().parse(new File(config, 'RUST-SOURCES.json'))
+                if (defect == 'lock') changed.cargoLockSha256 = '0' * 64
+                else changed.packages.first().packageChecksum = '0' * 64
+                boolean rejected = false
+                try { validateRustSource(changed) } catch (AssertionError expectedFailure) { rejected = true }
+                assert rejected: "Rust source guard accepted stale $defect"
+            }
+            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${rustLibraries.size()} locked Rust source packages, ${document.libraries.size()} records; eight offline supplements and ${rustLicenses.size()} Rust texts; thirty-six rejecting controls"
             }
         }
     }
@@ -164,6 +229,7 @@ gradle.projectsEvaluated {
 GRADLE
 
 "$ROOT/android/gradlew" -p "$ROOT/android" --console=plain \
+    "-Dpapercup.notices.cargoRegistry=$TMP/cargo-registry.json" \
     "-Dpapercup.notices.buildDir=$TMP/build" \
     --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
 
@@ -185,10 +251,12 @@ with zipfile.ZipFile(sys.argv[1], 'w') as archive:
     archive.writestr('META-INF/MANIFEST.MF', 'Manifest-Version: 1.0\n')
 PY
 "$ROOT/android/gradlew" -p "$ROOT/android" --console=plain \
+    "-Dpapercup.notices.cargoRegistry=$TMP/cargo-registry.json" \
     "-Dpapercup.notices.buildDir=$TMP/build" \
     "-Dpapercup.notices.fixtureRepo=$TMP/repository" \
     --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
 "$ROOT/android/gradlew" -p "$ROOT/android" --console=plain \
+    "-Dpapercup.notices.cargoRegistry=$TMP/cargo-registry.json" \
     "-Dpapercup.notices.buildDir=$TMP/build" \
     --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
 echo 'Release notice collector isolated cached add/remove graph transitions PASS'
