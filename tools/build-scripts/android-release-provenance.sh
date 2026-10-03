@@ -204,7 +204,12 @@ resolve_apkanalyzer() {
 # target directory. The locked dependency supplement is prepared separately.
 verify_source_build() {
     local mode="$1" commit
-    rm -f "$REPO_ROOT/android/app/build/outputs/papercusp-source-build-result.json"
+    if [[ "$mode" == notices ]]; then
+        rm -f "$REPO_ROOT/android/app/build/outputs/papercusp-rust-notices-result.json" \
+            "$REPO_ROOT/android/app/build/outputs/papercusp-rust-notices.json"
+    else
+        rm -f "$REPO_ROOT/android/app/build/outputs/papercusp-source-build-result.json"
+    fi
     assert_clean_source
     commit="$(source_commit)"
     source_archive verify "$commit"
@@ -214,6 +219,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import subprocess
 import sys
@@ -228,7 +234,8 @@ root = Path(os.environ['REPO_ROOT']).resolve()
 outputs = root / 'android/app/build/outputs'
 source = root / os.environ['SOURCE_REL']
 dependencies = outputs / 'papercusp-rust-dependencies.tar.gz'
-result_file = outputs / 'papercusp-source-build-result.json'
+result_file = outputs / ('papercusp-rust-notices-result.json' if mode == 'notices'
+                         else 'papercusp-source-build-result.json')
 # A failed attempt must never leave a preceding successful receipt current.
 result_file.unlink(missing_ok=True)
 started = datetime.now(timezone.utc).isoformat()
@@ -304,6 +311,95 @@ with tempfile.TemporaryDirectory(prefix='.source-build-', dir=outputs) as tempor
             if path.is_absolute() or '..' in path.parts or digest(package / relative) != expected:
                 raise SystemExit('Delivered crate file checksum differs: ' + name + '/' + relative)
             verified_files += 1
+    if mode == 'notices':
+        # Reuse the delivered-source verification above. This population is the
+        # complete lockfile, including host/development/platform packages; it is
+        # deliberately not a claim about crates linked into an Android binary.
+        libraries, licenses, provenance = [], {}, []
+        notice_pattern = re.compile(r'(^|[-_.])(licen[cs]e|copying|notice|authors|copyright)([-_.]|$)', re.I)
+        for row in sorted(rows, key=lambda item: (item['name'], item['version'])):
+            name, version = row['name'], row['version']
+            package = vendor / (name + '-' + version)
+            manifest = tomllib.loads((package / 'Cargo.toml').read_text())['package']
+            if (manifest.get('name'), manifest.get('version')) != (name, version):
+                raise SystemExit('Notice package identity differs from Cargo.lock: ' + name)
+            if (row.get('declaredLicense'), row.get('declaredLicenseFile')) != (
+                    manifest.get('license'), manifest.get('license-file')):
+                raise SystemExit('Notice license declaration differs from delivered Cargo.toml: ' + name)
+            if not manifest.get('license') and not manifest.get('license-file'):
+                raise SystemExit('Notice package has no license declaration: ' + name)
+            selected = {str(path.relative_to(package)) for path in package.rglob('*')
+                        if path.is_file() and notice_pattern.search(path.name)}
+            if manifest.get('license-file'):
+                declared = PurePosixPath(manifest['license-file'])
+                if declared.is_absolute() or '..' in declared.parts:
+                    raise SystemExit('Unsafe declared license file: ' + name)
+                selected.add(str(declared))
+            wanted = {name + '-' + version + '/' + path for path in selected}
+            recorded = row.get('noticeFiles', [])
+            if len(recorded) != len(wanted) or {entry['path'] for entry in recorded} != wanted:
+                raise SystemExit('Notice file inventory omits or substitutes selected files: ' + name)
+            references, text_ids = [], []
+            for entry in sorted(recorded, key=lambda item: item['path']):
+                path = vendor / entry['path']
+                if not path.is_file() or digest(path) != entry['sha256']:
+                    raise SystemExit('Notice file differs from retained inventory: ' + entry['path'])
+                references.append((path, {'path': entry['path'], 'sha256': entry['sha256']}))
+            supplement = row.get('licenseSupplement')
+            if supplement:
+                relative = PurePosixPath(supplement['path'])
+                if (relative.is_absolute() or '..' in relative.parts or
+                        len(relative.parts) != 2 or relative.parts[0] != Path(supplement_rel).name):
+                    raise SystemExit('Unsafe notice supplement path: ' + name)
+                path = extracted / Path(supplement_rel).parent / relative
+                vcs = json.loads((package / '.cargo_vcs_info.json').read_text())
+                revision = supplement.get('sourceRevision')
+                if (not revision or not re.fullmatch(r'[0-9a-f]{40}', revision) or
+                        vcs.get('git', {}).get('sha1') != revision or
+                        not supplement.get('source', '').startswith('https://') or
+                        revision not in supplement['source'] or
+                        not path.is_file() or digest(path) != supplement['sha256']):
+                    raise SystemExit('Notice supplement differs from pinned package source: ' + name)
+                references.append((path, dict(supplement)))
+            if not references:
+                raise SystemExit('Notice package has no retained full text: ' + name)
+            for path, reference in references:
+                # Decode without newline conversion so UTF-8 source bytes are
+                # preserved when the existing notice viewer reads the JSON.
+                content = path.read_bytes().decode('utf-8')
+                if not content.strip():
+                    raise SystemExit('Notice text is empty: ' + name + '/' + path.name)
+                identifier = 'rust-' + hashlib.sha256(content.encode()).hexdigest()
+                licenses.setdefault(identifier, {'hash': identifier, 'name': path.name, 'content': content})
+                text_ids.append(identifier)
+                reference['licenseId'] = identifier
+            libraries.append({'uniqueId': 'rust:' + name + ':' + version, 'name': name,
+                              'artifactVersion': version,
+                              'description': 'Locked Rust source package; declared license: ' +
+                                  (manifest.get('license') or 'see declared license file') +
+                                  '. This inventory includes host, development and platform dependencies.',
+                              'licenses': sorted(set(text_ids))})
+            provenance.append({'name': name, 'version': version,
+                               'declaredLicense': manifest.get('license'),
+                               'declaredLicenseFile': manifest.get('license-file'),
+                               'packageChecksum': row['packageChecksum'],
+                               'texts': [reference for _, reference in references]})
+        for relative, expected in inputs.items():
+            if digest(root / relative) != expected:
+                raise SystemExit('Source input changed during notice generation')
+        notice_file = outputs / 'papercusp-rust-notices.json'
+        notice_file.write_text(json.dumps({'libraries': libraries, 'licenses': licenses},
+                                         ensure_ascii=False, indent=2) + '\n')
+        result = {'schemaVersion': 1, 'sourceCommit': commit, 'mode': 'notices',
+                  'startedAt': started, 'finishedAt': datetime.now(timezone.utc).isoformat(),
+                  'exitCode': 0, 'inputs': inputs, 'cargoLockSha256': inventory['cargoLockSha256'],
+                  'verifiedRegistryPackages': len(registry), 'verifiedVendorFiles': verified_files,
+                  'packages': provenance, 'uniqueNoticeTexts': len(licenses),
+                  'noticeMetadata': {'path': str(notice_file.relative_to(root)), 'sha256': digest(notice_file)},
+                  'scope': 'Selected filename/declared-file notices and pinned supplements for every locked registry package. Not Android linkage, complete source-header attribution, app delivery, rights clearance or recipient access.'}
+        result_file.write_text(json.dumps(result, indent=2) + '\n')
+        print(json.dumps({key: value for key, value in result.items() if key != 'packages'}))
+        raise SystemExit(0)
     environment = dict(os.environ, CARGO_NET_OFFLINE='true', CARGO_TARGET_DIR=str(extracted / 'target'))
     external_inputs = {}
     gradle_inputs = []
@@ -716,7 +812,11 @@ case "${1:-}" in
         [[ "$mode" == host || "$mode" == android || "$mode" == android-apk ]] || die "source build mode must be host, android or android-apk"
         verify_source_build "$mode"
         ;;
+    source-notices)
+        [[ $# -eq 1 ]] || die "usage: $0 source-notices"
+        verify_source_build notices
+        ;;
     *)
-        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive|source-verify-build [host|android|android-apk]}"
+        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive|source-notices|source-verify-build [host|android|android-apk]}"
         ;;
 esac

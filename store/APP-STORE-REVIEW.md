@@ -303,6 +303,31 @@ This proves local source extraction and Cargo graph resolution for the recorded
 revision. Compilation, Android/Gradle/native SDK source obligations, final
 notices, licensing clearance and actual recipient retrieval remain open.
 
+The same source verifier can prepare Rust notice metadata without compiling:
+
+```sh
+tools/build-scripts/android-release-provenance.sh source-notices
+```
+
+It verifies the delivered root archive, complete locked source supplement and
+file checksums before collecting the inventory's full LICENSE, COPYING, NOTICE,
+AUTHORS and COPYRIGHT files (including nested files), declared license files,
+and revision-pinned supplements. Package license declarations must match the
+delivered Cargo manifests; selected files cannot be omitted from the inventory.
+Pinned supplements must match the package's recorded VCS revision. UTF-8 text
+bytes are preserved, and identical texts share a content hash.
+
+The generated `android/app/build/outputs/papercusp-rust-notices.json` uses the
+existing notice viewer's library/license metadata format. Its separate
+`papercusp-rust-notices-result.json` records source/archive/text hashes and
+scope; producing it preserves the prior compilation receipt. This inventory
+covers all locked registry packages, including host, development and other
+platform dependencies. Generation alone does not package these records into
+the app, identify Android-linked crates, exhaust source-header attributions,
+choose among alternative license grants, clear distribution rights or prove
+recipient access. Final app notice delivery and the candidate-bound review
+remain required.
+
 The existing source-provenance helper provides a repeatable exported-source
 compilation check, after the root archive and locked Rust supplement are prepared:
 
