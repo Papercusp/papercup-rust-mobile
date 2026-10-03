@@ -100,11 +100,12 @@ gradle.projectsEvaluated {
                     "Supplement source provenance is missing: ${provenanceRow.file}"
                 [(provenanceRow.hash): [definition: definition, source: provenanceRow]]
             }
-            assert supplements.size() == 8: 'The five license texts and three selected upstream attributions are incomplete'
+            assert supplements.size() == 9: 'The five license texts and four selected upstream attributions are incomplete'
             def upstreamNotices = [
                 'io.livekit:livekit-android': 'papercusp-livekit-notice',
                 'net.java.dev.jna:jna': 'papercusp-jna-libffi',
-                'androidx.graphics:graphics-path': 'papercusp-graphics-path-notice'
+                'androidx.graphics:graphics-path': 'papercusp-graphics-path-notice',
+                'io.github.webrtc-sdk:android-prefixed': 'papercusp-webrtc-third-party'
             ]
             upstreamNotices.each { module, id ->
                 def supplement = supplements[id]
@@ -161,7 +162,9 @@ gradle.projectsEvaluated {
                     }
                 }
                 upstreamNotices.each { module, id ->
-                    assert rows[module].licenses.containsAll(['Apache-2.0', id]):
+                    def originalLicense = module == 'io.github.webrtc-sdk:android-prefixed'
+                        ? '58a0fed5c0bf6a367ee905fc49842212' : 'Apache-2.0'
+                    assert rows[module].licenses.containsAll([originalLicense, id]):
                         "Selected upstream notice replaced the original license: $module"
                 }
                 assert rows['net.java.dev.jna:jna'].licenses.contains('LGPL-2.1-or-later'):
@@ -221,7 +224,7 @@ gradle.projectsEvaluated {
                 try { validateRustSource(changed) } catch (AssertionError expectedFailure) { rejected = true }
                 assert rejected: "Rust source guard accepted stale $defect"
             }
-            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${rustLibraries.size()} locked Rust source packages, ${document.libraries.size()} records; eight offline supplements and ${rustLicenses.size()} Rust texts; thirty-six rejecting controls"
+            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${rustLibraries.size()} locked Rust source packages, ${document.libraries.size()} records; nine offline supplements and ${rustLicenses.size()} Rust texts; thirty-nine rejecting controls"
             }
         }
     }

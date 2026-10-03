@@ -292,6 +292,59 @@
           "version": "1.0.1"
         }
       ]
+    },
+    {
+      "key": "webrtc-third-party",
+      "name": "WebRTC upstream third-party licenses and notices",
+      "url": "https://raw.githubusercontent.com/webrtc-sdk/android/f126941a2667f8f1bd3ac60b1a6a4783a3310e1f/Licenses/WEBRTC.md",
+      "sourceUrl": "https://raw.githubusercontent.com/webrtc-sdk/android/f126941a2667f8f1bd3ac60b1a6a4783a3310e1f/Licenses/WEBRTC.md",
+      "sourceRevision": "f126941a2667f8f1bd3ac60b1a6a4783a3310e1f",
+      "sourceGitBlob": "f371735b3a706ff1401bce870f096efc9bbb5f51",
+      "sourceSha256": "d1f9382c6878ac024155fd6d44a5977329108bb8b0a01cea40e4a2f1d7de252e",
+      "sourceBytes": 788358,
+      "sourceHeadings": [
+        "webrtc",
+        "abseil-cpp",
+        "android_ndk",
+        "android_sdk",
+        "base64",
+        "boringssl",
+        "crc32c",
+        "fft",
+        "fiat",
+        "g711",
+        "g722",
+        "ijar",
+        "libaom",
+        "libc++",
+        "libc++abi",
+        "libevent",
+        "libjpeg_turbo",
+        "libsrtp",
+        "libvpx",
+        "libyuv",
+        "nasm",
+        "ooura",
+        "opus",
+        "pffft",
+        "protobuf",
+        "rnnoise",
+        "sigslot",
+        "spl_sqrt_floor",
+        "usrsctp",
+        "zlib"
+      ],
+      "extraction": "Complete pinned upstream Markdown file, byte-for-byte UTF-8 including existing HTML entities; not independently regenerated from the native build.",
+      "hash": "papercusp-webrtc-third-party",
+      "contentSha256": "d1f9382c6878ac024155fd6d44a5977329108bb8b0a01cea40e4a2f1d7de252e",
+      "file": "android/config/licenses/webrtc-third-party.json",
+      "librariesFile": "android/config/libraries/webrtc-third-party.json",
+      "modules": [
+        {
+          "module": "io.github.webrtc-sdk:android-prefixed",
+          "version": "137.7151.04"
+        }
+      ]
     }
   ],
   "termsReferences": [
@@ -303,9 +356,20 @@
       "effectiveDate": "2026-03-30",
       "sourceSha256": "20559fa4e41401e62f787b4096b7a7e9482a1b638d4c856e95a1a2d123118ef4",
       "textSha256": "8c854c744bf9e3c306923d2b3b8aa346c93d4c696418c7158975783c06f9aec1",
-      "reviewedSections": ["2", "3", "4", "5", "6", "7", "9"],
+      "reviewedSections": [
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "9"
+      ],
       "modules": [
-        {"module": "ai.picovoice:porcupine-android", "version": "4.0.0"}
+        {
+          "module": "ai.picovoice:porcupine-android",
+          "version": "4.0.0"
+        }
       ],
       "retainedReceipt": "android/app/build/outputs/papercusp-android-dependency-sources/picovoice-TERMS-REFERENCE.json",
       "retainedReceiptSha256": "95b724a12ff046f99bf8fbbb030211cc8814d6f7bdbf9e41dacf6c44a86d4fcb",
