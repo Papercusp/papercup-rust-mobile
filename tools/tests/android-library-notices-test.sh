@@ -100,7 +100,7 @@ gradle.projectsEvaluated {
                     "Supplement source provenance is missing: ${provenanceRow.file}"
                 [(provenanceRow.hash): [definition: definition, source: provenanceRow]]
             }
-            assert supplements.size() == 9: 'The five license texts and four selected upstream attributions are incomplete'
+            assert supplements.size() == 10: 'The five license texts and five selected upstream attributions are incomplete'
             def upstreamNotices = [
                 'io.livekit:livekit-android': 'papercusp-livekit-notice',
                 'net.java.dev.jna:jna': 'papercusp-jna-libffi',
@@ -127,8 +127,39 @@ gradle.projectsEvaluated {
                         'Graphics Path derived attribution lost its extraction scope'
                 }
                 def override = new JsonSlurper().parse(new File(app.projectDir, "../../${supplement.source.librariesFile}"))
-                assert override.uniqueId == module && override.licenses == [id]:
+                def expectedOverride = module == 'net.java.dev.jna:jna'
+                    ? ['papercusp-jna-libffi', 'papercusp-jna-selected-native'] : [id]
+                assert override.uniqueId == module && override.licenses == expectedOverride:
                     "Selected upstream notice library override differs: $module"
+            }
+            def jna = supplements['papercusp-jna-selected-native']
+            assert jna && jna.source.sourceRevision == '1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d':
+                'Selected JNA native source revision differs'
+            def validateJnaSource = { sourceInventory ->
+                assert sourceInventory.sourceEntries.size() == 31 && sourceInventory.unclassifiedSourceEntries.size() == 7:
+                    'Selected JNA identified/unclassified source population differs'
+                assert sourceInventory.sourceEntries.every {
+                    it.path.startsWith('native/') && it.sha256 ==~ /[0-9a-f]{64}/ && it.headerSha256 ==~ /[0-9a-f]{64}/
+                } && sourceInventory.unclassifiedSourceEntries.every {
+                    it.path.startsWith('native/') && it.sha256 ==~ /[0-9a-f]{64}/
+                }: 'Selected JNA source/header hashes are missing'
+                def allPaths = (sourceInventory.sourceEntries + sourceInventory.unclassifiedSourceEntries).collect { it.path }
+                assert allPaths.toSet().size() == 38: 'Selected JNA source population duplicates a path'
+                assert sourceInventory.extraction.contains('not an original upstream NOTICE'):
+                    'Selected JNA derived attribution lost its scope'
+                assert jna.definition.content.contains('including platform variants') &&
+                    sourceInventory.sourceEntries.every { jna.definition.content.contains(it.path) } &&
+                    sourceInventory.unclassifiedSourceEntries.every { jna.definition.content.contains(it.path) }:
+                    'Selected JNA attribution lost file identity or reference scope'
+            }
+            validateJnaSource(jna.source)
+            ['identified', 'unclassified'].each { defect ->
+                def changed = new JsonSlurper().parseText(groovy.json.JsonOutput.toJson(jna.source))
+                if (defect == 'identified') changed.sourceEntries.remove(0)
+                else changed.unclassifiedSourceEntries.remove(0)
+                boolean rejected = false
+                try { validateJnaSource(changed) } catch (AssertionError expectedFailure) { rejected = true }
+                assert rejected: "JNA source guard accepted omitted $defect file"
             }
             def validate = { data ->
                 assert data.libraries instanceof List && !data.libraries.isEmpty(): 'Library metadata is empty'
@@ -224,7 +255,7 @@ gradle.projectsEvaluated {
                 try { validateRustSource(changed) } catch (AssertionError expectedFailure) { rejected = true }
                 assert rejected: "Rust source guard accepted stale $defect"
             }
-            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${rustLibraries.size()} locked Rust source packages, ${document.libraries.size()} records; nine offline supplements and ${rustLicenses.size()} Rust texts; thirty-nine rejecting controls"
+            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${rustLibraries.size()} locked Rust source packages, ${document.libraries.size()} records; ten offline supplements and ${rustLicenses.size()} Rust texts; forty-four rejecting controls"
             }
         }
     }

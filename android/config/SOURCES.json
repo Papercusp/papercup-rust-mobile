@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "retrievedAt": "2026-10-03T00:32:02.028733+00:00",
-  "scope": "Five generated link-only Android license references, two retained release-tag attribution texts and derived Graphics Path native source attribution supplemented through the existing AboutLibraries config. The original retrieval timestamp applies to the five license snapshots; later additions have separately retained pinned references. Upstream native-license snapshots and source comparisons do not establish exact native binary/source correspondence; current Google terms do not establish account acceptance. JAIN SIP API copyright is retained separately from NIST public-domain conditions. Complete transitive/native/model/Rust notices, recipient retrieval and release rights remain open.",
+  "scope": "Five generated link-only Android license references, two retained release-tag attribution texts and derived Graphics Path native source attribution supplemented through the existing AboutLibraries config. The original retrieval timestamp applies to the five license snapshots; later additions have separately retained pinned references. Upstream native-license snapshots and source comparisons do not establish exact native binary/source correspondence; current Google terms do not establish account acceptance. JAIN SIP API copyright is retained separately from NIST public-domain conditions. Complete transitive/native/model/Rust notices, recipient retrieval and release rights remain open. Selected JNA native source-header attribution is derived from the separately pinned38-file reference review; platform variants and seven unclassified headers remain distinct from exact candidate build inputs.",
   "licenses": [
     {
       "key": "libyuv",
@@ -343,6 +343,212 @@
         {
           "module": "io.github.webrtc-sdk:android-prefixed",
           "version": "137.7151.04"
+        }
+      ]
+    },
+    {
+      "key": "jna-selected-native",
+      "name": "JNA selected native source attributions",
+      "url": "https://github.com/java-native-access/jna/tree/1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d/native",
+      "sourceUrl": "https://github.com/java-native-access/jna/tree/1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d/native",
+      "sourceRevision": "1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d",
+      "sourceSha256": "089fc780fc1352ba32a6f595ee95084086cf4c2a1ccb59e85016590825192924",
+      "extraction": "Derived from 31 complete identified source-header comments in a selected38-file review, including platform variants; 29 distinct blocks, seven unclassified files. This is not an original upstream NOTICE, exact candidate build-input inventory, binary/source equivalence or license selection.",
+      "hash": "papercusp-jna-selected-native",
+      "contentSha256": "fb64816cc17a4cabc50fd9ce09db1873d140cb6553119e06b7d22407b68be620",
+      "file": "android/config/licenses/jna-selected-native.json",
+      "librariesFile": "android/config/libraries/jna-libffi.json",
+      "sourceEntries": [
+        {
+          "path": "native/callback.c",
+          "sha256": "cd1fe56e32686d50516d09b1b2fde28e01730dc4523c37ebdb8c2bf07258ee1e",
+          "headerSha256": "cf77b77f9245b4a5af3f83bdf7d21ef241bea03eb99d7fc2a76d868d9da5c427"
+        },
+        {
+          "path": "native/dispatch.c",
+          "sha256": "270300a79e0520a565a523e3aed3d173f44f4a1c088ec97332569d9360d612b5",
+          "headerSha256": "9be72714cf3ccd531502b15824cb6927106a896608ba0b1c585cfc2252443564"
+        },
+        {
+          "path": "native/dispatch.h",
+          "sha256": "a5b1fe67f1bd6ab411e31a5e0c109c8079cfc299fee38735d59b1b52ed6e773a",
+          "headerSha256": "7687c6d174bc5cb7abbbf74adf3f7d14265a81e35262e34c7f17069244f87fff"
+        },
+        {
+          "path": "native/libffi/include/ffi_cfi.h",
+          "sha256": "165495aafcdb15ad48340b8b9906514032c284db3db372c31e3f4d6b35888dc5",
+          "headerSha256": "212dfee6fce04ba2a175c749cf3ed5d04dd2dd22e63355d36fbf937b6f314bc9"
+        },
+        {
+          "path": "native/libffi/include/ffi_common.h",
+          "sha256": "2b3f3d2ca1b16d6ae98d6b27ca0467fcd7605847b14cb681e844e51dea11527d",
+          "headerSha256": "4fa1bed11b9220aad871e755bcd5d52ca92f9ece182f41ffad9d9de080ff45c5"
+        },
+        {
+          "path": "native/libffi/include/tramp.h",
+          "sha256": "ef20dace99925672167a5f3b3898299d462ace170f0b90ca47fd36b30cfc7fbf",
+          "headerSha256": "a95af43bf2d384f1aac834c5568548d3df0cf7465ce0bee61395ce2bec8c2e78"
+        },
+        {
+          "path": "native/libffi/src/aarch64/ffi.c",
+          "sha256": "bfc8f82aeb2f6a6d26f81cc9c4caf57a4957405c032f986e88bfe08d0a356e0c",
+          "headerSha256": "8c7af4b6523c3d96502463c8b71094f0931ccfcfc60419e594c5b5ddeec454e3"
+        },
+        {
+          "path": "native/libffi/src/aarch64/ffitarget.h",
+          "sha256": "f416ed82c7c3a024433bfa269f4aeaae3b2880f9f82eb46cacb43e388e94a0f2",
+          "headerSha256": "8c7af4b6523c3d96502463c8b71094f0931ccfcfc60419e594c5b5ddeec454e3"
+        },
+        {
+          "path": "native/libffi/src/aarch64/internal.h",
+          "sha256": "449e978d4d211d5ae3c1a72ebbf364f3a704f9f1316ae71bf6c935397a9ee4a0",
+          "headerSha256": "1f21eaa55b8335fb7dd9377829ed8294b8d8685fd379fb4d5765063a32cf6029"
+        },
+        {
+          "path": "native/libffi/src/aarch64/sysv.S",
+          "sha256": "54ba35926b6bfe914c16b366b4efbf5ec3d072c4c20903da3da0c6dc23023908",
+          "headerSha256": "8c7af4b6523c3d96502463c8b71094f0931ccfcfc60419e594c5b5ddeec454e3"
+        },
+        {
+          "path": "native/libffi/src/aarch64/win64_armasm.S",
+          "sha256": "a675f9159ebb0c57fd0ea52e17ade39e045161b09a5a372d6a0dcd1b91ce6aaa",
+          "headerSha256": "c9e90868671397c22e543cee0fc5d63d07cf053f7e392ef5db2fb34698e0955d"
+        },
+        {
+          "path": "native/libffi/src/arm/ffi.c",
+          "sha256": "6dac3517308979cac7a053f95b671cfcfa8a5d59e3effe9bd9488ce3a146e05c",
+          "headerSha256": "14d7e8e77749b077a56cc94488594cde23bcb60b15d7372c332ceb9a6ba7b6f1"
+        },
+        {
+          "path": "native/libffi/src/arm/ffitarget.h",
+          "sha256": "6e8478a81677d0a7da1f22b8ad05b256d0598bf7810e13612aab5ffd83bae9a6",
+          "headerSha256": "62cb82c6bfa2b796ad7185304522b0ab5b96d6bc36ce9d0ce7f5c9eaf1b8d63e"
+        },
+        {
+          "path": "native/libffi/src/arm/sysv.S",
+          "sha256": "ce6e873a450e00599bf856a4e7beb192a1b923d1b5e603bac3dc946544d1dcfb",
+          "headerSha256": "5315664cf7518ff955acbea81f891597175d8120ab85593afaad2094b8e88da8"
+        },
+        {
+          "path": "native/libffi/src/arm/sysv_msvc_arm32.S",
+          "sha256": "3a16c408994c829f8ddf2a8af147c425927e2a45433b15a46bfd92c25d10b333",
+          "headerSha256": "f93fdcbae6963302531281f12237a153313a6ba0b94187fe4d3e2a6afa5e4ae6"
+        },
+        {
+          "path": "native/libffi/src/closures.c",
+          "sha256": "8b83d1b65271d601b66323d4d650d7f240f16407b9843f41467ddf836e5d3d72",
+          "headerSha256": "8156d8be5023ecd9f5a6bb7e9c007c8d3a53685538d77a054824c21cb760dc89"
+        },
+        {
+          "path": "native/libffi/src/debug.c",
+          "sha256": "5160a3877b65490aa30fa92a44a66c3bdf093d5ab75b9502adb729038efb3e5f",
+          "headerSha256": "b565811f45451df3848bea45bb5a7053803b9133c9359da529ec798c53d69f9e"
+        },
+        {
+          "path": "native/libffi/src/dlmalloc.c",
+          "sha256": "962edeb826b66f9ae3462226ee89cd9d9afdcdeb533e53529e0612f2fea22ebd",
+          "headerSha256": "f510b632bc44d20e273b9f01158d688941f47f728e25d3b065edeec06e9d3664"
+        },
+        {
+          "path": "native/libffi/src/java_raw_api.c",
+          "sha256": "5c3886d8c20ba1238135835aa132ad9c017af5f9e5c55e2167d3ad047def1bd6",
+          "headerSha256": "6ec1f124dc6d7f309a4e45c49bd827a9aa261222ccbd4d309a413019bb88f9cd"
+        },
+        {
+          "path": "native/libffi/src/prep_cif.c",
+          "sha256": "68fca3e5b7a49055787f0de50317c016481511eaa59361d7e00da11901f9a7a7",
+          "headerSha256": "584992a5a273710a44d0487d76c0b007471adb679edfa80439be7cc8c465a0c8"
+        },
+        {
+          "path": "native/libffi/src/raw_api.c",
+          "sha256": "d7ea1c81fc13e9fceb0dc431bc865e224d7be1e84483039eb4ad79144ef29c34",
+          "headerSha256": "5e3c3b6c331d4b4f7cb243a41cb49089a361c4f3c43e22e6198ebfe3ba807bf3"
+        },
+        {
+          "path": "native/libffi/src/tramp.c",
+          "sha256": "a6326218ad11f485120083497aef1518fd758b6f80390733b3d254bf78d15efc",
+          "headerSha256": "c950c44399becc39ad1025a971944982e8ca676059f76f29c970984235fda8df"
+        },
+        {
+          "path": "native/libffi/src/types.c",
+          "sha256": "466735ab14f3f53b3f147c6f3ab245105e8c262e89daed8426e6e9fa569f792a",
+          "headerSha256": "04da9bcb02fc38a66854ead3552ab85d60cf7d9dba3e2ade92bb491bf156fb19"
+        },
+        {
+          "path": "native/libffi/src/x86/ffi.c",
+          "sha256": "8770cc52d2af84cf2a51f8c9dc6d14973cd91b70b89979f19800c13cd63840b2",
+          "headerSha256": "575bee8746d78693bb61bdaa6353857dd8be7b391e9ac63931e5aa59d9d0c067"
+        },
+        {
+          "path": "native/libffi/src/x86/ffi64.c",
+          "sha256": "125d9a406408c187fd8890b66c3a019b313899017d9b065f38eaccbe96913c17",
+          "headerSha256": "53ea07b6223831a2d0456cf67c1d59d755c2ed640358c342ff145660c9dd2c03"
+        },
+        {
+          "path": "native/libffi/src/x86/ffitarget.h",
+          "sha256": "45e4fd2585aaed711e4fa3d1377b70c8e54dcdc56bdf402fa23a8816d19cc58a",
+          "headerSha256": "85d248c5229cfdc8ea226606ba82551662b7f3d0144fc003e67d802ed6c19489"
+        },
+        {
+          "path": "native/libffi/src/x86/ffiw64.c",
+          "sha256": "b6630b509aa28c57d9a5f93cd710fa0a2d20907cf1703f4085d0eeb602060c9c",
+          "headerSha256": "a1b4f28ac2f9253fb91ad879faa1a1384787e6933be05e7c9b6835dbd78f4714"
+        },
+        {
+          "path": "native/libffi/src/x86/sysv.S",
+          "sha256": "088483db5f5a4813af965adf3a9e8f83a292db9db040852d08648370d8c1e54e",
+          "headerSha256": "8cdc142945fd604d4dcef4dffb12271aeea34c1ce352bf3f8716edfb191795b7"
+        },
+        {
+          "path": "native/libffi/src/x86/sysv_intel.S",
+          "sha256": "e1d0f8d30b46706d867b5fb391435fe1ba37eee73d35f4d8f861684c8707113d",
+          "headerSha256": "a81f61a284a48bace06cc9c16833a166df5ac791982105f588d2f03d2468a394"
+        },
+        {
+          "path": "native/libffi/src/x86/unix64.S",
+          "sha256": "8a3686659532c51af9cc9b27ef2566068a4eb9b2bce02e3c738df5c339a1efd0",
+          "headerSha256": "c45344b5e1bf663a813e8ca6fcbd9cc4ffe5f92ae4125e56a1f8f492c3505e88"
+        },
+        {
+          "path": "native/protect.h",
+          "sha256": "5b5ddb946cd9a1331aabc64fb56e02b608fc0ec88e7f5ab82bf1b8440f482451",
+          "headerSha256": "68b44512f31345c9db363827dd77fbad04f9bec618c31c4e9ee32f971e1bd6dc"
+        }
+      ],
+      "unclassifiedSourceEntries": [
+        {
+          "path": "native/libffi/src/arm/internal.h",
+          "sha256": "b32c5ab851956989fe42004ea05dfca120920fc2cd1e87d047c1da848be0df68"
+        },
+        {
+          "path": "native/libffi/src/x86/asmnames.h",
+          "sha256": "b1a0c704a97aa9bb3a998f7d55cae8bf8181e355249da19a53269a10d03edb8e"
+        },
+        {
+          "path": "native/libffi/src/x86/internal.h",
+          "sha256": "faf2d20939ecf17ce73e288e38162de47119bb5f7bdd4994aa434b4b7dea6591"
+        },
+        {
+          "path": "native/libffi/src/x86/internal64.h",
+          "sha256": "6618077c8aa7874ee279bb1f6a2aeae50c9d2828a16befeba59af27b1c4b489c"
+        },
+        {
+          "path": "native/libffi/src/x86/win64.S",
+          "sha256": "456f93fb44eb8a669baf615db1043d57721191d801c5c5ccbdab05dae085de82"
+        },
+        {
+          "path": "native/libffi/src/x86/win64_intel.S",
+          "sha256": "90866da412a9b58fc60e7ee2f0bfcbc167156a78c605217c0edbbdad7532ac76"
+        },
+        {
+          "path": "native/snprintf.h",
+          "sha256": "c6d2031859ea635dea0f543d435051829c4b13f921e802dd6521bb3458e350d8"
+        }
+      ],
+      "modules": [
+        {
+          "module": "net.java.dev.jna:jna",
+          "version": "5.19.1"
         }
       ]
     }

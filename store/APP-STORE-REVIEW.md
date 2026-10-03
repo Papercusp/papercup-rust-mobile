@@ -826,8 +826,21 @@ instead of interpreting this lexical absence as a missing license.
 These comments include copyright holders beyond the retained libffi root
 LICENSE, including ARM, Oracle, CodeSourcery, Microsoft, Plausible Labs and
 The Written Word. Reconcile the applicable source-file attribution with the
-actual candidate build before claiming complete notices. The current
-collector still delivers the selected root libffi permission text; this
-source review does not silently widen that delivery claim. JNA's offered
-Apache/LGPL alternatives, actual build-input/source lineage, final notice
-access and recipient obligations remain open.
+actual candidate build before claiming complete notices. The existing
+collector now separately links `papercusp-jna-selected-native` to JNA alongside
+the unchanged root libffi permission text. The supplement retains all 31
+identified comments, grouping only the three identical AArch64 comments;
+29 complete distinct blocks and all 38 source paths remain visible. It names
+the seven unclassified files and preserves the platform-variant scope.
+
+The complete supplement text has SHA-256
+`fb64816cc17a4cabc50fd9ce09db1873d140cb6553119e06b7d22407b68be620`.
+`android/config/SOURCES.json` pins the reference revision, selected-review
+receipt digest and each source/header digest. The maintained metadata test
+requires both JNA supplements, verifies identified/unclassified populations,
+and rejects omitted files as well as missing, replaced or unlinked text.
+The native resource guard pins the complete supplement fingerprint.
+
+This is selected-source notice preparation. JNA's offered Apache/LGPL
+alternatives, actual build-input/source lineage, final notice access and
+recipient obligations remain open.

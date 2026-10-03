@@ -1,6 +1,7 @@
 {
   "uniqueId": "net.java.dev.jna:jna",
   "licenses": [
-    "papercusp-jna-libffi"
+    "papercusp-jna-libffi",
+    "papercusp-jna-selected-native"
   ]
 }
