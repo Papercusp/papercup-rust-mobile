@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Compare the maintained collector's actual output with Gradle's resolved graph.
-# This guards graph coverage; native/model notices and license clearance are separate.
+# This guards graph coverage and selected upstream notices; complete native/model
+# coverage and license clearance remain separate release requirements.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMP="$(mktemp -d)"
@@ -58,7 +59,22 @@ gradle.projectsEvaluated {
                     "Supplement source provenance is missing: ${provenanceRow.file}"
                 [(provenanceRow.hash): [definition: definition, source: provenanceRow]]
             }
-            assert supplements.size() == 5: 'The five reviewed link-only license supplements are incomplete'
+            assert supplements.size() == 7: 'The five license texts and two selected upstream notices are incomplete'
+            def upstreamNotices = [
+                'io.livekit:livekit-android': 'papercusp-livekit-notice',
+                'net.java.dev.jna:jna': 'papercusp-jna-libffi'
+            ]
+            upstreamNotices.each { module, id ->
+                def supplement = supplements[id]
+                assert supplement: "Selected upstream notice is missing: $module"
+                assert supplement.source.sourceRevision ==~ /[0-9a-f]{40}/:
+                    "Selected upstream notice revision is missing: $module"
+                assert supplement.source.sourceSha256 == supplement.source.contentSha256:
+                    "Selected upstream notice is not byte-for-byte: $module"
+                def override = new JsonSlurper().parse(new File(app.projectDir, "../../${supplement.source.librariesFile}"))
+                assert override.uniqueId == module && override.licenses == [id]:
+                    "Selected upstream notice library override differs: $module"
+            }
             def validate = { data ->
                 assert data.libraries instanceof List && !data.libraries.isEmpty(): 'Library metadata is empty'
                 def rows = data.libraries.collectEntries { [(it.uniqueId): it] }
@@ -90,6 +106,12 @@ gradle.projectsEvaluated {
                         }
                     }
                 }
+                upstreamNotices.each { module, id ->
+                    assert rows[module].licenses.containsAll(['Apache-2.0', id]):
+                        "Selected upstream notice replaced the original license: $module"
+                }
+                assert rows['net.java.dev.jna:jna'].licenses.contains('LGPL-2.1-or-later'):
+                    'JNA upstream notice lost the existing alternative license'
                 def sipText = data.licenses['fa7f33c49aa6110f3cedeb2975e140e0'].content
                 assert sipText.contains('NIST MAKES NO WARRANTY') && sipText.contains('BEA Systems') &&
                     sipText.contains('Sun Microsystems') && sipText.contains('Use is subject to license terms'):
@@ -121,7 +143,7 @@ gradle.projectsEvaluated {
                 def id = 'fa7f33c49aa6110f3cedeb2975e140e0'
                 it.licenses[id].content = it.licenses[id].content.split('JAIN SIP API copyright notice')[0]
             }
-            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${document.libraries.size()} records; five offline supplements; twenty rejecting controls"
+            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${document.libraries.size()} records; seven offline supplements; twenty-six rejecting controls"
             }
         }
     }

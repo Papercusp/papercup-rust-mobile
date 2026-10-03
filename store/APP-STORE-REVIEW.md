@@ -594,3 +594,44 @@ from the actual recipient-accessible destination, then compile the retrieved
 source through the existing verifier. Local archive extraction and this debug
 byte comparison leave recipient delivery, complete obligations and release
 acceptance open.
+
+### Selected upstream native attribution delivery
+
+The same AboutLibraries configuration now adds two retained upstream texts to
+their existing module records. It uses supported `config/libraries` merges
+and `config/licenses` definitions, preserving the resolved versions and
+original license references. `android/config/SOURCES.json` extends the existing
+source/hash ledger; no separate collector or notice viewer was introduced.
+
+| Existing module | Additional offline text | Pinned reference and content SHA-256 |
+| --- | --- | --- |
+| `io.livekit:livekit-android:2.22.0` | Complete LiveKit NOTICE, including LiveKit, Shiguredo, SDP parser and WebRTC attribution. | Revision `e5af72ed521ca000a8636b483731a888746a4c64`, SHA-256 `1ddcdc49391b88daa34060c04a5c3ecaa324903abdca74010aad6edbd952ed72`. |
+| `net.java.dev.jna:jna:5.19.1` | Complete upstream `native/libffi/LICENSE`, including the Anthony Green/Red Hat copyright, permission condition and disclaimer. | Revision `1a91122853f6ab6f1fb2a4a284a6cf2ed8af0a4d`, SHA-256 `2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388`. |
+
+These bytes match the previously retained release-tag references. They are
+selected upstream attribution, not proof that every source component in the
+packaged JNA or WebRTC engine is covered. JNA's Apache/LGPL alternative remains
+visible; adding the libffi permission text does not decide that license choice.
+The maintained graph check verifies the original labels, exact additional texts,
+module versions and links, and rejects omitted, substituted or unlinked text.
+The previously tested APK remains unchanged and contains the earlier five
+supplements; these additions require fresh final-candidate packaging and native
+access evidence before release acceptance.
+
+The retained debug population defines the remaining review scope:
+
+| Packaged family or resource population | Existing reference coverage | Remaining candidate-bound requirement |
+| --- | --- | --- |
+| Graphics Path 1.0.1 native library | Resolved AndroidX Apache-2.0 metadata. | Identify native source components and any additional notices; a wrapper label alone does not establish the native census. |
+| CameraX 1.4.0 image-processing library | Apache-2.0 metadata and the retained complete LibYuv license snapshot. | Establish the native source revision and full notice population actually used for the candidate. |
+| ML Kit 17.3.0 barcode engine and three `.tflite` assets | Complete retained ML Kit terms. | Confirm applicable engine/model distribution terms, provider obligations and candidate behavior; current terms do not establish account acceptance. |
+| JNA 5.19.1 native dispatcher | Apache/LGPL labels plus the selected upstream libffi notice above. | Reconcile the complete native source/notice population and chosen license obligations. |
+| WebRTC 137.7151.04 native engine | Complete retained WebRTC BSD text; LiveKit 2.22.0's complete upstream NOTICE is now separately linked to LiveKit. | Obtain the engine's full third-party notice/source census; an empty Maven source JAR and packaging MIT text do not supply it. |
+| Rust `libpapercup.so` | GPL root source, pinned token-kit source and the existing locked Rust source supplement/verifier. | Deliver the applicable Rust dependency notices and corresponding source through the actual recipient-accessible route, bound to the signed candidate. |
+| Porcupine 4.0.0 engine, fourteen `.ppn` files and one `.pv` file | Resolved Apache wrapper metadata and retained release-tag license reference. | Establish the engine/model terms, distribution rights and applicable account entitlement separately; bundled keywords and a working key do not establish them. |
+
+This maps the seven native families and eighteen extension-selected model
+resources already measured above. It does not expand that filename scan or
+establish complete rights. Final signed-candidate inventory, notice access,
+source-recipient retrieval/build, provider/reviewer journeys, current paired
+automatic CI, physical-phone and Play evidence remain required.
