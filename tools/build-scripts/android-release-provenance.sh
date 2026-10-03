@@ -316,7 +316,7 @@ with tempfile.TemporaryDirectory(prefix='.source-build-', dir=outputs) as tempor
         # complete lockfile, including host/development/platform packages; it is
         # deliberately not a claim about crates linked into an Android binary.
         libraries, licenses, provenance = [], {}, []
-        notice_pattern = re.compile(r'(^|[-_.])(licen[cs]e|copying|notice|authors|copyright)([-_.]|$)', re.I)
+        notice_pattern = re.compile(r'(^|[-_.])(licen[cs]es?|copying|notices?|authors?|copyrights?)([-_.]|$)', re.I)
         for row in sorted(rows, key=lambda item: (item['name'], item['version'])):
             name, version = row['name'], row['version']
             package = vendor / (name + '-' + version)

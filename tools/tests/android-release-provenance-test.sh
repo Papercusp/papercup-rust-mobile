@@ -258,9 +258,12 @@ vendor = 'android/app/build/outputs/papercusp-rust-dependencies'
 files = {'Cargo.toml': b'[package]\nname="source_proof_dependency"\nversion="1.0.0"\nedition="2021"\nlicense="MIT"\n',
          'src/lib.rs': b'pub fn value() -> u32 { 42 }\n',
          'LICENSE': b'Fixture permission text\r\nCopyright fixture author\r\n',
-         'AUTHORS': b'Fixture authors and additional attribution\n'}
+         'AUTHORS': b'Fixture authors and additional attribution\n',
+         'NOTICES.md': b'Plural notices with another attribution\n',
+         '.cargo_vcs_info.json': json.dumps({'git': {'sha1': 'cd' * 20}}).encode()}
 notice_files = [{'path': 'source_proof_dependency-1.0.0/' + name,
-                 'sha256': hashlib.sha256(files[name]).hexdigest()} for name in ('AUTHORS', 'LICENSE')]
+                 'sha256': hashlib.sha256(files[name]).hexdigest()} for name in ('AUTHORS', 'LICENSE', 'NOTICES.md')]
+supplement=b'Full revision-pinned supplemental notice\n'
 checksum = 'ab' * 32
 files['.cargo-checksum.json'] = json.dumps({'package': checksum, 'files': {
     name: hashlib.sha256(data).hexdigest() for name, data in files.items()}}).encode()
@@ -268,7 +271,12 @@ entries = {vendor + '/source_proof_dependency-1.0.0/' + name: data for name, dat
 entries[vendor + '-provenance.json'] = json.dumps({
     'cargoLockSha256': hashlib.sha256((root/'Cargo.lock').read_bytes()).hexdigest(),
     'packages': [{'name': 'source_proof_dependency', 'version': '1.0.0', 'packageChecksum': checksum,
-                  'declaredLicense': 'MIT', 'declaredLicenseFile': None, 'noticeFiles': notice_files}]}).encode()
+                  'declaredLicense': 'MIT', 'declaredLicenseFile': None, 'noticeFiles': notice_files,
+                  'licenseSupplement': {'path': 'papercusp-rust-license-supplements/fixture.txt',
+                                        'sha256': hashlib.sha256(supplement).hexdigest(),
+                                        'sourceRevision': 'cd' * 20,
+                                        'source': 'https://example.invalid/' + 'cd' * 20 + '/LICENSE'}}]}).encode()
+entries['android/app/build/outputs/papercusp-rust-license-supplements/fixture.txt']=supplement
 entries['.cargo/config.toml'] = ('[source.crates-io]\nreplace-with="vendored-sources"\n'
                                '[source.vendored-sources]\ndirectory="' + vendor + '"\n').encode()
 with tarfile.open(output, 'w:gz') as archive:
@@ -282,7 +290,7 @@ BUILD_RESULT="$TMP/android/app/build/outputs/papercusp-source-build-result.json"
 python3 - "$BUILD_RESULT" <<'PY'
 import json,sys
 result=json.load(open(sys.argv[1]))
-assert result['exitCode']==0 and result['verifiedRegistryPackages']==1 and result['verifiedVendorFiles']==4
+assert result['exitCode']==0 and result['verifiedRegistryPackages']==1 and result['verifiedVendorFiles']==6
 assert len(result['compiledArtifacts'])==1 and result['compiledArtifacts'][0]['size']>0
 assert '--frozen' in result['commands'][0]
 PY
@@ -304,14 +312,16 @@ rm "$TMP/bin/cargo"
 python3 - "$NOTICES_RESULT" "$NOTICES" <<'PY'
 import hashlib,json,sys
 receipt=json.load(open(sys.argv[1]));data=json.load(open(sys.argv[2]))
-assert receipt['exitCode']==0 and receipt['verifiedRegistryPackages']==1 and receipt['verifiedVendorFiles']==4
+assert receipt['exitCode']==0 and receipt['verifiedRegistryPackages']==1 and receipt['verifiedVendorFiles']==6
 assert receipt['noticeMetadata']['sha256']==hashlib.sha256(open(sys.argv[2],'rb').read()).hexdigest()
 assert data['libraries'][0]['uniqueId']=='rust:source_proof_dependency:1.0.0'
-assert len(data['libraries'][0]['licenses'])==2
+assert len(data['libraries'][0]['licenses'])==4
 assert any(license['content']=='Fixture permission text\r\nCopyright fixture author\r\n' for license in data['licenses'].values())
 assert any('additional attribution' in license['content'] for license in data['licenses'].values())
+assert any('Plural notices' in license['content'] for license in data['licenses'].values())
+assert any('revision-pinned supplemental notice' in license['content'] for license in data['licenses'].values())
 PY
-for defect in omitted-authors changed-notice-digest declaration-mismatch empty-notice escaped-license-file bad-supplement; do
+for defect in omitted-authors omitted-plural changed-notice-digest declaration-mismatch empty-notice escaped-license-file bad-supplement wrong-vcs-revision changed-supplement; do
     cp "$TMP/bin/dependencies-backup.tar.gz" "$DEPENDENCIES"
     python3 - "$DEPENDENCIES" "$defect" <<'PY'
 import hashlib,io,json,sys,tarfile
@@ -322,9 +332,15 @@ base='papercusp-mobile-source/android/app/build/outputs/papercusp-rust-dependenc
 package=base+'/source_proof_dependency-1.0.0/'
 inventory=json.loads(rows[base+'-provenance.json']);record=inventory['packages'][0]
 if defect=='omitted-authors':record['noticeFiles']=[x for x in record['noticeFiles'] if not x['path'].endswith('/AUTHORS')]
+if defect=='omitted-plural':record['noticeFiles']=[x for x in record['noticeFiles'] if not x['path'].endswith('/NOTICES.md')]
 if defect=='changed-notice-digest':record['noticeFiles'][0]['sha256']='0'*64
 if defect=='declaration-mismatch':record['declaredLicense']='Apache-2.0'
 if defect=='bad-supplement':record['licenseSupplement']={'path':'../outside','source':'https://example.invalid','sha256':'0'*64}
+if defect=='wrong-vcs-revision':
+    record['licenseSupplement']['sourceRevision']='ef'*20
+    record['licenseSupplement']['source']='https://example.invalid/'+'ef'*20+'/LICENSE'
+if defect=='changed-supplement':
+    rows['papercusp-mobile-source/android/app/build/outputs/papercusp-rust-license-supplements/fixture.txt']=b'changed supplement\n'
 if defect=='empty-notice':
     rows[package+'AUTHORS']=b' \n';record['noticeFiles'][0]['sha256']=hashlib.sha256(b' \n').hexdigest()
 if defect=='escaped-license-file':
@@ -345,7 +361,7 @@ PY
 done
 cp "$TMP/bin/dependencies-backup.tar.gz" "$DEPENDENCIES"
 run_helper source-notices >/dev/null
-echo 'Exported Rust notices PASS: byte-preserved LICENSE/AUTHORS and six rejecting controls; no compilation'
+echo 'Exported Rust notices PASS: byte-preserved LICENSE/AUTHORS/NOTICES and pinned supplement; nine rejecting controls; no compilation'
 
 for defect in stale-lock changed-file extra-file overlay-root escaping-path duplicate-entry redirected-config; do
     cp "$TMP/bin/dependencies-backup.tar.gz" "$DEPENDENCIES"
