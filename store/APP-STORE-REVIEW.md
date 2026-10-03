@@ -531,7 +531,66 @@ The existing native runner now checks framework processes, settings-service
 responses and crash-buffer evidence in addition to the boot flag before
 installation. Its maintained suite rejects missing/restarting processes,
 broken service responses and the observed SurfaceFlinger DMA assertion.
-The API 36.1 image crashed with that assertion using both indirect and current
-SwiftShader renderers; its runtime origin remains open on
-`EI-24926092400277910`. The separate API 36 image passed. Removing the deprecated
-CI renderer option is not represented as a fix for the API 36.1 failure.
+The API 36.1 image originally crashed with that assertion using both indirect
+and current SwiftShader renderers. A controlled same-image, same-launch-flags
+comparison then reproduced the failure with default graphics negotiation and
+prevented it with both `GLDirectMem` and
+`HasSharedSlotsHostMemoryAllocator`. The maintained CI launch enables both;
+API 36.1 and later admission requires the three corresponding host extension
+tokens before installation. Fresh API 36.1 / 16 KB admission, actual screen
+readback and later framework stability passed. Admission also requires at
+least 512 MiB of measured free guest `/data` space, independently of host
+capacity. Both readiness bugs are resolved with committed evidence on
+`EI-24926092400277910` and `EI-24929048763433701`; their canonical proof is
+`docs/evidence/android-emulator-dma-guest-readiness-local-2026-10-03.json`
+in the Papercusp repository, test-run receipt `20631145`. This is local runtime
+preparation. Removing the deprecated renderer option alone did not repair the
+failure, and the separate API 36 result remains separate evidence.
+
+### Retained debug native and model payloads
+
+An October 3 read of the existing exported-source debug APK, SHA-256
+`81bfbe9ff235dfc8480211b8974041c30a293b1629d85d6617d3bbab9bb8a3db`,
+enumerated every `lib/**/*.so` ZIP entry. Each of the following seven families
+is present in `arm64-v8a`, `armeabi-v7a`, `x86` and `x86_64`, for 28 payloads.
+The inputs are bound to the retained exported-build receipt
+`android/app/build/outputs/papercusp-source-build-android-apk-c0adc01280f54ac1.json`
+(SHA-256 `c0adc01280f54ac134518efd6a2fe27a6a4bafa847feee59fea08c052624bb52`).
+This read did not rebuild the APK or replay its native tests.
+
+| Packaged library | Recorded input and measured byte relationship |
+| --- | --- |
+| `libandroidx.graphics.path.so` | `androidx.graphics:graphics-path:1.0.1`; all four payloads equal the resolved AAR's JNI entries. |
+| `libbarhopper_v3.so` | `com.google.mlkit:barcode-scanning:17.3.0`; all four payloads equal the resolved AAR's JNI entries. |
+| `libimage_processing_util_jni.so` | `androidx.camera:camera-core:1.4.0`; all four payloads equal the resolved AAR's JNI entries. |
+| `libjnidispatch.so` | `net.java.dev.jna:jna:5.19.1`; all four payloads equal the resolved AAR's JNI entries after the matching NDK's `llvm-strip --strip-unneeded` transformation. |
+| `liblkjingle_peerconnection_so.so` | `io.github.webrtc-sdk:android-prefixed:137.7151.04`; all four payloads equal the resolved AAR's JNI entries, extending the earlier upstream-asset comparison to this APK. |
+| `libpapercup.so` | All four payloads equal the exported-source Gradle build's stripped Rust outputs recorded in the same build receipt. |
+| `libpv_porcupine.so` | `ai.picovoice:porcupine-android:4.0.0`; all four payloads equal the resolved AAR's JNI entries after the matching NDK's `llvm-strip --strip-unneeded` transformation. |
+
+Each input AAR was hash-checked against that receipt's
+`debugRuntimeClasspath` artifact inventory before comparison. For the eight
+transformed inputs, the selected NDK's `source.properties` SHA-256 is
+`1c4a54b31c5ed242a901b4a472d412819b5e08405df1c58066bd555f9dd52515`;
+the `llvm-strip` executable SHA-256 is
+`e0ea88a5ceb089d7e686f7083ba276f5dd1b89c94bfaa5edb6da8634dc9ebcce`.
+The transformation reproduced the packaged bytes using temporary copies,
+which were removed. It does not establish the original build command or the
+upstream source revision that produced an SDK binary.
+
+A whole-ZIP scan for `.tflite`, `.ppn`, `.pv` and `.onnx` filenames also found
+three ML Kit barcode `.tflite` assets, fourteen built-in Porcupine `.ppn`
+resources and `porcupine_params.pv`. All eighteen equal the same-path entries
+in the resolved ML Kit or Porcupine AAR. This extension-based population is
+explicit: models or data with other filenames are outside the scan. Packaged
+keyword resources do not demonstrate wake-word activation or account entitlement.
+
+Use these families and model resources to drive the final candidate's native
+and model notice/source/rights review. Java wrapper license labels and the
+existing five supplemental notice texts do not complete that review. Repeat
+the payload census against the signed APK/AAB and bind the final notices and
+corresponding-source supplements to its artifact identity. Exercise retrieval
+from the actual recipient-accessible destination, then compile the retrieved
+source through the existing verifier. Local archive extraction and this debug
+byte comparison leave recipient delivery, complete obligations and release
+acceptance open.
