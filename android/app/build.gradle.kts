@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -32,6 +34,16 @@ tasks.matching { it.name == "prepareLibraryDefinitionsDebug" || it.name == "prep
             .map { "${it.group}:${it.module}:${it.version}" }
             .sorted()
     })
+    val cargoLock = rootProject.file("../Cargo.lock")
+    inputs.file(cargoLock).withPropertyName("papercupRustNoticeLock")
+    doFirst {
+        val inventory = groovy.json.JsonSlurper().parse(file("../config/RUST-SOURCES.json")) as Map<*, *>
+        val digest = MessageDigest.getInstance("SHA-256").digest(cargoLock.readBytes())
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        require(inventory["cargoLockSha256"] == digest) {
+            "Rust notices are stale for Cargo.lock; regenerate from verified exported source and review the collector configuration"
+        }
+    }
 }
 
 val generateUniFfiKotlin by
