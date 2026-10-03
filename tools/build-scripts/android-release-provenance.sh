@@ -228,6 +228,26 @@ def pinned_jna_tree(tree, pin):
     if not root_files <= selected.keys() or any(not any(name.startswith(prefix) for name in selected) for prefix in prefixes):
         raise SystemExit('JNA source tree omits required build/source inputs')
     return rows, selected
+
+def jna_configured_native_files(build, files):
+    import fnmatch
+    # DirectoryScanner.DEFAULTEXCLUDES from the pinned Ant 1.10.15 runtime.
+    # Ant applies these as well as the explicit upstream zipfileset exclusions.
+    defaults = ('*~', '#*#', '.#*', '%*%', '._*', 'CVS', '.cvsignore', 'SCCS', 'vssver.scc',
+                '.svn', '.git', '.gitattributes', '.gitignore', '.gitmodules', '.hg', '.hgignore',
+                '.hgsub', '.hgsubstate', '.hgtags', '.bzr', '.bzrignore', '.DS_Store')
+    explicit = [row.attrib['name'] for row in build.findall('./target[@name="native-build-package"]//zipfileset[@dir="native"]/exclude')]
+    included, excluded = {}, []
+    for name, data in sorted(files.items()):
+        if not name.startswith('native/'):
+            continue
+        relative = name.removeprefix('native/')
+        if (any(fnmatch.fnmatchcase(relative, pattern) for pattern in explicit) or
+                any(fnmatch.fnmatchcase(part, pattern) for part in PurePosixPath(relative).parts for pattern in defaults)):
+            excluded.append(name)
+        else:
+            included[name] = data
+    return included, excluded
 PY
 }
 
@@ -538,9 +558,7 @@ if mode == 'jna-configure':
     work = Path(tempfile.mkdtemp(prefix='papercusp-jna-configure-', dir=output_dir))
     source = work / 'source'
     source.mkdir()
-    native_exclusions = [row.attrib['name'] for row in targets['native-build-package'].findall('.//zipfileset[@dir="native"]/exclude')]
-    excluded_native_sources = [name for name in sorted(files) if name.startswith('native/') and
-                               any(fnmatch.fnmatchcase(name.removeprefix('native/'), pattern) for pattern in native_exclusions)]
+    included_native_sources, excluded_native_sources = jna_configured_native_files(build, files)
     # Materialize only the validated regular files, never tar.extractall().
     for name, data in files.items():
         path = source / name
@@ -590,8 +608,7 @@ if mode == 'jna-configure':
             expected_bytes = {'build.sh': script}
             expected_bytes.update({'headers/' + str(path.relative_to(build_dir / 'headers')): read(path, remember=False)
                                    for path in sorted((build_dir / 'headers').rglob('*')) if path.is_file()})
-            expected_bytes.update({'native/' + name.removeprefix('native/'): data for name, data in files.items()
-                                   if name.startswith('native/') and name not in excluded_native_sources})
+            expected_bytes.update(included_native_sources)
             actual_native = {name.removeprefix(archive_prefix) for name in names
                              if name.startswith(archive_prefix + 'native/') and not name.endswith('/')}
             if actual_native != {name for name in expected_bytes if name.startswith('native/')}:

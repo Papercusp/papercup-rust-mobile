@@ -818,4 +818,25 @@ for defect in missing-helper missing-template changed-template linked-template u
 done
 echo 'JNA configuration prerequisites PASS: six rejecting controls; stale-success invalidation; no mocked build acceptance'
 
+# Exercise the production population selector with the exact metadata omission
+# found in the first upstream Ant run. Keep required hidden sources included;
+# otherwise an overbroad "all dotfiles" workaround could conceal missing inputs.
+python3 - "$HELPER" <<'PY'
+from pathlib import Path, PurePosixPath
+import sys, xml.etree.ElementTree as ET
+script=Path(sys.argv[1]).read_text()
+code=script.split("jna_tree_validation_code() {\n    cat <<'PY'\n",1)[1].split('\nPY\n}',1)[0]
+exec(code)
+build=ET.fromstring('<project><target name="native-build-package"><zipfileset dir="native"><exclude name="libffi/config.guess"/><exclude name="libffi/config.sub"/></zipfileset></target></project>')
+files={name:b'pinned source' for name in ('native/Makefile','native/libffi/.gitattributes',
+       'native/libffi/.gitignore','native/libffi/config.guess','native/libffi/config.sub',
+       'native/libffi/.must-ship','native/libffi/src/ffi.c','native/libffi/src/backup~',
+       'native/libffi/.svn/entries')}
+included,excluded=jna_configured_native_files(build,files)
+assert set(included)=={'native/Makefile','native/libffi/.must-ship','native/libffi/src/ffi.c'}
+assert set(included)|set(excluded)==set(files) and not set(included)&set(excluded)
+assert included['native/libffi/.must-ship']==b'pinned source'
+PY
+echo 'JNA configured native census PASS: upstream/default exclusions distinguished from required hidden and ordinary source files'
+
 echo "✓ Android release provenance rejects version, source and hash drift; source archive includes pinned nested submodules and excludes local credentials"

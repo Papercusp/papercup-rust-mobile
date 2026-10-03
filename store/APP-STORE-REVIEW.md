@@ -959,7 +959,12 @@ In a fresh local directory the command runs the unmodified upstream root
 `native-build-package` target for the four application ABIs. It compiles Java
 8 classes and JNI headers, checks the generated JNI version/checksum, and
 verifies the generated script, headers and native source bytes in each
-configured ZIP. It retains per-ABI logs and ZIPs and writes a separate
+configured ZIP. Its census records Ant's explicit and default exclusions,
+including omitted `config.guess`, `config.sub`, `.gitignore` and
+`.gitattributes`; required hidden source files remain included. These upstream
+ZIPs are configured subsets of the retained full selected source package,
+and their omitted files remain available in that original package. The command
+retains per-ABI logs and ZIPs and writes a separate
 `papercusp-jna-configure-result.json`; the earlier input-only result is
 preserved. It never runs the generated script or compiles a native dispatcher.
 This prepares configured build inputs locally. Native compiler/sysroot
