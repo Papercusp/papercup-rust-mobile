@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:weedle2:5.0.0",
+  "name": "weedle2",
+  "artifactVersion": "5.0.0",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-467e2e44913e850ca4fb6760fa3b78ffefda2a21688a6b1e26a8b706963669eb"
+  ]
+}

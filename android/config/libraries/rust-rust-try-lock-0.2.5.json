@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:try-lock:0.2.5",
+  "name": "try-lock",
+  "artifactVersion": "0.2.5",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-c816a0749cdc6bf062a5111c159723de51b2bfac66a1dac2655abd9e6b1583eb"
+  ]
+}

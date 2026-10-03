@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:zeroize:1.8.2",
+  "name": "zeroize",
+  "artifactVersion": "1.8.2",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-0b04ee3ce0021a922f43f37a17fee09a5a1ee6d1f4e149d5bf75b72395a49c72",
+    "rust-cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  ]
+}

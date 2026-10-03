@@ -1,0 +1,5 @@
+{
+  "hash": "rust-b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a",
+  "name": "LICENSE",
+  "content": "*ring* uses an \"ISC\" license, like BoringSSL used to use, for new code\nfiles. See LICENSE-other-bits for the text of that license.\n\nSee LICENSE-BoringSSL for code that was sourced from BoringSSL under the\nApache 2.0 license. Some code that was sourced from BoringSSL under the ISC\nlicense. In each case, the license info is at the top of the file.\n\nSee src/polyfill/once_cell/LICENSE-APACHE and src/polyfill/once_cell/LICENSE-MIT\nfor the license to code that was sourced from the once_cell project.\n"
+}

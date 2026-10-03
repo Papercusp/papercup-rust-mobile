@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:untrusted:0.9.0",
+  "name": "untrusted",
+  "artifactVersion": "0.9.0",
+  "description": "Locked Rust source package; declared license: ISC. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-7abd9b6960dcf7d4d0a48606a5b71bfe37d472db68d70637f3a58a56785f1621"
+  ]
+}

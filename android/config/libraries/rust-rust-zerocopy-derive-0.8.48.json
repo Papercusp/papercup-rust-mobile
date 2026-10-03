@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:zerocopy-derive:0.8.48",
+  "name": "zerocopy-derive",
+  "artifactVersion": "0.8.48",
+  "description": "Locked Rust source package; declared license: BSD-2-Clause OR Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df",
+    "rust-83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32",
+    "rust-9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3"
+  ]
+}

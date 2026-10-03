@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:web-time:1.1.0",
+  "name": "web-time",
+  "artifactVersion": "1.1.0",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-54a744942eb3fa63a74d8d359989ed6962c04f3f10ff20cfa08ff8aa7efbe4e6",
+    "rust-f428305bbf2e70fbd807af0f3c7ac1b7acfb95311640f451e9d2e48db6d7e96b"
+  ]
+}

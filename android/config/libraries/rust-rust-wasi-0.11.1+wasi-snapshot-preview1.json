@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:wasi:0.11.1+wasi-snapshot-preview1",
+  "name": "wasi",
+  "artifactVersion": "0.11.1+wasi-snapshot-preview1",
+  "description": "Locked Rust source package; declared license: Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "rust-268872b9816f90fd8e85db5a28d33f8150ebb8dd016653fb39ef1f94f2686bc5",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

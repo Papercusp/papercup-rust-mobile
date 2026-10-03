@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:utf8_iter:1.0.4",
+  "name": "utf8_iter",
+  "artifactVersion": "1.0.4",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-3fa4ca83dcc9237839b1bdeb2e6d16bdfb5ec0c5ce42b24694d8bbf0dcbef72c",
+    "rust-c30152c94a6d75e021adbc52b3a52470366a46edb917e17deae3259251af244c",
+    "rust-cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  ]
+}

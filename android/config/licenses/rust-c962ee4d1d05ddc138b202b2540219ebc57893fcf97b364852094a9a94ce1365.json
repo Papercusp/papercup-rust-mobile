@@ -1,0 +1,5 @@
+{
+  "hash": "rust-c962ee4d1d05ddc138b202b2540219ebc57893fcf97b364852094a9a94ce1365",
+  "name": "COPYING",
+  "content": "Copyright 2012-2016 The Rust Project Developers.\nCopyright 2016-2026 Frank Denis.\n\nLicensed under the Apache License, Version 2.0 <LICENSE-APACHE or\nhttp://www.apache.org/licenses/LICENSE-2.0> or the MIT license\n<LICENSE-MIT or http://opensource.org/licenses/MIT>, at your\noption.\n"
+}

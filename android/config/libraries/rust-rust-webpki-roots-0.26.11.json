@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:webpki-roots:0.26.11",
+  "name": "webpki-roots",
+  "artifactVersion": "0.26.11",
+  "description": "Locked Rust source package; declared license: CDLA-Permissive-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8"
+  ]
+}

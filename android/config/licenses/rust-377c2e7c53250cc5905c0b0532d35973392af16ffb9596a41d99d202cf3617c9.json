@@ -1,0 +1,5 @@
+{
+  "hash": "rust-377c2e7c53250cc5905c0b0532d35973392af16ffb9596a41d99d202cf3617c9",
+  "name": "COPYRIGHT",
+  "content": "Short version for non-lawyers:\n\n`rustix` is triple-licensed under Apache 2.0 with the LLVM Exception,\nApache 2.0, and MIT terms.\n\n\nLonger version:\n\nCopyrights in the `rustix` project are retained by their contributors.\nNo copyright assignment is required to contribute to the `rustix`\nproject.\n\nSome files include code derived from Rust's `libstd`; see the comments in\nthe code for details.\n\nExcept as otherwise noted (below and/or in individual files), `rustix`\nis licensed under:\n\n - the Apache License, Version 2.0, with the LLVM Exception\n   <LICENSE-Apache-2.0_WITH_LLVM-exception> or\n   <http://llvm.org/foundation/relicensing/LICENSE.txt>\n - the Apache License, Version 2.0\n   <LICENSE-APACHE> or\n   <http://www.apache.org/licenses/LICENSE-2.0>,\n - or the MIT license\n   <LICENSE-MIT> or\n   <http://opensource.org/licenses/MIT>,\n\nat your option.\n"
+}

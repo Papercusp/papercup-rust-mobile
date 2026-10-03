@@ -1,0 +1,5 @@
+{
+  "hash": "rust-ceca995f2a9ba147d4ada210d9527769091630651e565e40e841acf435c9cea2",
+  "name": "LICENSE.md",
+  "content": "The files in this folder were copied verbatim from [librustdoc/html/templates] in version\neeb59f16a5f40e14dc29b95155b7f2569329e3ec. Dual licensed under MIT OR Apache-2.0.\n\nPlease find the authors in [their Git history].\n\n[librustdoc/html/templates]: <https://github.com/rust-lang/rust/tree/main/src/librustdoc/html/templates>\n[their Git history]: <https://github.com/rust-lang/rust/commits/main/src/librustdoc/html/templates>\n"
+}

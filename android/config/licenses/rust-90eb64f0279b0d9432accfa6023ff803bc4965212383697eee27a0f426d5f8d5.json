@@ -1,0 +1,5 @@
+{
+  "hash": "rust-90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5",
+  "name": "COPYRIGHT",
+  "content": "Copyrights in the Rand project are retained by their contributors. No\ncopyright assignment is required to contribute to the Rand project.\n\nFor full authorship information, see the version control history.\n\nExcept as otherwise noted (below and/or in individual files), Rand is\nlicensed under the Apache License, Version 2.0 <LICENSE-APACHE> or\n<http://www.apache.org/licenses/LICENSE-2.0> or the MIT license\n<LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.\n\nThe Rand project includes code from the Rust project\npublished under these same licenses.\n"
+}

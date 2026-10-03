@@ -1,0 +1,5 @@
+{
+  "hash": "rust-3290ae0fbc9ddb77d2239121d710f0bb9d31b3b4744e6d97fe01e652b4c1870b",
+  "name": "COPYRIGHT",
+  "content": "Short version for non-lawyers:\n\n`linux-raw-sys` is triple-licensed under Apache 2.0 with the LLVM Exception,\nApache 2.0, and MIT terms.\n\n\nLonger version:\n\nCopyrights in the `linux-raw-sys` project are retained by their contributors.\nNo copyright assignment is required to contribute to the `linux-raw-sys`\nproject.\n\nSome files include code derived from Rust's `libstd`; see the comments in\nthe code for details.\n\nExcept as otherwise noted (below and/or in individual files), `linux-raw-sys`\nis licensed under:\n\n - the Apache License, Version 2.0, with the LLVM Exception\n   <LICENSE-Apache-2.0_WITH_LLVM-exception> or\n   <http://llvm.org/foundation/relicensing/LICENSE.txt>\n - the Apache License, Version 2.0\n   <LICENSE-APACHE> or\n   <http://www.apache.org/licenses/LICENSE-2.0>,\n - or the MIT license\n   <LICENSE-MIT> or\n   <http://opensource.org/licenses/MIT>,\n\nat your option.\n"
+}

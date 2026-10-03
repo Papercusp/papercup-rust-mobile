@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:zmij:1.0.21",
+  "name": "zmij",
+  "artifactVersion": "1.0.21",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+  ]
+}

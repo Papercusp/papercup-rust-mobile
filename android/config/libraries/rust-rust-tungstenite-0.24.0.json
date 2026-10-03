@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:tungstenite:0.24.0",
+  "name": "tungstenite",
+  "artifactVersion": "0.24.0",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-7fea0ee51a4ca5d5cea7464135fd55e8b09caf3a61da3d451ac8a22af95c033f",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

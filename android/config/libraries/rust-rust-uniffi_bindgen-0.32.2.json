@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:uniffi_bindgen:0.32.2",
+  "name": "uniffi_bindgen",
+  "artifactVersion": "0.32.2",
+  "description": "Locked Rust source package; declared license: MPL-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+  ]
+}
