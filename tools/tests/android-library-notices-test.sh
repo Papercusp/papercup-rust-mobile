@@ -260,3 +260,31 @@ PY
     "-Dpapercup.notices.buildDir=$TMP/build" \
     --init-script "$TMP/notices-test.gradle" :app:verifyReleaseLibraryMetadata
 echo 'Release notice collector isolated cached add/remove graph transitions PASS'
+
+# Exercise the production Cargo.lock input guard in a source-only copy. Never
+# alter the shared config/lockfile or application packaging outputs for a test.
+python3 - "$ROOT" "$TMP/stale-source" <<'PY'
+from pathlib import Path
+import shutil, subprocess, sys
+root, target = map(Path, sys.argv[1:])
+paths = subprocess.check_output(['git', '-C', str(root), 'ls-files', '--cached', '--others', '--exclude-standard', '-z', 'android']).decode().split('\0')
+for name in set(paths) - {''}:
+    source, output = root / name, target / name
+    if source.is_file():
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, output)
+shutil.copy2(root / 'Cargo.lock', target / 'Cargo.lock')
+with (target / 'Cargo.lock').open('ab') as stream:
+    stream.write(b'\n# Deliberate stale notice source control\n')
+PY
+if "$ROOT/android/gradlew" -p "$TMP/stale-source/android" --console=plain \
+    :app:prepareLibraryDefinitionsRelease >"$TMP/stale-lock.log" 2>&1; then
+    echo 'FAIL: production collector accepted a changed Cargo.lock' >&2
+    exit 1
+fi
+if ! grep -F 'Rust notices are stale for Cargo.lock; regenerate from verified exported source' "$TMP/stale-lock.log" >/dev/null; then
+    cat "$TMP/stale-lock.log" >&2
+    echo 'FAIL: stale source control failed before the intended collector guard' >&2
+    exit 1
+fi
+echo 'Production collector rejects stale Cargo.lock in isolated source copy PASS'
