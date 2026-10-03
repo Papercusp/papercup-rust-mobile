@@ -1107,8 +1107,8 @@ configured `VERSION` file. The build accepts a separate `--commit`
 override for the actual source checkout, so even a matching Java marker does
 not prove native source lineage. The package producer writes actual checkout
 URLs and revisions to `VERSIONS`, and generates `NOTICE` using the
-engine's license generator and selected GN build outputs. Those package
-records and their binding to the retained binaries remain to be obtained.
+engine's license generator and selected GN build outputs. The following
+package read supplies those records and a bounded binary relationship.
 
 The existing private dependency-source directory retains
 `webrtc-BUILD-SOURCE-REFERENCE.json`: selected packaging/build source
@@ -1121,3 +1121,73 @@ Preserve the earlier four-ABI byte comparisons and complete packaging notice
 reference in their original scope. Original native invocation, applied patches,
 complete source/notice rights, final-candidate notice access and actual
 recipient retrieval/build remain open. No build or test proof was replayed.
+
+### Retained WebRTC build-package records
+
+The published builder package for `m137.7151.07` was retrieved on October 3
+from its [release asset](https://github.com/webrtc-sdk/webrtc-build/releases/download/m137.7151.07/webrtc.tar.gz).
+Its 254,047,798 bytes match the published SHA-256
+`4cb17d2def413114edbe7e5192cb67d3b614d64a2aa34f6d47fcc6884de731e8`.
+The private dependency-source directory retains the archive as
+`webrtc-m137.7151.07.tar.gz`, its raw `webrtc/VERSIONS` and `webrtc/NOTICE`,
+and their inventory in the existing `webrtc-BUILD-SOURCE-REFERENCE.json`.
+
+The archive's `webrtc/aar/libwebrtc.aar` has SHA-256
+`d1b30fc546c1e3d868a1a5df28e0e4e434f2299bec2b218955d77d5305c2adf3`,
+which differs from the retained Android release AAR's ZIP hash. Both have
+exactly the same six entry names, with identical uncompressed bytes for
+the manifest, `classes.jar` and all four native libraries. Their ZIP
+timestamps differ. This binds the package payloads to the earlier retained
+Android asset by bytes; it is not a fresh compilation or a source-to-binary
+reproduction.
+
+The raw `VERSIONS` has SHA-256
+`c34f6fb059775ebd52a8dba0ce8ef0a48a765bb246039e99be112054d706fab8`.
+Its actual checkout records report:
+
+| Checkout | Recorded revision |
+| --- | --- |
+| WebRTC engine, `https://github.com/webrtc-sdk/webrtc.git` | `f4967efc183c371ff984632f8909ba022ee275cd` |
+| Build, `https://github.com/webrtc-sdk/build` | `01021e6c12636951a6b4e5342e16b2101b352367` |
+| Chromium buildtools | `0f32cb9025766951122d4ed19aba87a94ded3f43` |
+| libc++ | `917609c669e43edc850eeb192a342434a54e1dfd` |
+| libc++abi | `f2a7f2987f9dcdf8b04c2d8cd4dcb186641a7c3e` |
+| libunwind | `81e2cb40a70de2b6978e6d8658891ded9a77f7e3` |
+| Chromium third_party | `8062e0e102496ff14a8c58b586f014527424953d` |
+| Chromium tools | `ffcbc837bbb14d80d09147c2af5302ff6bd4bd69` |
+
+The producer copies `VERSION` and appends checkout records without inserting
+a newline. In this package, configured `WEBRTC_COMMIT` and `WEBRTC_SRC_URL`
+are concatenated on one line; the source URL above is explicitly read from
+that suffix. Preserve the raw text and do not treat that line as two ordinary
+key/value rows. The separate `WEBRTC_SRC_COMMIT` row supplies the recorded
+engine checkout. These records do not establish clean checkout contents,
+applied patches or every fetched dependency revision.
+
+Four Git-blob-checked source snapshots from the reported engine revision
+are retained in that same private reference: `LICENSE`, `PATENTS`, `DEPS`
+and `tools_webrtc/libs/generate_licenses.py`. The seven non-engine Git
+revisions listed above match the corresponding literal `DEPS` declarations.
+The generator maps each of the notice's 36 section names to retained source
+license paths. Its dependency discovery reads the selected GN targets and
+build directories, so those static mappings alone cannot regenerate the
+notice or establish which dependencies were actually fetched. The source
+files were inspected as data; their code and hooks were not executed.
+
+The complete generated `NOTICE` is 216,282 bytes, SHA-256
+`e7edab7dadf71c78b6c408e712a1c1b2bfc8a1f358faa787f69844c89b21e957`.
+Its 36 sections include WebRTC, BoringSSL, dav1d, FFT routines,
+libaom, libc++, libsrtp, libvpx, libyuv, Opus, protobuf and other
+generator-selected components. The raw text includes HTML entities;
+preserve it when preparing readable distribution notices. Retaining this
+notice does not prove that the final candidate delivers it or establish
+distribution rights for every component.
+
+The complete archive file census contains 45,512 `.h` files, 1,045 `.hpp`
+files, four static libraries, one AAR, one JAR and the two records above.
+It supplies headers and binaries, with no implementation files from the
+inspected C/C++/Java/Kotlin/Rust/script suffixes. It does not deliver the
+full corresponding engine/dependency source or original build invocation.
+Complete sources and patches, source-to-binary reproduction, final notices,
+recipient delivery/build and every existing signed-candidate/provider/reviewer/
+hosted-CI/physical-phone/Play requirement remain open.
