@@ -473,6 +473,19 @@ def jna_native_stub(data, version):
         if '\nSpecification-Version: ' + version + '\n' not in manifest:
             raise SystemExit('JNA configured stub JAR version differs')
 
+def jna_native_headers(entries, headers, version, checksum):
+    expected = {'headers/' + header['path'] for header in headers}
+    expected |= {'headers/jni.properties', 'headers/jni.checksum', 'headers/jni.checksum.error'}
+    if {name for name in entries if name.startswith('headers/')} != expected:
+        raise SystemExit('JNA configured generated-header population differs')
+    if any(digest(entries['headers/' + header['path']]) != header['sha256'] for header in headers):
+        raise SystemExit('JNA configured header fingerprint differs')
+    generated = dict(line.split('=', 1) for line in entries['headers/jni.properties'].decode().splitlines()
+                     if line and not line.startswith('#') and '=' in line)
+    if (generated.get('version') != version or generated.get('checksum') != checksum or
+            hashlib.md5(entries['headers/jni.checksum']).hexdigest() != checksum or entries['headers/jni.checksum.error']):
+        raise SystemExit('JNA configured JNI identity/checksum differs')
+
 def jna_native_elf(path, elf_class, machine, readelf, version, checksum):
     data = path.read_bytes()
     if len(data) < 64 or data[:4] != b'\x7fELF' or data[4:6] != bytes((elf_class, 1)):
@@ -809,16 +822,14 @@ if mode == 'jna-native':
                 if any(entries[name] != data for name, data in included.items()):
                     raise SystemExit('JNA configured native bytes differ')
                 stub_name = row['osPrefix'] + '.jar'
-                if set(entries) - set(included) - {'build.sh', 'headers/jni.properties', stub_name} != {'headers/' + header['path'] for header in row['headers']}:
+                jna_native_headers(entries, row['headers'], jni_version, properties['jni.md5'])
+                generated_names = {'headers/' + header['path'] for header in row['headers']} | {
+                    'headers/jni.properties', 'headers/jni.checksum', 'headers/jni.checksum.error'}
+                if set(entries) != set(included) | generated_names | {'build.sh', stub_name}:
                     raise SystemExit('JNA configured generated-input population differs')
                 jna_native_stub(entries[stub_name], jni_version)
-                if digest(entries['build.sh']) != row['buildScriptSha256'] or any(
-                        digest(entries['headers/' + header['path']]) != header['sha256'] for header in row['headers']):
-                    raise SystemExit('JNA configured script/header fingerprint differs')
-                generated = dict(line.split('=', 1) for line in entries['headers/jni.properties'].decode().splitlines()
-                                 if line and not line.startswith('#') and '=' in line)
-                if generated.get('version') != jni_version or generated.get('checksum') != properties['jni.md5']:
-                    raise SystemExit('JNA configured JNI identity differs')
+                if digest(entries['build.sh']) != row['buildScriptSha256']:
+                    raise SystemExit('JNA configured script fingerprint differs')
                 for name, data in entries.items():
                     path = abi_work / safe(name)
                     path.parent.mkdir(parents=True, exist_ok=True)

@@ -849,10 +849,11 @@ script=Path(sys.argv[1]).read_text()
 body=script.split('verify_jna_inputs() {',1)[1].split("<<'PY'\n",1)[1].split('\nPY\n}',1)[0]
 parsed=ast.parse(body)
 functions=[node for node in parsed.body if isinstance(node,ast.FunctionDef) and node.name.startswith('jna_native_')]
-assert len(functions)==4
+assert len(functions)==5
 namespace=dict(globals(),digest=lambda data:hashlib.sha256(data).hexdigest())
 exec(compile(ast.Module(body=functions,type_ignores=[]),'<production-jna-native-functions>','exec'),namespace)
 preflight,command,verify,stub=(namespace[name] for name in ('jna_native_preflight','jna_native_command','jna_native_elf','jna_native_stub'))
+headers_guard=namespace['jna_native_headers']
 root=Path(sys.argv[2])/'jna-native-guards';root.mkdir()
 tools=root/'tools';tools.mkdir()
 names=('make','autoreconf','autoconf','automake','aclocal','autoheader','libtoolize','m4','perl','makeinfo','sed','awk','grep','patch')
@@ -903,6 +904,22 @@ for defect in ('valid','wrong-version','native-payload'):
  except SystemExit:
   assert defect!='valid'
  else:assert defect=='valid'
+header=b'JNI header fixture';api=b'JNI API checksum input';api_checksum=hashlib.md5(api).hexdigest()
+header_rows=[{'path':'Native.h','sha256':hashlib.sha256(header).hexdigest()}]
+header_entries={'headers/Native.h':header,'headers/jni.checksum':api,'headers/jni.checksum.error':b'',
+                'headers/jni.properties':('version=7.0.4\nchecksum='+api_checksum+'\n').encode()}
+headers_guard(header_entries,header_rows,'7.0.4',api_checksum)
+for defect in ('omitted-checksum','extra-header','changed-header','changed-checksum','checksum-error','wrong-version'):
+ entries=dict(header_entries)
+ if defect=='omitted-checksum':del entries['headers/jni.checksum']
+ if defect=='extra-header':entries['headers/Extra.h']=b'extra'
+ if defect=='changed-header':entries['headers/Native.h']=b'changed'
+ if defect=='changed-checksum':entries['headers/jni.checksum']=b'changed'
+ if defect=='checksum-error':entries['headers/jni.checksum.error']=b'upstream API mismatch'
+ if defect=='wrong-version':entries['headers/jni.properties']=b'version=0.0.0\n'
+ try:headers_guard(entries,header_rows,'7.0.4',api_checksum)
+ except SystemExit:pass
+ else:raise AssertionError('JNI header/checksum defect accepted: '+defect)
 for defect in ('wrong-ndk','missing-jni'):
  if defect=='wrong-ndk':(ndk/'source.properties').write_text('Pkg.Revision = 26.0.0\n')
  else:(llvm/'sysroot/usr/include/jni.h').unlink()
@@ -964,6 +981,6 @@ for defect in ('not-elf','wrong-class','wrong-machine','wrong-type','short-heade
 library.write_bytes(data)
 assert verify(library,2,machine,readelf,'7.0.4',checksum)['sha256']==hashlib.sha256(data).hexdigest()
 PY
-echo 'JNA native guards PASS: fourteen missing-tool controls, retained preflight failure/stale invalidation, stub JAR controls, NDK/sysroot controls, real make/compiler scoped-vs-leaked flags, real ELF plus nine rejecting controls (host fixture, no Android build)'
+echo 'JNA native guards PASS: fourteen missing-tool controls, retained preflight failure/stale invalidation, stub JAR/two controls, JNI headers/six controls, NDK/sysroot controls, real make/compiler scoped-vs-leaked flags, real ELF/nine controls (host fixture, no Android build)'
 
 echo "✓ Android release provenance rejects version, source and hash drift; source archive includes pinned nested submodules and excludes local credentials"
