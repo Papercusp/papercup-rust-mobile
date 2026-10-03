@@ -745,3 +745,29 @@ Before the candidate is cleared, reconcile the applicable account agreement,
 engine/model distribution scope, GPL-source obligations, effective key/custom
 keyword configuration, and reporting/privacy behavior. No new approval request
 or release clearance is implied by this preparation.
+
+### CameraX native source preparation
+
+The official CameraX 1.4.0 release notes, dated October 30, 2024, link to
+AndroidX revision `1d117856fc5cbc071d379fe5ec64846d40bf584b`. Its retained
+`camera/camera-core` archive has 555 files. All 323 Java/Kotlin entries in the
+published Maven source JAR byte-match the production source roots. An initial
+suffix-only comparison ambiguously matched `DeviceQuirks.java` to both main
+and test sources; selecting `src/main/java` and `src/main/kotlin` resolves it
+without a source substitution or missing-source claim.
+
+The native directory contains exactly `CMakeLists.txt`,
+`image_processing_util_jni.cc` and `jni.lds`; all three retained file Git blob
+IDs match the pinned upstream entries. The build and C++ file retain their
+2020/2021 Android Open Source Project Apache headers. The comparison receipt
+is `camera-core-SOURCE-MATCH.json`, SHA-256
+`81bf513e516fa3e9970640aeb675e0d0793e54499e267e054c1e4fe2de1bed8d`,
+in the existing private dependency-sources directory.
+
+CMake imports `libyuv::yuv`. The pinned `external/libyuv` Gradle wrapper points
+outside this AndroidX tree to `../../external/libyuv`; its README confirms that
+the static library is packaged into CameraX. These files do not pin the
+external LibYuv source revision that produced the distributed native binary.
+The earlier complete LibYuv license snapshot remains a reference, not that
+missing revision proof. Native binary/source equivalence, complete obligations,
+signed-candidate notice access and actual recipient retrieval remain open.
