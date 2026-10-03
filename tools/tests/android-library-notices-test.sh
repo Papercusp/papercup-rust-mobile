@@ -59,18 +59,31 @@ gradle.projectsEvaluated {
                     "Supplement source provenance is missing: ${provenanceRow.file}"
                 [(provenanceRow.hash): [definition: definition, source: provenanceRow]]
             }
-            assert supplements.size() == 7: 'The five license texts and two selected upstream notices are incomplete'
+            assert supplements.size() == 8: 'The five license texts and three selected upstream attributions are incomplete'
             def upstreamNotices = [
                 'io.livekit:livekit-android': 'papercusp-livekit-notice',
-                'net.java.dev.jna:jna': 'papercusp-jna-libffi'
+                'net.java.dev.jna:jna': 'papercusp-jna-libffi',
+                'androidx.graphics:graphics-path': 'papercusp-graphics-path-notice'
             ]
             upstreamNotices.each { module, id ->
                 def supplement = supplements[id]
                 assert supplement: "Selected upstream notice is missing: $module"
                 assert supplement.source.sourceRevision ==~ /[0-9a-f]{40}/:
                     "Selected upstream notice revision is missing: $module"
-                assert supplement.source.sourceSha256 == supplement.source.contentSha256:
-                    "Selected upstream notice is not byte-for-byte: $module"
+                if (module != 'androidx.graphics:graphics-path') {
+                    assert supplement.source.sourceSha256 == supplement.source.contentSha256:
+                        "Selected upstream notice is not byte-for-byte: $module"
+                } else {
+                    // This attribution is derived from ten full source headers,
+                    // rather than claiming an original upstream NOTICE file.
+                    assert supplement.source.sourceEntries.size() == 10:
+                        'Graphics Path native source attribution population differs'
+                    assert supplement.source.sourceEntries.every {
+                        it.sha256 ==~ /[0-9a-f]{64}/ && it.headerSha256 ==~ /[0-9a-f]{64}/
+                    }: 'Graphics Path attribution lost pinned source/header hashes'
+                    assert supplement.source.extraction.contains('not an original upstream NOTICE'):
+                        'Graphics Path derived attribution lost its extraction scope'
+                }
                 def override = new JsonSlurper().parse(new File(app.projectDir, "../../${supplement.source.librariesFile}"))
                 assert override.uniqueId == module && override.licenses == [id]:
                     "Selected upstream notice library override differs: $module"
@@ -143,7 +156,7 @@ gradle.projectsEvaluated {
                 def id = 'fa7f33c49aa6110f3cedeb2975e140e0'
                 it.licenses[id].content = it.licenses[id].content.split('JAIN SIP API copyright notice')[0]
             }
-            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${document.libraries.size()} records; seven offline supplements; twenty-six rejecting controls"
+            println "$variant library metadata PASS: ${expected.size()} resolved modules, ${document.libraries.size()} records; eight offline supplements; twenty-nine rejecting controls"
             }
         }
     }

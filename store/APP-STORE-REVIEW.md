@@ -622,7 +622,7 @@ The retained debug population defines the remaining review scope:
 
 | Packaged family or resource population | Existing reference coverage | Remaining candidate-bound requirement |
 | --- | --- | --- |
-| Graphics Path 1.0.1 native library | Resolved AndroidX Apache-2.0 metadata. | Identify native source components and any additional notices; a wrapper label alone does not establish the native census. |
+| Graphics Path 1.0.1 native library | Resolved AndroidX Apache-2.0 metadata plus the pinned native-source attribution described below. | Establish the native binary/build/source relationship and reconcile final candidate contents; Kotlin source matches alone do not prove it. |
 | CameraX 1.4.0 image-processing library | Apache-2.0 metadata and the retained complete LibYuv license snapshot. | Establish the native source revision and full notice population actually used for the candidate. |
 | ML Kit 17.3.0 barcode engine and three `.tflite` assets | Complete retained ML Kit terms. | Confirm applicable engine/model distribution terms, provider obligations and candidate behavior; current terms do not establish account acceptance. |
 | JNA 5.19.1 native dispatcher | Apache/LGPL labels plus the selected upstream libffi notice above. | Reconcile the complete native source/notice population and chosen license obligations. |
@@ -635,3 +635,44 @@ resources already measured above. It does not expand that filename scan or
 establish complete rights. Final signed-candidate inventory, notice access,
 source-recipient retrieval/build, provider/reviewer journeys, current paired
 automatic CI, physical-phone and Play evidence remain required.
+
+### Graphics Path native source and attribution preparation
+
+The official [Graphics Path 1.0.1 release notes](https://developer.android.com/jetpack/androidx/releases/graphics#graphics-path-1.0.1)
+link the release to AndroidX revision
+`8a05a22af450d589ef911d772a001a49dcb05b71`. The retained module subtree has
+29 files; every file's Git blob identity was checked against that pinned upstream
+tree. All four Kotlin files in the Maven 1.0.1 source JAR byte-match this tree.
+That JAR contains no native source, so it supplies only the Kotlin comparison.
+
+The subtree contains 12 native source/build files, including three C++ translation
+units, seven headers, CMake instructions and the linker map. All ten C++/header
+files carry Apache-2.0 comments. The existing AboutLibraries configuration now
+retains the four distinct complete comments, including the 2006, 2013, 2017 and
+2022 Android Open Source Project copyrights. This is derived attribution from
+source comments, not an upstream file named NOTICE. The original Apache-2.0
+license reference remains on the resolved module.
+
+Private retained evidence is under the existing
+`android/app/build/outputs/papercusp-android-dependency-sources/` directory:
+
+| Evidence | SHA-256 |
+| --- | --- |
+| `graphics-path-SOURCE-MATCH.json` | `1f5049792febb83f520533a4285dd5742aa02fd3ef44b9872ad33de9c4691703` |
+| Pinned upstream module archive | `7437f80f2b35aed4341f482064aa69d0108c4035769537b9430fc11bc0cb8027` |
+| Maven 1.0.1 source JAR | `9f1b5995b9577a8876525c3411ebb2a49f9ef0e875f6aec3059e807596dc6ca6` |
+| Pinned AndroidX root LICENSE | `809fa1ed21450f59827d1e9aec720bbc4b687434fa22283c6cb5dd82a47ab9c0` |
+| Derived native source attribution | `09700dee0f298c3bde3435f539010e7f1b7ed50339a144d8907cd49094232a4b` |
+
+Gitiles archive compression can change between downloads; the retained archive
+hash identifies the actual inspected bytes, while the complete per-file Git blob
+checks bind its contents to the pinned source tree. The source/header hashes and
+extraction rule also live in the existing `android/config/SOURCES.json` ledger.
+The maintained metadata guard rejects missing, substituted or unlinked attribution
+and checks that the original Apache label survives. The native notice test now
+pins this eighth text for future candidate execution.
+
+No native rebuild or binary/source equivalence is established by these source
+comparisons. The retained tested debug APK still has its original five supplements.
+Final signed-candidate packaging, native notice access, full license/rights review
+and actual source-recipient retrieval/build remain open.

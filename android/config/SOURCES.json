@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "retrievedAt": "2026-10-03T00:32:02.028733+00:00",
-  "scope": "Five generated link-only Android license references and two selected upstream attribution texts supplemented through the existing AboutLibraries config. The original retrieval timestamp applies to the five license snapshots; the LiveKit and JNA additions reuse separately retained release-tag references. Upstream native-license snapshots do not establish exact binary/source correspondence; current Google terms do not establish account acceptance. JAIN SIP API copyright is retained separately from NIST public-domain conditions. Complete transitive/native/model/Rust notices, source compilation, recipient retrieval and release rights remain open.",
+  "scope": "Five generated link-only Android license references, two retained release-tag attribution texts and derived Graphics Path native source attribution supplemented through the existing AboutLibraries config. The original retrieval timestamp applies to the five license snapshots; later additions have separately retained pinned references. Upstream native-license snapshots and source comparisons do not establish exact native binary/source correspondence; current Google terms do not establish account acceptance. JAIN SIP API copyright is retained separately from NIST public-domain conditions. Complete transitive/native/model/Rust notices, recipient retrieval and release rights remain open.",
   "licenses": [
     {
       "key": "libyuv",
@@ -219,6 +219,77 @@
         {
           "module": "net.java.dev.jna:jna",
           "version": "5.19.1"
+        }
+      ]
+    },
+    {
+      "key": "graphics-path-notice",
+      "name": "Graphics Path native source copyright and attribution",
+      "url": "https://android.googlesource.com/platform/frameworks/support/+/8a05a22af450d589ef911d772a001a49dcb05b71/graphics/graphics-path/src/main/cpp/",
+      "sourceUrl": "https://android.googlesource.com/platform/frameworks/support/+archive/8a05a22af450d589ef911d772a001a49dcb05b71/graphics/graphics-path.tar.gz",
+      "sourceRevision": "8a05a22af450d589ef911d772a001a49dcb05b71",
+      "sourceSha256": "7437f80f2b35aed4341f482064aa69d0108c4035769537b9430fc11bc0cb8027",
+      "sourceEntries": [
+        {
+          "path": "src/main/cpp/Conic.cpp",
+          "sha256": "49b3da93aa43480cf9cd481590be48705cb9340c52e5d09635efbd0ece07be83",
+          "headerSha256": "834cbe127c5f5778b47be214202c1d4ca4e617f741ee08e23006597ffbee2d55"
+        },
+        {
+          "path": "src/main/cpp/Conic.h",
+          "sha256": "cd315ad7c8d030c72e96893e9a0feec463d72d2066209a203dedcf0925398a6f",
+          "headerSha256": "6c40ee3deaf15a78289380c60cd7d2d451884bf82d3da178d33b89ae50aacd59"
+        },
+        {
+          "path": "src/main/cpp/Path.h",
+          "sha256": "4ee841338063d8c6f71ff4c655ecf52559f6c6df9af79835388dae1ebcd8b982",
+          "headerSha256": "6c40ee3deaf15a78289380c60cd7d2d451884bf82d3da178d33b89ae50aacd59"
+        },
+        {
+          "path": "src/main/cpp/PathIterator.cpp",
+          "sha256": "3705946b43bf894e013f46ccc940f9923f43285340f8fc2128f95c59238ec7f8",
+          "headerSha256": "6c40ee3deaf15a78289380c60cd7d2d451884bf82d3da178d33b89ae50aacd59"
+        },
+        {
+          "path": "src/main/cpp/PathIterator.h",
+          "sha256": "a16e99b0273fb7205607eb0cf51fc7be518a55f3446a304f92ecab353e77be6f",
+          "headerSha256": "6c40ee3deaf15a78289380c60cd7d2d451884bf82d3da178d33b89ae50aacd59"
+        },
+        {
+          "path": "src/main/cpp/math/TVecHelpers.h",
+          "sha256": "1b0d6b06c5bbd6b438f9d8440ac78cf93fb8a713761badc59a4412b6457c1014",
+          "headerSha256": "aaace0d971b7f7ccf1feafea861a01f2be8c496e9c06d8c9405f294501fd0a3f"
+        },
+        {
+          "path": "src/main/cpp/math/compiler.h",
+          "sha256": "d53e85383580e5dbf81cbcb24426b0fe1bf419b4837540242dbdca3f1df4cf66",
+          "headerSha256": "75dbadc0b3159a276c67a0bf4f5e7fb11b02fec4223eae12aa3a64e195a4fca6"
+        },
+        {
+          "path": "src/main/cpp/math/vec2.h",
+          "sha256": "09e1a8eb3f8fdf9c1071500f1a4933f67caeb6d0f765d5c44ba968370de9fcb1",
+          "headerSha256": "aaace0d971b7f7ccf1feafea861a01f2be8c496e9c06d8c9405f294501fd0a3f"
+        },
+        {
+          "path": "src/main/cpp/pathway.cpp",
+          "sha256": "4be68d6fdb6376e95560f7c49a79aa0cd97218d758cf11ea3230ac9124485800",
+          "headerSha256": "6c40ee3deaf15a78289380c60cd7d2d451884bf82d3da178d33b89ae50aacd59"
+        },
+        {
+          "path": "src/main/cpp/scalar.h",
+          "sha256": "b1d2bba80a4c9272d84473b6f09f700972b016f7579842d3a87bdbbdb2af1edc",
+          "headerSha256": "6c40ee3deaf15a78289380c60cd7d2d451884bf82d3da178d33b89ae50aacd59"
+        }
+      ],
+      "extraction": "Concatenate distinct complete leading Apache copyright/license comments in archive order, separated by two newlines, ending in one newline; not an original upstream NOTICE file.",
+      "hash": "papercusp-graphics-path-notice",
+      "contentSha256": "09700dee0f298c3bde3435f539010e7f1b7ed50339a144d8907cd49094232a4b",
+      "file": "android/config/licenses/graphics-path-notice.json",
+      "librariesFile": "android/config/libraries/graphics-path-notice.json",
+      "modules": [
+        {
+          "module": "androidx.graphics:graphics-path",
+          "version": "1.0.1"
         }
       ]
     }

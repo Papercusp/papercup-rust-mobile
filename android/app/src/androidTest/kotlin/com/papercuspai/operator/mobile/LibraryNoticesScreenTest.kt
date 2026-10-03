@@ -88,6 +88,8 @@ class LibraryNoticesScreenTest {
                 "1ddcdc49391b88daa34060c04a5c3ecaa324903abdca74010aad6edbd952ed72"),
             Triple("net.java.dev.jna:jna", "papercusp-jna-libffi",
                 "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388"),
+            Triple("androidx.graphics:graphics-path", "papercusp-graphics-path-notice",
+                "09700dee0f298c3bde3435f539010e7f1b7ed50339a144d8907cd49094232a4b"),
         )
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.onNodeWithText("Third-party licenses").performClick()
