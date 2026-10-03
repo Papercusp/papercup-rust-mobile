@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:tinyvec_macros:0.1.1",
+  "name": "tinyvec_macros",
+  "artifactVersion": "0.1.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0 OR Zlib. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-1dd8eca0f83669e75fa119e34fb9e1be9d16e3e9b6368962b8019db6e8ae5f7b",
+    "rust-41ace205715d9f19a3214218cc1c01d57c533e02cd0fef7c8e51a49a7fce5ac5",
+    "rust-4f44572785f35152c1fd2eadf565b7e079c0f300b4324f0af653419f9d76b735"
+  ]
+}

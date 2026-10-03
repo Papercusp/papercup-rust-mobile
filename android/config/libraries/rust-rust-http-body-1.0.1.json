@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:http-body:1.0.1",
+  "name": "http-body",
+  "artifactVersion": "1.0.1",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-cddabf8adc6ccd6c3e68f5d71eac9fae3094116623cf23a46af0a5fd6b8ee813"
+  ]
+}

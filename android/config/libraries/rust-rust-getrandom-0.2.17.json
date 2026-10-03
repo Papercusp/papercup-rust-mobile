@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:getrandom:0.2.17",
+  "name": "getrandom",
+  "artifactVersion": "0.2.17",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-42fa16951ce7f24b5a467a40e5b449a1d41e662f97ca779864f053f39e097737",
+    "rust-aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf"
+  ]
+}

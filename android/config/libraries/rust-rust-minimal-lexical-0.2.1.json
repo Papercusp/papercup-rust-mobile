@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:minimal-lexical:0.2.1",
+  "name": "minimal-lexical",
+  "artifactVersion": "0.2.1",
+  "description": "Locked Rust source package; declared license: MIT/Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "rust-8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90",
+    "rust-dbe1fff0fb1314b6af94f161511406275cf01c5a32441fbf24528a57a051d599"
+  ]
+}

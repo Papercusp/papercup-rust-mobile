@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:flate2:1.1.9",
+  "name": "flate2",
+  "artifactVersion": "1.1.9",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-025436edff4cfcdde17a5811fdea78892d8482efd1abdec5a17872d07a4f2112",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

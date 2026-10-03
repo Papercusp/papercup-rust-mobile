@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:r-efi:5.3.0",
+  "name": "r-efi",
+  "artifactVersion": "5.3.0",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0 OR LGPL-2.1-or-later. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-ff92bed461f50338dd703a9ba9aee496a425957873df1d91192776e4bdf5dda7"
+  ]
+}

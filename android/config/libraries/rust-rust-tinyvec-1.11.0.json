@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:tinyvec:1.11.0",
+  "name": "tinyvec",
+  "artifactVersion": "1.11.0",
+  "description": "Locked Rust source package; declared license: Zlib OR Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-84b34dd7608f7fb9b17bd588a6bf392bf7de504e2716f024a77d89f1b145a151",
+    "rust-cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "rust-fd80a26fbb3f644af1fa994134446702932968519797227e07a1368dea80f0bc"
+  ]
+}

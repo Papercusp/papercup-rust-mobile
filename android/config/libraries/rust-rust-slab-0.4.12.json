@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:slab:0.4.12",
+  "name": "slab",
+  "artifactVersion": "0.4.12",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:rustls:0.23.40",
+  "name": "rustls",
+  "artifactVersion": "0.23.40",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR ISC OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c",
+    "rust-7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

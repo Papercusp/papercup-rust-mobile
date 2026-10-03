@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:futures-io:0.3.32",
+  "name": "futures-io",
+  "artifactVersion": "0.3.32",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427",
+    "rust-6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+  ]
+}

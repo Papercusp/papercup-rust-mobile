@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:siphasher:1.0.4",
+  "name": "siphasher",
+  "artifactVersion": "1.0.4",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-c962ee4d1d05ddc138b202b2540219ebc57893fcf97b364852094a9a94ce1365",
+    "rust-cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "rust-f9c4c77baa3828004ee54b8a4f2db2e88ed44a6237a493965bf551fac0fcb62d"
+  ]
+}

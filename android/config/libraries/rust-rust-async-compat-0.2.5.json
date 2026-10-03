@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:async-compat:0.2.5",
+  "name": "async-compat",
+  "artifactVersion": "0.2.5",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

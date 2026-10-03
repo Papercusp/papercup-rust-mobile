@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:assert-json-diff:2.0.2",
+  "name": "assert-json-diff",
+  "artifactVersion": "2.0.2",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-65eac389b5c3fda1149b4f0a89fd2d866b07628f789d4e4dc1c3cbb885680f58"
+  ]
+}

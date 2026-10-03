@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:smallvec:1.15.1",
+  "name": "smallvec",
+  "artifactVersion": "1.15.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

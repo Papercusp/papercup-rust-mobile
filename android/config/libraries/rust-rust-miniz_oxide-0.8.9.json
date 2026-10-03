@@ -1,0 +1,12 @@
+{
+  "uniqueId": "rust:miniz_oxide:0.8.9",
+  "name": "miniz_oxide",
+  "artifactVersion": "0.8.9",
+  "description": "Locked Rust source package; declared license: MIT OR Zlib OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-0a54e647fe54104658b5e563c04c6f9edf251710e47bce692e0bd990a4ddaa39",
+    "rust-0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+    "rust-4108245a1f2df9d4e94df8abed5b4ba0759bb2f9b40a6b939f1be141077ae50b",
+    "rust-799e9ca9d179295ef372f25d3769cdda7d25bb2668add6a6a1e22d1e4c678b8d"
+  ]
+}

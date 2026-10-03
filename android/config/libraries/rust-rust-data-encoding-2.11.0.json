@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:data-encoding:2.11.0",
+  "name": "data-encoding",
+  "artifactVersion": "2.11.0",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-b68ad1a3367b825447089e1f8d6829b97f47a89eb78d2f4ebaef4672f5606186"
+  ]
+}

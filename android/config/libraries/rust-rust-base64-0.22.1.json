@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:base64:0.22.1",
+  "name": "base64",
+  "artifactVersion": "0.22.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-0dd882e53de11566d50f8e8e2d5a651bcf3fabee4987d70f306233cf39094ba7",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

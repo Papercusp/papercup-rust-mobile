@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:lru-slab:0.1.2",
+  "name": "lru-slab",
+  "artifactVersion": "0.1.2",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0 OR Zlib. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-09785877275ffada6c371b652a30e95c26b435126fc0fc62f1bc2d72171f80a4",
+    "rust-1466d9b4f3a59bb8997fc8d5fa977ce3f6a24bb2358793c09bfdf007039f6486",
+    "rust-cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  ]
+}

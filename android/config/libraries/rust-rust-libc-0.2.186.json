@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:libc:0.2.186",
+  "name": "libc",
+  "artifactVersion": "0.2.186",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-123a331b5dbf04c30097fa43b8f858bc85df671fe776de498d01f3d6b7c1f69e",
+    "rust-62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:sync_wrapper:1.0.2",
+  "name": "sync_wrapper",
+  "artifactVersion": "1.0.2",
+  "description": "Locked Rust source package; declared license: Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+  ]
+}

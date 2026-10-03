@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:nom:7.1.3",
+  "name": "nom",
+  "artifactVersion": "7.1.3",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-4dbda04344456f09a7a588140455413a9ac59b6b26a1ef7cdf9c800c012d87f0"
+  ]
+}

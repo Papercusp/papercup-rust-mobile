@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:hyper:1.9.0",
+  "name": "hyper",
+  "artifactVersion": "1.9.0",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-2d01890414494742ba4a509fcec8efa40f6d8be22cbd72be7cff08d6fda4ec89"
+  ]
+}

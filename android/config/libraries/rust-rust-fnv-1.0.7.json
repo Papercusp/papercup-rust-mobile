@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:fnv:1.0.7",
+  "name": "fnv",
+  "artifactVersion": "1.0.7",
+  "description": "Locked Rust source package; declared license: Apache-2.0 / MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-65fdb6c76cd61612070c066eec9ecdb30ee74fb27859d0d9af58b9f499fd0c3e",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

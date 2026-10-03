@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:icu_normalizer_data:2.2.0",
+  "name": "icu_normalizer_data",
+  "artifactVersion": "2.2.0",
+  "description": "Locked Rust source package; declared license: Unicode-3.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2"
+  ]
+}

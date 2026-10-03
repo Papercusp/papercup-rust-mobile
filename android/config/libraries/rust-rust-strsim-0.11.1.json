@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:strsim:0.11.1",
+  "name": "strsim",
+  "artifactVersion": "0.11.1",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-1e697ce8d21401fbf1bddd9b5c3fd4c4c79ae1e3bdf51f81761c85e11d5a89cd"
+  ]
+}

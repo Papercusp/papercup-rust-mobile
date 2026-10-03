@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:clap_lex:1.1.0",
+  "name": "clap_lex",
+  "artifactVersion": "1.1.0",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-6efb0476a1cc085077ed49357026d8c173bf33017278ef440f222fb9cbcb66e6",
+    "rust-c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+  ]
+}

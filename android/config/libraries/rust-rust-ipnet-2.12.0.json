@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:ipnet:2.12.0",
+  "name": "ipnet",
+  "artifactVersion": "2.12.0",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-47dc9ff29128ddfb4d6a0435383c9f89120bc374dbcc1dd00b933a0b28aa7865",
+    "rust-87d9feb9238c6bd8e0024fc4733b06cff036f89f36d93b7df1c8a0549bbb7a5b"
+  ]
+}

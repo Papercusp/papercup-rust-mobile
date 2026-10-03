@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:scroll:0.12.0",
+  "name": "scroll",
+  "artifactVersion": "0.12.0",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-6e24b7455f0b9afefdf4f3efd59a56ce76a3020c2dc4371937e281fc5e587fd7"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:serde_urlencoded:0.7.1",
+  "name": "serde_urlencoded",
+  "artifactVersion": "0.7.1",
+  "description": "Locked Rust source package; declared license: MIT/Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+    "rust-b9eb266294324f672cbe945fe8f2e32f85024f0d61a1a7d14382cdde0ac44769"
+  ]
+}

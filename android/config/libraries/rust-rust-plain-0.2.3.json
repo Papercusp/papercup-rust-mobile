@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:plain:0.2.3",
+  "name": "plain",
+  "artifactVersion": "0.2.3",
+  "description": "Locked Rust source package; declared license: MIT/Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "rust-bc12b75fd81829814d843a03fa52aad0e53355b1f13665e309ff7fa33c66e5b5"
+  ]
+}

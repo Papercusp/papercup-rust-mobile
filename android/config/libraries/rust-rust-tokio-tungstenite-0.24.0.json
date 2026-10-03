@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:tokio-tungstenite:0.24.0",
+  "name": "tokio-tungstenite",
+  "artifactVersion": "0.24.0",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-fdd55e2b2da854b0fbdc1e607df7c2ba1e1ebf91ecb77c515511ebeef972bc8f"
+  ]
+}

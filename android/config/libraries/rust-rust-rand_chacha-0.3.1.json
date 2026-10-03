@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:rand_chacha:0.3.1",
+  "name": "rand_chacha",
+  "artifactVersion": "0.3.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b",
+    "rust-90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5",
+    "rust-aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:byteorder:1.5.0",
+  "name": "byteorder",
+  "artifactVersion": "1.5.0",
+  "description": "Locked Rust source package; declared license: Unlicense OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-01c266bced4a434da0051174d6bee16a4c82cf634e2679b6155d40d75012390f",
+    "rust-0f96a83840e146e43c0ec96a22ec1f392e0680e6c1226e6f3ba87e0740af850f"
+  ]
+}

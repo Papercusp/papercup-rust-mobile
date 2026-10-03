@@ -1,0 +1,14 @@
+{
+  "uniqueId": "rust:ring:0.17.14",
+  "name": "ring",
+  "artifactVersion": "0.17.14",
+  "description": "Locked Rust source package; declared license: Apache-2.0 AND ISC. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-005fc765ddc5115da796cca915baa9557abae13ff35e0a47c47affc56f6c414d",
+    "rust-6ee2ed6c77710de911761acd5fc1ad1da00f476beb1a7ef27e78c2d1858deafc",
+    "rust-9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "rust-b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a",
+    "rust-f025ccfb7dfb6bdfedc75ca0f67acc69e6fb4998143d834f7c2f38a29989680f"
+  ]
+}

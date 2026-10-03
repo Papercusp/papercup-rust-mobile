@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:synstructure:0.13.2",
+  "name": "synstructure",
+  "artifactVersion": "0.13.2",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-219920e865eee70b7dcfc948a86b099e7f4fe2de01bcca2ca9a20c0a033f2b59"
+  ]
+}

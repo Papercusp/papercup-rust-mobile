@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:crypto-common:0.1.7",
+  "name": "crypto-common",
+  "artifactVersion": "0.1.7",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-3521672491a3479422d5fe1aca6645dd2984090f85da6e5205abfb18fb7a6897",
+    "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+  ]
+}

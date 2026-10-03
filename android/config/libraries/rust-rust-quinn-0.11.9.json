@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:quinn:0.11.9",
+  "name": "quinn",
+  "artifactVersion": "0.11.9",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-4b2d0aca6789fa39e03d6738e869ea0988cceba210ca34ebb59c15c463e93a04",
+    "rust-c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:autocfg:1.5.0",
+  "name": "autocfg",
+  "artifactVersion": "1.5.0",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-27995d58ad5c1145c1a8cd86244ce844886958a35eb2b78c6b772748669999ac",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:equivalent:1.0.2",
+  "name": "equivalent",
+  "artifactVersion": "1.0.2",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-7365cc8878a1d7ce155a58c4ca09c3d7a6be413efa5334a80ea842912b669349",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

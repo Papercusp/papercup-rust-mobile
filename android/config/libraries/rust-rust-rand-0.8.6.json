@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:rand:0.8.6",
+  "name": "rand",
+  "artifactVersion": "0.8.6",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b",
+    "rust-35242e7a83f69875e6edeff02291e688c97caafe2f8902e4e19b49d3e78b4cab",
+    "rust-90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5"
+  ]
+}

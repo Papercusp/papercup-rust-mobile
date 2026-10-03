@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:form_urlencoded:1.2.2",
+  "name": "form_urlencoded",
+  "artifactVersion": "1.2.2",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-20c7855c364d57ea4c97889a5e8d98470a9952dade37bd9248b9a54431670e5e",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

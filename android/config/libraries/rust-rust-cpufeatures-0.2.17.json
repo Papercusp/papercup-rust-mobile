@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:cpufeatures:0.2.17",
+  "name": "cpufeatures",
+  "artifactVersion": "0.2.17",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+    "rust-ae9baa7beea910273c2f384c2a6b721fb7bd02bda3436074a1072e4ee689f985"
+  ]
+}

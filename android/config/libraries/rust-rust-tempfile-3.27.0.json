@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:tempfile:3.27.0",
+  "name": "tempfile",
+  "artifactVersion": "3.27.0",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-8b427f5bc501764575e52ba4f9d95673cf8f6d80a86d0d06599852e1a9a20a36",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:hashbrown:0.17.1",
+  "name": "hashbrown",
+  "artifactVersion": "0.17.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "rust-ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2"
+  ]
+}

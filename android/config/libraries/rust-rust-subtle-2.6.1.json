@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:subtle:2.6.1",
+  "name": "subtle",
+  "artifactVersion": "2.6.1",
+  "description": "Locked Rust source package; declared license: BSD-3-Clause. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-d1fc1bc0d155df60b2e7705b6b2ae02a05c96f948e1cec6e2fb86360b09f346b"
+  ]
+}

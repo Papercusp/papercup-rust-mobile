@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:mio:1.2.0",
+  "name": "mio",
+  "artifactVersion": "1.2.0",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-07919255c7e04793d8ea760d6c2ce32d19f9ff02bdbdde3ce90b1e1880929a9b"
+  ]
+}

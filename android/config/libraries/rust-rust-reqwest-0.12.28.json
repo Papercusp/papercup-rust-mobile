@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:reqwest:0.12.28",
+  "name": "reqwest",
+  "artifactVersion": "0.12.28",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-47d4e1803702728e03d30f8a848ae2249ba274bbd9f8443e803f7924d83cd371",
+    "rust-751963a8b88c0e3a9f27e98933079fbcf09b9998b2c13ac49c2e4d58444520d6"
+  ]
+}

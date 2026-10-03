@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:ryu:1.0.23",
+  "name": "ryu",
+  "artifactVersion": "1.0.23",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR BSL-1.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+    "rust-c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+  ]
+}

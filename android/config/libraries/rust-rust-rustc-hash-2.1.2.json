@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:rustc-hash:2.1.2",
+  "name": "rustc-hash",
+  "artifactVersion": "2.1.2",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652",
+    "rust-95bd3988beee069fa2848f648dab43cc6e0b2add2ad6bcb17360caf749802bcc"
+  ]
+}

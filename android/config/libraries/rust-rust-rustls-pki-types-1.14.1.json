@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:rustls-pki-types:1.14.1",
+  "name": "rustls-pki-types",
+  "artifactVersion": "1.14.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-45fd05c4865e7c350b98ad7ac50e1b15462d49af4a91e9b0c9dd933dc9a69742",
+    "rust-9117d922e667125508dde62b02c1f57ed22f5ad21eb536aa2e2d99e1c796e639"
+  ]
+}

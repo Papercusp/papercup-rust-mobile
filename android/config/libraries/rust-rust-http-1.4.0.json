@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:http:1.4.0",
+  "name": "http",
+  "artifactVersion": "1.4.0",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-8bb1b50b0e5c9399ae33bd35fab2769010fa6c14e8860c729a52295d84896b7a",
+    "rust-dc91f8200e4b2a1f9261035d4c18c33c246911a6c0f7b543d75347e61b249cff"
+  ]
+}

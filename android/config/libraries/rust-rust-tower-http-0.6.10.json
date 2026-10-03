@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:tower-http:0.6.10",
+  "name": "tower-http",
+  "artifactVersion": "0.6.10",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-5049cf464977eff4b4fcfa7988d84e74116956a3eb9d5f1d451b3f828f945233"
+  ]
+}

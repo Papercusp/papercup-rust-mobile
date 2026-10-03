@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:simd-adler32:0.3.9",
+  "name": "simd-adler32",
+  "artifactVersion": "0.3.9",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-42a35170233e83e18856792e748de4c1ce4a63b2afce9a370c89ef3fe23f9f2d"
+  ]
+}

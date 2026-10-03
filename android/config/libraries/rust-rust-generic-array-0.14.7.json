@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:generic-array:0.14.7",
+  "name": "generic-array",
+  "artifactVersion": "0.14.7",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-c09aae9d3c77b531f56351a9947bc7446511d6b025b3255312d3e3442a9a7583"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:deadpool-runtime:0.1.4",
+  "name": "deadpool-runtime",
+  "artifactVersion": "0.1.4",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-23fac4edada8cdd75ecd793864bfb3a60ef59da853425ed3e2b3d030dc730aa6",
+    "rust-8982e37af80786707d8b8c33fb4cfe98c8a17d9d34caaa2b86895f0e84eafcca"
+  ]
+}

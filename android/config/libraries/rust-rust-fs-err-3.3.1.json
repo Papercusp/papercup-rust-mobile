@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:fs-err:3.3.1",
+  "name": "fs-err",
+  "artifactVersion": "3.3.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-36516aefdc84c5d5a1e7485425913a22dbda69eb1930c5e84d6ae4972b5194b9",
+    "rust-7cfd738c53d61c79f07e348f622bf7707c9084237054d37fbe07788a75f5881c"
+  ]
+}

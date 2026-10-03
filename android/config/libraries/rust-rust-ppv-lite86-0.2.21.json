@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:ppv-lite86:0.2.21",
+  "name": "ppv-lite86",
+  "artifactVersion": "0.2.21",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-0218327e7a480793ffdd4eb792379a9709e5c135c7ba267f709d6f6d4d70af0a",
+    "rust-4cada0bd02ea3692eee6f16400d86c6508bbd3bafb2b65fed0419f36d4f83e8f"
+  ]
+}

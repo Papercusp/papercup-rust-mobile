@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:h2:0.4.14",
+  "name": "h2",
+  "artifactVersion": "0.4.14",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-b21623012e6c453d944b0342c515b631cfcbf30704c2621b291526b69c10724d"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:goblin:0.8.2",
+  "name": "goblin",
+  "artifactVersion": "0.8.2",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-655e3ee7a4c27430774962e62a6d37d7348e5f2f292010ad674ce1bebefd24bc"
+  ]
+}

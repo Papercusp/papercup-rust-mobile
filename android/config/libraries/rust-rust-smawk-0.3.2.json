@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:smawk:0.3.2",
+  "name": "smawk",
+  "artifactVersion": "0.3.2",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-0173035e025d60b1d19197840a93a887f6da8b075c01dd10601fcb6414a0043b"
+  ]
+}

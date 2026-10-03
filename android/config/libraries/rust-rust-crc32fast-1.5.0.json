@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:crc32fast:1.5.0",
+  "name": "crc32fast",
+  "artifactVersion": "1.5.0",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-61d383b05b87d78f94d2937e2580cce47226d17823c0430fbcad09596537efcf",
+    "rust-c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+  ]
+}

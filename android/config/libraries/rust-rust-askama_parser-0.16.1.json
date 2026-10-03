@@ -1,0 +1,11 @@
+{
+  "uniqueId": "rust:askama_parser:0.16.1",
+  "name": "askama_parser",
+  "artifactVersion": "0.16.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-87cb0d734c723c083e51c825930ff42bce28596b52dee15567f6b28f19c195e3",
+    "rust-ceca995f2a9ba147d4ada210d9527769091630651e565e40e841acf435c9cea2",
+    "rust-df20e0180764bf5bd76f74d47bc9e8c0069a666401629c390003a1d5eba99c92"
+  ]
+}

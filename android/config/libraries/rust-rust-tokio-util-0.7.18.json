@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:tokio-util:0.7.18",
+  "name": "tokio-util",
+  "artifactVersion": "0.7.18",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "uniqueId": "rust:textwrap:0.16.2",
+  "name": "textwrap",
+  "artifactVersion": "0.16.2",
+  "description": "Locked Rust source package; declared license: MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-ce93600c49fbb3e14df32efe752264644f6a2f8e08a735ba981725799e5309ef"
+  ]
+}

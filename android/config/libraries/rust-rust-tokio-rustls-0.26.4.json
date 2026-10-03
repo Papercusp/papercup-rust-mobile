@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:tokio-rustls:0.26.4",
+  "name": "tokio-rustls",
+  "artifactVersion": "0.26.4",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-cc117d90b498b32b11a886f279b359da16a73c3b01efbb2f5cc004b20262334e",
+    "rust-e20fa2b8e0a2565f24a792b94b4bf4b6c2b9d36f781d8a9516e218a036e6677a"
+  ]
+}
