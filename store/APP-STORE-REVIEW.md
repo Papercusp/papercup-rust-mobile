@@ -1067,3 +1067,57 @@ Before claiming corresponding-source delivery complete:
 No recipient destination, publication, retrieval or recipient build is claimed
 by this preparation update. Provider/reviewer journeys, current hosted CI,
 physical-phone and Play acceptance remain required.
+
+### WebRTC packaging and engine-version references
+
+The October 3 static read confirms that the pinned Android publication
+workflow downloads `libwebrtc_prefixed.aar`, shadows its Java package and
+renames the native library before Maven publication. That workflow
+packages a prebuilt engine; it does not compile the engine itself.
+
+The retained GitHub release AAR SHA-256
+`76b7fc94ac3a16b81bd42f0e8bf781636ad52f815d296f1c0c314271fd1ed262`
+equals the digest published for the `v137.7151.04` asset. Its
+`classes.jar!/org/webrtc/WebrtcBuildVersion.class` and the resolved Maven
+AAR `07934f87e0c3897fd8107f9193eda0f35007c3aee92b4e085b909ed0fe3fd66c`
+both carry these configured values:
+
+| Version-class field | Retained value |
+| --- | --- |
+| `webrtc_branch` | `M137` |
+| `webrtc_commit` | `07` |
+| `webrtc_revision` | `f4967efc183c371ff984632f8909ba022ee275cd` |
+| `maint_version` | `0` |
+
+In the Maven AAR, the class is in
+`libs/shadow-all.jar!/livekit/org/webrtc/WebrtcBuildVersion.class`; its
+top-level `classes.jar` has no entries. Inspect nested JARs before making
+a missing-class or version claim.
+
+The builder's `m137.7151.07` tag at
+`fd0db0bb3982a48b67ffb436b266492f90a4fda8` has matching `build/VERSION`
+values. By contrast, its same-number `m137.7151.04` tag at
+`bc119640a2c675e5baaa7a1c661d0cb5264e1a14` defaults to
+`e13f18f31a1c029af76682dbe99d5c47ff99b8b9`. These are reference
+comparisons, not proof that the engine was compiled from either checkout.
+
+The inspected writer derives `webrtc_commit` from the third dotted version
+component; it is not a Git commit ID. `webrtc_revision` comes from the
+configured `VERSION` file. The build accepts a separate `--commit`
+override for the actual source checkout, so even a matching Java marker does
+not prove native source lineage. The package producer writes actual checkout
+URLs and revisions to `VERSIONS`, and generates `NOTICE` using the
+engine's license generator and selected GN build outputs. Those package
+records and their binding to the retained binaries remain to be obtained.
+
+The existing private dependency-source directory retains
+`webrtc-BUILD-SOURCE-REFERENCE.json`: selected packaging/build source
+snapshots, their upstream Git-blob and SHA-256 identities, the two AAR
+identities, exact class constants and the writer interpretation. The snapshots
+were checked against non-truncated pinned upstream trees. They do not supply
+the full engine/dependency source census or regenerate its notice bundle.
+
+Preserve the earlier four-ABI byte comparisons and complete packaging notice
+reference in their original scope. Original native invocation, applied patches,
+complete source/notice rights, final-candidate notice access and actual
+recipient retrieval/build remain open. No build or test proof was replayed.
