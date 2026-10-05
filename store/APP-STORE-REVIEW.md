@@ -1474,6 +1474,55 @@ final notices/rights, exact signed candidate, recipient retrieval/fresh build
 and release acceptance remain open. Existing source/patch archives and the
 incomplete JNI-zero/buildtools caches are unchanged.
 
+### Retained pinned RE2 and byte-exact JSONcpp sources
+
+Engine DEPS selects `src/third_party/re2/src` at
+`c84a140c93352cdabbfb547c531be34515b12228` and
+`src/third_party/jsoncpp/source` at
+`42e892d96e47b1f6e29844cc705e148ec4856448`. Their exact upstream GitHub
+commits and complete recursive trees were retained before archive acquisition.
+Neither repository has gitlinks. This supplements the existing source preparation.
+
+| Source | Blobs / directory trees | Exact source archive bytes | Archive SHA-256 |
+| --- | --- | --- | --- |
+| google/re2 | 136 / 14 | 391,028 | `94ad73bd2b32177874239bbb0a59625901212252751518c27f87f78d191c36ad` |
+| open-source-parsers/jsoncpp | 252 / 22 | 212,411 | `c852fdfdf5fc80b5169969f99fba7d4810c7d979c91799946b62b87a64543c03` |
+
+RE2 is retained as `webrtc-re2-c84a140c-source.tar.gz`, with receipt
+`webrtc-re2-c84a140c-source.json` (89,008 bytes, SHA-256
+`238181d7641d957ad12dd333382e5b213a8e42a131bab5dd300efa117177e787`).
+Its reconstructed root Git tree is
+`aac1c2111623d62bd280fb5ac62662c96d8e4716`.
+
+JSONcpp's original codeload archive has the complete path set, but its retained
+`.gitattributes` selects CRLF for `devtools/agent_vm*`. Two JSON files differ
+from their Git blobs: `agent_vmw7.json` is 898 rather than 865 bytes, and
+`agent_vmxp.json` is 589 rather than 563 bytes. Fetching their exact pinned Git
+blobs established that LF-to-CRLF conversion accounts for each entire difference.
+The original archive remains separate; it is not byte-exact Git source.
+
+`webrtc-jsoncpp-42e892d9-git-source.tar.gz` supplies all 252 original Git blobs:
+250 unchanged codeload entries and the two verified raw Git blobs. It was
+assembled deterministically as data, with Git executable/symlink semantics.
+`webrtc-jsoncpp-42e892d9-git-blobs.json` retains those two original blobs and
+the distinguishing comparison (SHA-256
+`b5360c0b7af23ebc201960798ee3722507310e8184524c92eedbe0f80b7b51e1`).
+The receipt `webrtc-jsoncpp-42e892d9-source.json` is 176,550 bytes, SHA-256
+`3e793b49e9359bc441b99c9ec97d5f24e47dec4e82139f2719b63b82d36ab911`;
+its reconstructed root is `c9b5ffc95a60647ddfba8a148daa86d0235df093`.
+
+Persisted archive readback and a second independent offline reconstruction
+verified complete safe unique blob/directory path sets, every Git blob/tree
+identity, size, SHA-256, type and executable semantics. The existing
+`implementationSourcePreparation.sources` binds these archives, receipts and
+the JSONcpp original-download/supplement distinction. No upstream code was
+executed. Original GN selection, remaining DEPS/CIPD/tool inputs, the complete
+applied checkout, original toolchain/invocation and native reproduction remain
+open, alongside final notices/rights, exact signed candidate, actual recipient
+retrieval/fresh build and release acceptance. Chromium's CRC32C GN wrapper
+remains unretained. A read-only Cisco libsrtp GitHub lookup returned 404 for
+the exact Chromium DEPS pin; no libsrtp source was acquired or retried.
+
 ### Retained pinned Android cpu_features dependency source
 
 Engine DEPS selects `src/third_party/cpu_features/src` for `checkout_android`
