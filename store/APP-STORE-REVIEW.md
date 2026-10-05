@@ -1473,3 +1473,30 @@ applied checkout, remaining DEPS/CIPD/tools, original GN/toolchain invocation,
 final notices/rights, exact signed candidate, recipient retrieval/fresh build
 and release acceptance remain open. Existing source/patch archives and the
 incomplete JNI-zero/buildtools caches are unchanged.
+
+### Retained pinned Android cpu_features dependency source
+
+Engine DEPS selects `src/third_party/cpu_features/src` for `checkout_android`
+at `936b9ab5515dead115606559502e3864958f7f6e`. Google's upstream
+`google/cpu_features` repository resolves that exact revision. The private
+archive `webrtc-cpu-features-936b9ab5-source.tar.gz` retains all 100 blobs:
+102,400 bytes, SHA-256
+`851c2f0b1e31b0d3a5389ba5df1850e27670fd7c09c8fa1d1ae322d6035135d2`.
+
+All 21 directory trees match recomputed Git identities, including root
+`4a71426165971ad8be17aaee8a497c5a1ad1aecb`. The recursive tree is complete
+and has no gitlinks. The exact unique safe archive blob and directory path
+sets, Git blobs, sizes, SHA-256, types and executable semantics passed.
+Git modes and raw GitHub archive modes are recorded separately. Persisted
+archive readback and a second independent offline reconstruction passed.
+Metadata was retained before archive acquisition so a later failure would
+preserve the measured commit, complete tree and dependency selection.
+
+The receipt `webrtc-cpu-features-936b9ab5-source.json` is 72,023 bytes,
+SHA-256 `d4fc74f102aaedc41a3e304b542bd91ded922e2dd512b662a46399a3b4e4a3cd`.
+The existing private build-source reference binds both artifacts and the
+engine DEPS selection. This prepares pristine dependency source. Complete
+applied checkout, remaining DEPS/CIPD/tools, original GN/toolchain invocation,
+native reproduction, final notices/rights, exact signed candidate, actual
+recipient retrieval/fresh build and release acceptance remain open. No upstream
+code was executed. Existing archives and incomplete caches are unchanged.
