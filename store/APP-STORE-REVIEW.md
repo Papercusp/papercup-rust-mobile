@@ -1844,3 +1844,66 @@ Original outer tools, effective GN graph/invocation, container/package/toolchain
 identities, complete applied checkout and source-to-binary reproduction remain
 open, along with final notices/rights, signed candidate, recipient retrieval,
 provider/reviewer/current hosted CI, physical-phone and Play acceptance.
+
+### Retained package-reported Chromium clang updater
+
+The package VERSIONS and the retained engine DEPS both name the external
+`src/tools` checkout `ffcbc837bbb14d80d09147c2af5302ff6bd4bd69`. Its complete
+`clang/scripts` subtree is now retained privately: 30 exact blobs, with the
+root and two parent/subtree Git tree listings independently reconstructed.
+This is a subtree supplement; the remainder of the tools repository is not retained.
+
+The archive is `webrtc-tools-ffcbc837-clang-scripts-source.tar.gz`
+(85589 bytes; SHA-256 `c4a4cce1ba23eb083f795651ab5ae28cac34162c8c1294d2442b4836d777f46f`).
+The metadata is `webrtc-tools-ffcbc837-clang-scripts-trees.json`
+(49652 bytes; SHA-256 `a2c4b145b78afa225ec870405202479a08f1e529bcf9016f2f2dfb6f463c3a5f`).
+The source/AST receipt is `webrtc-tools-ffcbc837-clang-provenance.json`
+(6010 bytes; SHA-256 `006465bbf9e18801f53adc4c82a04290fa492419fc9599e7b0822a2c882fed47`).
+It extends the existing builder toolchain provenance preparation.
+
+The updater configures package `llvmorg-21-init-9266-g09006611-1` and
+release version `21`. Its default Linux archive uses the Chromium clang
+bucket, which `CDS_CLANG_BUCKET_OVERRIDE` can replace. A matching
+`cr_build_revision` stamp skips the download; the expected stamp also includes
+the configured target OS list. The output directory and printed locally built
+revision have separate overrides. The engine's clang hook calls this script.
+The exact retained build `toolchain.gni` selects version `17` when
+`llvm_android_mainline` is true, otherwise `21`; those GN arguments are unobserved.
+
+Independent offline readback verified all 30 paths, types, executable modes,
+sizes and Git/SHA-256 identities, the archive-only subtree tree, the package/DEPS
+bindings, the updater AST and the selected existing GN input. Three in-memory
+integrity controls rejected a changed updater blob, a different tools pin and
+a changed configured subrevision. No upstream script or compiler was executed.
+
+These configured source values do not identify the compiler binary/package
+digest, original hook execution or effective GN overrides of the distributed AAR.
+Remaining tools/CIPD closure, the outer depot_tools checkout, selected GN graph,
+complete applied checkout and native reproduction remain open, as do final
+notices/rights, signed candidate, recipient retrieval/fresh build, provider/reviewer,
+current hosted CI, physical-phone and Play acceptance.
+
+### Retained packaged native ELF notes
+
+The private `webrtc-m137.7151.07-elf-toolchain-notes.json` receipt binds the
+packaged AAR and its four native libraries to their existing exact byte hashes.
+Its SHA-256 is `eb573bc03503e06d29930338cfbec0c3cdfcac7124e93c74ce9d42e8539f8f82`
+(5767 bytes). Independent persisted readback passed for all four members, ELF
+class/machine, section names/offsets/raw hashes and parsed Android/GNU note fields.
+
+Each library contains an Android producer note with SDK `21`, NDK annotation
+`r28` and build annotation `13004108`. None has a `.comment` section.
+The embedded GNU build IDs are:
+
+| ABI | Embedded GNU build ID |
+| --- | --- |
+| arm64-v8a | `73be3858a9c16d67` |
+| armeabi-v7a | `e28c707781a8a250` |
+| x86 | `63c89563714ed7c9` |
+| x86_64 | `f1a0bd46091527a6` |
+
+These are annotations in the retained native bytes. They do not identify the
+compiler executable or package digest, and the SDK note does not establish the
+app manifest minimum SDK. No native binary or upstream script was executed.
+Original compiler/GN/tool identities, complete source closure and reproduction,
+signed candidate, recipient retrieval/fresh build and release acceptance remain open.
