@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(144782 bytes; SHA-256 239b229262fa4d0c0158e06ed30de520041edfccdbc2c770f992dda120c032fe)
+(161520 bytes; SHA-256 0ca39b8ad183bb182af57871bf2fa6bb5e2ec631a938a8af3226e75a778fad6d)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2036,9 +2036,23 @@ Both manifests declare `infra/3pp/tools/cpython3/${platform}` at
 platform lists differ; the platform placeholder and manifest-selection condition
 remain unevaluated. `bootstrap/bootstrap.py` writes `python3_bin_reldir.txt` from
 the caller-supplied bootstrap directory. This identifies the configured marker
-writer, not the original marker contents or installed interpreter. Referenced
-Windows templates, installed CIPD instances and remaining depot_tools inputs are
-not retained by this extension. `breakpad.py` is a legacy import marker; the root
+writer, not the original marker contents or installed interpreter.
+
+The receipt now also retains the six remaining bootstrap directory blobs:
+`README.md`, `git-bash.template.sh`, `git.template.bat`, `profile.d.python.sh`,
+`python3.bat` and `win_tools.bat`. All nine blobs in this pinned directory are
+retained; this does not complete the depot_tools repository or runtime closure.
+Independent persisted readback verified all nine directory byte/mode bindings
+and its parent tree binding, one added Python AST fragment, three Windows template
+caller bindings, seven batch line fragments and two shell syntax-only parses.
+Four controls rejected changed template bytes, an omitted directory source,
+a substituted marker reader and a falsely observed original tool selection.
+
+The retained Windows Python batch source reads the same runtime marker.
+`win_tools.bat` contains manifest-selection, CIPD ensure and bundled-interpreter
+bootstrap invocations; these are source declarations, not observed executions.
+Installed CIPD instances, root CIPD installer sources and remaining depot_tools
+inputs are not retained by this extension. `breakpad.py` is a legacy import marker; the root
 listing's `gclient.py` identity supplies no retained contents or original presence
 evidence.
 
