@@ -1520,7 +1520,7 @@ executed. Original GN selection, remaining DEPS/CIPD/tool inputs, the complete
 applied checkout, original toolchain/invocation and native reproduction remain
 open, alongside final notices/rights, exact signed candidate, actual recipient
 retrieval/fresh build and release acceptance. Chromium's CRC32C GN wrapper
-remains unretained. A read-only Cisco libsrtp GitHub lookup returned 404 for
+is retained separately below. A read-only Cisco libsrtp GitHub lookup returned 404 for
 the exact Chromium DEPS pin; no libsrtp source was acquired or retried.
 
 ### Retained pinned Android cpu_features dependency source
@@ -1678,3 +1678,31 @@ original GN/toolchain invocation, native reproduction, final notices/rights,
 exact signed candidate, actual recipient retrieval/fresh build and release
 acceptance remain open. No upstream code was executed. Existing evidence and
 incomplete JNI-zero/buildtools caches are unchanged.
+
+### Retained pinned fuzztest dependency source
+
+The retained engine DEPS selects `src/third_party/fuzztest/src` at
+[`b10387fdbbca18192f85eaa5323a59f44bf9c468`](https://github.com/google/fuzztest/commit/b10387fdbbca18192f85eaa5323a59f44bf9c468).
+The private archive `webrtc-fuzztest-b10387fd-source.tar.gz` retains all
+486 repository blobs: 759,492 bytes, SHA-256
+`458c42604a4a8f49c55ca8cfa9a1d6bee49ab9500cc65cba822f468e7f0093ee`.
+All 37 directory identities match, including root
+`8d9e39020ed11f29bb78ef2127272b1baeb13a97`; the complete recursive tree
+has no gitlinks. Exact safe unique directory/blob path sets, Git blob IDs,
+sizes, SHA-256, types and executable semantics passed persisted readback
+and a second independent offline bottom-up Git-tree reconstruction.
+
+The receipt `webrtc-fuzztest-b10387fd-source.json` is 318,747 bytes,
+SHA-256 `d201544f05ac726d8e20a4deb9b728f1067925456eed9bced165d779f05a43ab`.
+The metadata was retained before downloading the archive; its 164,174 bytes
+have SHA-256 `018f16107e70b1983d35d46bee4a08ad4ee099b9cb969a66e54f1070346fabf2`.
+The existing `implementationSourcePreparation.sources` inventory binds
+these files to the exact retained engine DEPS blob and digest.
+
+This is source preparation. The DEPS declaration does not establish the
+original selected GN graph or inclusion in the native payload. Complete
+applied checkout, remaining DEPS/CIPD/tool inputs, original GN/toolchain
+invocation, native reproduction, final notices/rights, exact signed
+candidate, actual recipient retrieval/fresh build and release acceptance
+remain open. No upstream code was executed; the incomplete JNI-zero and
+buildtools caches and the recorded LSS/libyuv/libsrtp failures are unchanged.
