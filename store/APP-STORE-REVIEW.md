@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(70530 bytes; SHA-256 672efb8c24bdcf846e3628487e6c54498432dcc090206b4897089350a722208c)
+(120374 bytes; SHA-256 a709332d96e36d2f9e05ddf93d72a4026563c3b7868f51b79f579f0241f09a7d)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2010,6 +2010,23 @@ The Ninja wrapper iterates a set of checkout bases, so their order is not
 fixed. It checks Siso/remote-execution output guards before running modifying
 commands. The engine DEPS declares GN in buildtools and conditional Ninja in
 third_party; those declarations do not prove installed or invoked packages.
+
+The same receipt now retains seven additional support blobs: `gclient_utils.py`,
+`subprocess2.py`, `breakpad.py`, both `python-bin` wrappers, `python_runner.sh`
+and `bootstrap_python3`. Its complete two-entry `python-bin` listing is bound
+to the root tree. Five Python AST fragments, three complete shell/batch fragments
+and six repository-local import edges describe these selected sources only.
+Independent persisted readback verified the seven added blobs, both trees, all
+eight fragments and six import edges. Three controls rejected altered bytes,
+a missing python-bin entry and a falsely tracked interpreter marker.
+
+The GN Python wrapper reads `python3_bin_reldir.txt` to choose an interpreter.
+That file is absent from the tracked root listing; its original runtime contents
+and interpreter digest remain unobserved. `bootstrap_python3` selects its manifest
+from `.bleeding_edge` filesystem state and invokes CIPD plus `bootstrap/bootstrap.py`.
+Those manifests, bootstrap implementation and installed packages are not retained
+by this extension. `breakpad.py` is a legacy import marker; the root listing's
+`gclient.py` identity supplies no retained contents or original presence evidence.
 
 No upstream script, interpreter, GN, Ninja or package was executed or fetched
 as a binary. Original outer tools, environment, executable/package digests,
