@@ -1815,3 +1815,32 @@ and assembler invocation, complete applied checkout, remaining
 DEPS/CIPD/tool inputs, original toolchain and native reproduction,
 final notices/distribution rights, exact signed candidate, actual
 recipient retrieval/fresh build and release acceptance remain open.
+### Retained builder toolchain and GN provenance inspection
+
+The private source-only receipt `webrtc-builder-toolchain-provenance-fd0db0bb.json`
+binds 11 selected builder/engine inputs to their exact retained Git blobs, sizes
+and SHA-256 fingerprints. Its SHA-256 is `87513151e88dafd4b7d69954cdfb04ef134381b794e125ecff4227ab5348bbf1` (15845 bytes).
+It extends the existing `implementationSourcePreparation` reference.
+
+The pinned builder's `get_depot_tools` clones an outer `source_dir/depot_tools`
+without a revision or branch argument; a requested refresh checks out
+`origin/HEAD`, and an existing directory can be reused. The engine DEPS instead
+pins `src/third_party/depot_tools` at
+`fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with a self-update-disable hook for
+that inner path. The inner pin does not identify the outer tools used by the
+builder. The package VERSIONS writer records eight source checkouts and omits
+that outer checkout, effective GN arguments and compiler/container digests.
+
+The configured Python Android path uses four ABIs and `rtc_use_h264=false`;
+the separate YAML configuration uses two ABIs and `rtc_use_h264=true`.
+The retained workflow/shell/Dockerfile route calls the Python builder.
+Caller GN arguments are appended, and the per-ABI path can reuse an existing
+`args.gn`; the AAR uses a separate build_aar.py GN path. These source defaults
+do not establish the arguments or selected graph of the original build.
+The Dockerfile names `ubuntu:20.04` without an image digest.
+
+This inspection ran no upstream code and adds no APK/native evidence.
+Original outer tools, effective GN graph/invocation, container/package/toolchain
+identities, complete applied checkout and source-to-binary reproduction remain
+open, along with final notices/rights, signed candidate, recipient retrieval,
+provider/reviewer/current hosted CI, physical-phone and Play acceptance.
