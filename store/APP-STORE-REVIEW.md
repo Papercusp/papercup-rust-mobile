@@ -1303,3 +1303,48 @@ actual applied checkout, original toolchain/invocation, source-to-binary
 reproduction, remaining dependency inputs, final notices/rights, exact signed
 candidate, recipient retrieval/build or release acceptance. The incomplete
 JNI-zero cache remains 75 of 185 files. No upstream code was executed.
+### Retained pinned BoringSSL dependency source
+
+The engine DEPS selects `src/third_party/boringssl/src` at
+`34492c89a8e381e0e856a686cc71b1eb5bd728db`. The official
+`google/boringssl` repository resolves that exact commit. The private archive
+`webrtc-boringssl-34492c89-source.tar.gz` retains all 7,908 repository files:
+46,149,400 bytes, SHA-256
+`61f9abae8ccc7a3d0aa27db97364ab6187383441c8d11dfe315065cd612c5e8f`.
+
+All 405 directory trees match recomputed Git identities, including root
+`0a279b3e9398d5ec0b3fb0906e991a839076649f`. The tree is complete and has no
+gitlinks. Every unique safe archive file matches the pinned blob path set,
+Git blob, size, SHA-256, type and executable semantics. The receipt records
+Git and archive modes separately, accepting only the measured GitHub
+`664`/`775` group-write variants. Independent archive readback passed.
+The complete per-file/tree receipt is `webrtc-boringssl-34492c89-source.json`,
+SHA-256 `53c26a387c461ffe292d8b15546af9a6f96dbedc7eead0cabae0a05edacdfb44`;
+the existing private build-source reference binds both artifacts.
+
+This pin comes from engine DEPS; the retained package VERSIONS does not
+report a separate BoringSSL checkout. Pristine repository retention does not
+establish the actual applied source, fetched dependency closure, original
+GN/toolchain invocation, source-to-binary reproduction, final notices/rights,
+exact signed candidate, recipient retrieval/build or release acceptance.
+No upstream code was executed.
+
+### Incomplete pinned buildtools tree preparation
+
+Engine DEPS and package VERSIONS both select buildtools at
+`0f32cb9025766951122d4ed19aba87a94ded3f43`. Seven directory-tree records are
+cached with recomputed Git identities and parent-child bindings, including
+root `9166807a6c651c3382e5b89ccf1cde5adb0f7749`. Directory enumeration
+stopped at `reclient_cfgs/linux_chroot` on HTTP 503 at
+`2026-10-05T15:38:50.462837+00:00`, with no Retry-After response header.
+The failed request was not retried.
+
+The partial receipt is `webrtc-buildtools-0f32cb90-source.json`, SHA-256
+`f31c0811f82f124861a61f7996764c2dbdfd8990be5703e2a77ea96fb40ae753`.
+Its tree cache is `webrtc-buildtools-0f32cb90-trees.json`, SHA-256
+`89dbffa8d6c0438c8b3794dda84789c56a371afcf1f98280b61540532e65eb69`.
+No source blobs were retained; the 10,240-byte tar is empty. The receipt
+explicitly marks complete tree enumeration and source retention false.
+The existing source reference records this as pending preparation. Preserve
+this cache and upstream backoff; the JNI-zero cache remains 75 of 185 files.
+Binary tools and the other existing release requirements remain open.
