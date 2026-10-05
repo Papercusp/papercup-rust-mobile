@@ -1883,6 +1883,39 @@ complete applied checkout and native reproduction remain open, as do final
 notices/rights, signed candidate, recipient retrieval/fresh build, provider/reviewer,
 current hosted CI, physical-phone and Play acceptance.
 
+### Retained Clang GCS declarations and updater replacement
+
+The pinned engine DEPS declares 20 conditional objects under
+`src/third_party/llvm-build/Release+Asserts` in bucket `chromium-browser-clang`.
+The declared Linux Clang object is
+`Linux_x64/clang-llvmorg-21-init-6681-g5b36835d-1.tar.xz`, SHA-256
+`17d9277d32a87f856c6d0a5ee3f662015d423d876315d7736ca7b05b2b6f047e`
+(54610924 bytes; generation `1743178947242029`). Its condition is
+`(host_os == "linux" or checkout_android) and non_git_source`; the parent
+condition is `not llvm_force_head_revision`. These are unevaluated source
+conditions, not observed selection. Optional Clang tools have separate conditions.
+
+The engine's Clang hook names `python3 src/tools/clang/scripts/update.py`.
+At the retained tools revision, that updater checks `.*_is_first_class_gcs`
+before stamp reuse and deletes the output directory when a marker exists.
+It then downloads its configured package. Its default Linux URL ends in
+`Linux_x64/clang-llvmorg-21-init-9266-g09006611-1.tar.xz`, which differs from
+the DEPS object. A matching stamp can skip this download only when the marker
+is absent; environment, output-directory, target-OS and local-build overrides
+remain possible. Original marker/stamp state and hook execution are unobserved.
+
+The private receipt `webrtc-clang-declared-package-inputs.json`
+(13342 bytes; SHA-256 `0a7a2cdea601f55d425b546e38065b16775a8ffdb75f9389a6dad34d747e9fff`)
+binds both source members by Git blob, size and SHA-256 and records all 20
+objects, conditions and source/AST fragments. Three distinguishing controls
+rejected a changed object digest, substituting the updater default for the DEPS
+declaration, and omitting the marker deletion branch. Independent persisted
+readback passed for both source inputs, all 20 declarations and five AST fragments,
+including the three rejecting controls and inventory/review bindings.
+No upstream code was executed and no tool package
+was downloaded. Neither configured package identifies the original compiler;
+selected package digests, GN/build evidence and release acceptance remain open.
+
 ### Retained packaged native ELF notes
 
 The private `webrtc-m137.7151.07-elf-toolchain-notes.json` receipt binds the
