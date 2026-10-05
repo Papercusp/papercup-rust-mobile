@@ -1374,3 +1374,29 @@ establish applied source, dependency closure, original GN/toolchain
 invocation, source-to-binary reproduction, final notices/rights, exact signed
 candidate, recipient retrieval/build or release acceptance. No upstream code
 was executed. The incomplete JNI-zero and buildtools caches are unchanged.
+
+### Retained pinned dav1d dependency source
+
+Engine DEPS selects `src/third_party/dav1d/libdav1d` at
+`8d956180934f16244bdb58b39175824775125e55`. VideoLAN's read-only GitHub
+mirror, `videolan/dav1d`, resolves that exact commit. The private archive
+`webrtc-dav1d-8d956180-source.tar.gz` retains all 359 repository files:
+1,712,974 bytes, SHA-256
+`58550122e4d171eac403f4b277a40443f25c05e8d180b9eb971e6f039be04297`.
+
+All 35 directory trees match recomputed Git identities, including root
+`50933961732d02da827cbd7f183903afd17be118`. The tree is complete and has no
+gitlinks. Every unique safe archive file matches the pinned blob path set,
+Git blob, size, SHA-256, type and executable semantics. Git and archive modes
+are recorded separately; only the measured GitHub `664`/`775` group-write
+variants are accepted. The persisted archive passed a full readback.
+The complete per-file/tree receipt is `webrtc-dav1d-8d956180-source.json`,
+SHA-256 `4a922c2ef5e697e8dc785945d7b16e67fb16db983f2eb682f4c4888e5054310d`;
+the existing private build-source reference binds both artifacts.
+
+This selection comes from engine DEPS. The retained package VERSIONS does
+not report a separate dav1d checkout. Pristine source retention does not
+establish applied source, dependency closure, original GN/toolchain
+invocation, source-to-binary reproduction, final notices/rights, exact signed
+candidate, recipient retrieval/build or release acceptance. No upstream code
+was executed. The incomplete JNI-zero and buildtools caches are unchanged.
