@@ -1219,8 +1219,10 @@ applies each patch with `-p1` after `gclient sync`. The JNI-prefix patch also
 changes files under external `third_party/jni_zero`; the engine repository
 archive alone therefore cannot supply all patch inputs.
 
-No patch, upstream script, hook, compiler or native payload was executed in
-this preparation. External DEPS/CIPD sources and tool inputs, the actual applied
+The repository-retention preparation above executed no patch, upstream script,
+hook, compiler or native payload. The separate target-only patch preparation
+below applies the four retained patches to isolated source data. External
+DEPS/CIPD sources and tool inputs, the complete applied
 checkout, generated version source, original GN arguments/output and source-to-binary
 reproduction remain required. Complete final notices/rights, exact signed-candidate
 binding and actual recipient retrieval/fresh build remain open, alongside every
@@ -1400,3 +1402,37 @@ establish applied source, dependency closure, original GN/toolchain
 invocation, source-to-binary reproduction, final notices/rights, exact signed
 candidate, recipient retrieval/build or release acceptance. No upstream code
 was executed. The incomplete JNI-zero and buildtools caches are unchanged.
+
+### Verified Android-prefixed patch targets
+
+The four retained builder patches were applied in their recorded order to
+exactly 14 original source targets: ten files from the pinned engine and four
+from the pinned external JNI-zero revision. Original bytes, Git blob identities,
+SHA-256, sizes and executable modes matched the retained source receipts.
+GNU patch applied each patch with `-p1`, zero fuzz and a successful dry run.
+The receipt records line offsets. The original `add_license_dav1d.patch` lacks
+a final newline; its exact retained bytes were used and its warnings preserved.
+
+The bounded verifier additionally uses batch/forward mode and suppresses
+mismatch backup files. These are verifier choices; the original builder recipe
+records `patch -p1`. Reversing the four patches in reverse order restored every
+original target's exact bytes and modes. No upstream script, hook, compiler or
+native payload was executed, and the temporary data directory was removed.
+
+The private before/after bundle contains 32 files: 14 originals, 14 patched
+targets and four original patch texts. It is
+`webrtc-android-prefixed-patch-preparation.tar.gz`, 95,773 bytes, SHA-256
+`8910dfcee78b18aa4d32d11693a3a13c808022fc7d28b9d7888c04ea044b27e2`.
+Its receipt is `webrtc-android-prefixed-patch-preparation.json`, 30,043 bytes,
+SHA-256 `58c405be8958ddd44daabb54f6648e16b1cf584e859532150da10ab16ac208df`.
+Persisted archive readback checked the exact unique safe path set, file types,
+bytes, modes, sizes and fingerprints. The existing build-source reference binds
+both artifacts under `implementationSourcePreparation.patchApplicationPreparation`.
+
+This verifies the patch targets. It does not supply the complete dependency
+checkout, generated `WebrtcBuildVersion.java`, original GN/toolchain invocation
+or source-to-binary reproduction. Final notices/rights, exact signed candidate,
+recipient retrieval/fresh build and every existing release requirement remain open.
+The JNI-zero and buildtools caches are unchanged. Separate LSS blob and libyuv
+archive acquisition attempts returned HTTP503 without source retention; the
+private reference records these attempts and they were not automatically retried.
