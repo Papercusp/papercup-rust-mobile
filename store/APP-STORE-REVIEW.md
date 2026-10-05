@@ -1436,3 +1436,40 @@ recipient retrieval/fresh build and every existing release requirement remain op
 The JNI-zero and buildtools caches are unchanged. Separate LSS blob and libyuv
 archive acquisition attempts returned HTTP503 without source retention; the
 private reference records these attempts and they were not automatically retried.
+
+### Pinned generated WebRTC version source
+
+The separate private generated-source preparation retains
+`sdk/android/api/org/webrtc/WebrtcBuildVersion.java` from builder
+`fd0db0bb3982a48b67ffb436b266492f90a4fda8`. The pinned `build/run.py`
+writer and `build/VERSION` were read as data; no upstream module was imported
+or evaluated. The output preserves all seven UTF-8 lines and their final LF.
+Its four labels are `M137`, `07`,
+`f4967efc183c371ff984632f8909ba022ee275cd`, and `0`.
+Reading the retained upstream AAR class's String `ConstantValue` fields as
+data confirmed these same four values without loading or executing the class.
+
+The source is 313 bytes, SHA-256
+`1af18e1951d3be5a2269389da6faaacd95ae1fc5b59473297e5855051e15af5e`,
+at `webrtc-generated-version-fd0db0bb/sdk/android/api/org/webrtc/WebrtcBuildVersion.java`
+under the existing private dependency-source directory. The receipt
+`webrtc-generated-version-fd0db0bb.json` is 5,273 bytes, SHA-256
+`78ef0729914c9fc2de4662bd3d1e2033998f93ed534e2e7f53ee4d07f0ab4260`.
+It binds both pinned builder inputs, the package VERSIONS prefix, the source
+and the retained AAR/class fingerprints. Readback verified exact bytes, size,
+Git blob and separately recorded filesystem/executable semantics. The existing
+build-source reference binds both files under
+`implementationSourcePreparation.generatedVersionSourcePreparation`.
+
+The builder VERSION lacks a final newline; the package writer copies those
+155 bytes before appending checkout records. Derivation therefore reads the
+complete builder VERSION rather than treating the concatenated package line
+as a separate version value. Leading zero in `07` is preserved.
+
+This prepares generated source and compares configured labels. The builder
+can override its checkout commit independently of those labels, so agreement
+does not prove implementation identity or binary reproduction. The complete
+applied checkout, remaining DEPS/CIPD/tools, original GN/toolchain invocation,
+final notices/rights, exact signed candidate, recipient retrieval/fresh build
+and release acceptance remain open. Existing source/patch archives and the
+incomplete JNI-zero/buildtools caches are unchanged.
