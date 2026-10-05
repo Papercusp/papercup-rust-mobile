@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(161520 bytes; SHA-256 0ca39b8ad183bb182af57871bf2fa6bb5e2ec631a938a8af3226e75a778fad6d)
+(207764 bytes; SHA-256 67ee4905e2dbb63c6bc4010f646177f8eec5918efdc2c7de97f8cea318573fbe)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2051,8 +2051,22 @@ a substituted marker reader and a falsely observed original tool selection.
 The retained Windows Python batch source reads the same runtime marker.
 `win_tools.bat` contains manifest-selection, CIPD ensure and bundled-interpreter
 bootstrap invocations; these are source declarations, not observed executions.
-Installed CIPD instances, root CIPD installer sources and remaining depot_tools
-inputs are not retained by this extension. `breakpad.py` is a legacy import marker; the root
+The same receipt now retains seven pinned CIPD text inputs: Unix/Windows launchers,
+PowerShell bootstrap, two binary-setup helpers, client version and platform digests.
+The declared client version is `git_revision:b1f414539ac10cc67a0250890a38712cc06cf102`, with
+35 platform SHA-256 declarations. Installer sources compare temporary
+download bytes with these declarations; this inspection fetched source text only.
+Custom-client, root/platform overrides and existing-client self-update mean these
+pins do not establish the original installed client or invocation. Two shell inputs
+passed syntax-only parsing; Windows sources were line-bound without execution.
+Root ensure manifests and `gclient.py` contents remain unretained.
+Independent persisted readback verified the seven new byte/mode/Git-blob bindings,
+35 declared digests, sixteen line spans and ten retained caller bindings.
+Four controls rejected altered source bytes, an omitted source, a substituted
+declared digest and a falsely observed installed-client identity.
+
+Installed CIPD instances and remaining depot_tools runtime inputs are unobserved.
+`breakpad.py` is a legacy import marker; the root
 listing's `gclient.py` identity supplies no retained contents or original presence
 evidence.
 
