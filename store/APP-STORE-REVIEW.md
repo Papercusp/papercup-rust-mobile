@@ -1530,6 +1530,45 @@ The existing build-source reference binds both files and the unretained pins.
 No upstream code was executed, and no complete dependency checkout or native
 reproduction is claimed.
 
+### Retained crc32c pinned child repositories
+
+The three child sources listed above are now retained in separate private
+archives at their exact gitlink revisions. The standalone parent archive and
+its original receipt remain unchanged and nonrecursive.
+
+| Child | Blobs / directory trees | Archive bytes | Archive SHA-256 |
+| --- | --- | --- | --- |
+| google/benchmark | 156 / 17 | 176,771 | `914f898c9efcd4d328dafad10df0cdc59708771acf66c29eaf0becc38a140a04` |
+| google/glog | 97 / 14 | 188,448 | `92ac23e5f535beb70dfde7417904903c9a130adf194684f1497930f2060c2027` |
+| google/googletest | 235 / 30 | 832,010 | `c93fee5b85a4c8e366cb754f58874c8979438ba0da5442c995a6024dd5b42c28` |
+
+Each child has no further gitlinks. Complete commit/tree metadata was saved
+before archive acquisition. Archive readback and a second independent offline
+reconstruction verified every directory Git identity, the complete unique safe
+blob and directory path sets, Git blobs, sizes, SHA-256, types and executable
+semantics. Git modes and raw archive modes are recorded separately. No
+upstream code was extracted or executed.
+
+The existing build-source reference binds each child archive and receipt under
+`implementationSourcePreparation.sources` → crc32c →
+`gitlinkChildSourcePreparation`. Receipt SHA-256 values are:
+
+- `webrtc-crc32c-benchmark-e991355c-source.json`: `97eb044d29d16aaf725a0bf222df273b751f6db19feb8d542d90b75d8a362cfa`.
+- `webrtc-crc32c-glog-56523194-source.json`: `f4e5221c462f04404a0f86a0834fec0e2bb6fae97a62c9b2834d7f3ba9a82f74`.
+- `webrtc-crc32c-googletest-3b49be07-source.json`: `50202ac7e5074f8f60a9db57f47f18f764d099fad9151b946a992969cb534a32`.
+
+Pinned crc32c CMake defaults enable tests, benchmarks and glog, which select
+these three child directories. The pinned Android builder instead delegates
+AAR generation to `build_aar.py` and separate ABI builds to GN/autoninja.
+The Chromium crc32c GN wrapper and original GN invocation are not retained,
+so this inspection does not establish their actual dependency selection.
+
+This completes source retention for the standalone crc32c parent and its exact
+three children as separate archives. Remaining WebRTC DEPS/CIPD/tool inputs,
+complete applied checkout, original GN/toolchain invocation, native reproduction,
+final notices/rights, exact signed candidate, actual recipient retrieval/fresh
+build and release acceptance remain open.
+
 ### Retained pinned compact_enc_det dependency source
 
 Engine DEPS selects `src/third_party/ced/src` at
@@ -1547,7 +1586,7 @@ offline reconstruction. Git and raw archive modes are recorded separately.
 The receipt `webrtc-compact-enc-det-ba412eaa-source.json` is 23,147 bytes,
 SHA-256 `6fa6905c3fc61d06fd3132187220c4d18e1cd24598e3b10ff6a4f376223d1f5e`.
 The existing build-source reference binds both files to the engine DEPS pin.
-Complete applied checkout, remaining DEPS/CIPD/tools and crc32c gitlinks,
+Complete applied checkout and remaining WebRTC DEPS/CIPD/tool inputs,
 original GN/toolchain invocation, native reproduction, final notices/rights,
 exact signed candidate, actual recipient retrieval/fresh build and release
 acceptance remain open. No upstream code was executed. Existing evidence and
