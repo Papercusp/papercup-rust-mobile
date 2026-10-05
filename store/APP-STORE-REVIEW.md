@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(235835 bytes; SHA-256 1b674db4bef02e34229e86325bfc29306773aebf1606c28f2e67c02057e4e7f3)
+(335748 bytes; SHA-256 f410a91101690f0f486a0782b8bb243ae165630704460da9cee026a4b03004f5)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -1999,7 +1999,7 @@ records; the separate ChromeOS Python 2 manifest declares one package and one
 resolved record. All 154 records match exactly one declared package/version.
 Both setup helpers reference the main manifest. `ensure_bootstrap` uses the
 current checkout, permits Python bootstrap to be disabled, then invokes CIPD,
-gsutil and pylint bootstraps; gsutil/pylint contents remain unretained.
+gsutil and pylint bootstraps; gsutil/pylint source contents are retained below; installed packages remain unobserved.
 These declarations and recorded instance IDs are not observed installed
 packages or original build selections. No package download or upstream code
 execution was performed. Independent persisted checks verified all five blobs,
@@ -2075,7 +2075,8 @@ download bytes with these declarations; this inspection fetched source text only
 Custom-client, root/platform overrides and existing-client self-update mean these
 pins do not establish the original installed client or invocation. Two shell inputs
 passed syntax-only parsing; Windows sources were line-bound without execution.
-Root ensure manifests and `gclient.py` contents remain unretained.
+Root ensure manifests are retained in the preparation described above.
+The seven helper/license sources described below now include `gclient.py`.
 Independent persisted readback verified the seven new byte/mode/Git-blob bindings,
 35 declared digests, sixteen line spans and ten retained caller bindings.
 Four controls rejected altered source bytes, an omitted source, a substituted
@@ -2083,8 +2084,26 @@ declared digest and a falsely observed installed-client identity.
 
 Installed CIPD instances and remaining depot_tools runtime inputs are unobserved.
 `breakpad.py` is a legacy import marker; the root
-listing's `gclient.py` identity supplies no retained contents or original presence
-evidence.
+listing's `gclient.py` identity now has retained contents in the helper preparation
+below; original filesystem presence remains unobserved.
+
+The same receipt now retains seven more pinned source blobs: `gclient.py`,
+`gsutil.py`, the three helpers matched by `pylint-[0-9].[0-9]`, `pylint_main.py`
+and `LICENSE`. The selector matches `pylint-2.6`, `pylint-2.7` and `pylint-3.2`
+in the retained root listing; it excludes the multi-digit `pylint-2.17` name.
+VPython declarations name 30 wheel rows across those three wrappers.
+The gsutil source defaults to version `4.68`, permits version override and
+can trust an existing install flag. `gclient.py` reads caller-supplied config
+or a config located from the working directory, and delegates CIPD roots to
+`gclient_scm`. Selected local imports remain unretained.
+These are source declarations; no helper, wheel or gsutil package was executed
+or downloaded. Independent persisted readback verified all seven blobs, the
+root tree, fourteen AST spans, sixteen root import edges (three retained,
+thirteen still missing), one unretained nested import, all thirty declared
+wheel rows, three launcher bindings, the bootstrap selector and caller.
+Five controls rejected altered or omitted source, changed wheel declarations,
+a changed bootstrap selector and a falsely observed runtime.
+Complete imports/config/runtime/native/candidate/recipient acceptance remains open.
 
 No upstream script, interpreter, GN, Ninja or package was executed or fetched
 as a binary. Original outer tools, environment, executable/package digests,
