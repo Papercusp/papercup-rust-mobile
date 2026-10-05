@@ -1951,6 +1951,39 @@ No upstream script or compiler was executed and no toolchain package was downloa
 This is configured-source preparation; complete source/tool closure, effective
 GN graph, native reproduction, candidate, recipient and release acceptance remain open.
 
+### Retained GN Rust configuration and CIPD declarations
+
+The pinned WebRTC .gn defaults enable Rust, CXX bindings and the Chromium
+prelude. Its standalone build override sets build_with_chromium=false, while
+the shared build layer defaults Rust arguments to that variable. The WebRTC
+defaults and caller arguments must therefore be considered when selecting a build.
+
+The retained config/rust.gni uses //third_party/rust-toolchain when
+rust_sysroot_absolute is empty. Its supported custom branch resolves that
+absolute sysroot and uses the caller's rustc_version; the Chromium branch
+asks the retained updater for --print-package-version. The GCC toolchain
+resolves bin/rustc under the chosen sysroot and supports a compiler prefix.
+These branches were read as source data; GN and upstream scripts were not run.
+
+The engine DEPS declares 148 CIPD dependency entries containing
+155 package rows. The three platform GN
+declarations use revision 85cc21e94af590a267c1c7a47020d9b420f8a033.
+Ninja, Siso, reclient, Android tools and Java/library packages have separate
+pins and conditions. This is the complete CIPD declaration population in that
+retained DEPS, with conditions and platform placeholders left unevaluated.
+It does not establish which package instances were installed or invoked.
+
+The private receipt webrtc-gn-rust-cipd-declared-inputs.json
+(85088 bytes; SHA-256 e4b111582c4960c7215d4562d40fa447df0f3a3520b2f9b15f641fa5aa3972b6)
+binds six exact source members and retains eight GN fragments plus all
+CIPD declarations and referenced variables. Source-data controls rejected a
+changed GN pin, a missing declaration and an omitted custom-sysroot branch.
+Independent persisted readback passed for all six source bindings, 148 CIPD
+entries (155 package rows), eight fragments and three rejecting controls,
+including the inventory and review bindings.
+Effective arguments, selected graph, original tool/package/container digests,
+complete applied checkout/native reproduction and release acceptance remain open.
+
 ### Retained packaged native ELF notes
 
 The private `webrtc-m137.7151.07-elf-toolchain-notes.json` receipt binds the
