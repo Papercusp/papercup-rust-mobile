@@ -1759,3 +1759,30 @@ native inclusion, complete applied checkout, remaining DEPS/CIPD/tool
 inputs, original GN/toolchain invocation, native reproduction, final
 notices/distribution rights, exact signed candidate, actual recipient
 retrieval/fresh build and release acceptance remain open.
+
+### Retained pinned LLVM libunwind dependency source
+
+The retained engine DEPS selects `src/third_party/libunwind/src` at
+[`81e2cb40a70de2b6978e6d8658891ded9a77f7e3`](https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libunwind.git/+/81e2cb40a70de2b6978e6d8658891ded9a77f7e3).
+The private archive `webrtc-libunwind-81e2cb40-source.tar.gz` retains
+all 71 repository blobs and 9 directory trees, including root
+`bde2aec65ff76a7078e1b0e2515d498fedeb73ce`; there are no gitlinks.
+The archive is 168,086 bytes, SHA-256
+`bc9f3214560e9d3bae2949a39e9d03c5a60cf7c8fd85f24ecbf7e4e97489bc72`.
+Safe unique directory/blob paths, exact Git blob IDs, sizes, SHA-256,
+types and executable semantics passed readback. A second independent
+verifier reconstructed every Git tree bottom-up using only archive bytes
+and types/modes, then compared all recorded tree and blob identities.
+
+The receipt `webrtc-libunwind-81e2cb40-source.json` is 29,244 bytes,
+SHA-256 `e805ae98e904e09ddb876f7f71ea455b3d53ab3db1614cf23931900a77d91697`.
+The metadata was retained before the archive: 31,637 bytes, SHA-256
+`547ae9edd6cef0ff8c9346640871cc2d72c1337b3f89400780706a082fbc33e9`.
+The existing `implementationSourcePreparation.sources` inventory binds
+these files to the exact retained engine DEPS blob and digest.
+
+This is private source preparation. Original selected GN targets and
+native inclusion, complete applied checkout, remaining DEPS/CIPD/tool
+inputs, original GN/toolchain invocation, native reproduction, final
+notices/distribution rights, exact signed candidate, actual recipient
+retrieval/fresh build and release acceptance remain open.
