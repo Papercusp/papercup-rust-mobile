@@ -1609,14 +1609,52 @@ The existing build-source reference binds each child archive and receipt under
 Pinned crc32c CMake defaults enable tests, benchmarks and glog, which select
 these three child directories. The pinned Android builder instead delegates
 AAR generation to `build_aar.py` and separate ABI builds to GN/autoninja.
-The Chromium crc32c GN wrapper and original GN invocation are not retained,
-so this inspection does not establish their actual dependency selection.
+The Chromium crc32c GN wrapper is retained separately below. The original GN
+invocation remains unretained, so actual dependency selection is unmeasured.
 
 This completes source retention for the standalone crc32c parent and its exact
 three children as separate archives. Remaining WebRTC DEPS/CIPD/tool inputs,
 complete applied checkout, original GN/toolchain invocation, native reproduction,
 final notices/rights, exact signed candidate, actual recipient retrieval/fresh
 build and release acceptance remain open.
+
+### Retained pinned Chromium crc32c GN wrapper
+
+The engine DEPS and build-package VERSIONS both select Chromium `third_party`
+revision `8062e0e102496ff14a8c58b586f014527424953d`. Its `crc32c` subtree
+is retained as `webrtc-crc32c-gn-8062e0e1-source.tar.gz`: 1,823 bytes,
+SHA-256 `909f97c9f5860b11d640a7db6a8c8c45a65bac4f62c6c92e80e793a969f88e7b`.
+All five files and three directory trees passed exact Git identity, safe unique
+path, mode, size and digest checks. A separate offline reconstruction recovered
+subtree root `b98f3ef07a16d5e90b97a559a7123a95955665a2` from archive bytes.
+The retained 300-entry repository root links that exact subtree. Metadata was
+persisted before downloading source blobs; there are no subtree gitlinks.
+
+The receipt `webrtc-crc32c-gn-8062e0e1-source.json` is 18,199 bytes, SHA-256
+`fa6aeedc660cbcbc66ef090355bef58146db138abc0b16c0c64cc5cf3abe08a5`.
+The existing build-source reference binds the receipt, archive and metadata
+under crc32c's `gitlinkChildSourcePreparation.buildRouteInspection`.
+All 23 local source references in `BUILD.gn` resolve to the retained pinned
+crc32c parent or wrapper files, with their original bytes bound in the receipt.
+
+Static inspection shows four library `source_set` targets and separate test
+and benchmark targets. The library declares internal dependencies; the test
+and benchmark targets reference Chromium's separate googletest and
+google_benchmark labels. `CRC32C_TESTS_BUILT_WITH_GLOG=0` disables glog
+support in this wrapper. Its config header is a stub; `BUILD.gn` supplies
+the preprocessor definitions. These declarations differ from CMake's default
+child-repository selection and do not prove the original resolved GN graph.
+
+The pinned `README.chromium` reports
+`1.0.7.git-5998f8451548244de8cde7fab387a550e7c4497d`, while engine DEPS
+selects `d3d60ac6e0f16780bcfcc825385e1d338801a558`. Both texts are retained;
+the README version is not used as actual checkout evidence.
+
+No GN, upstream script, compiler or native payload was executed. Imported
+build/config closure, the original GN arguments, selected graph, toolchain
+and invocation remain unmeasured. Complete applied checkout, native
+reproduction, final notices/rights, exact signed candidate, actual recipient
+retrieval/fresh build and release acceptance remain open.
 
 ### Retained pinned compact_enc_det dependency source
 
