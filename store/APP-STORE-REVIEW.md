@@ -1987,10 +1987,26 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(207764 bytes; SHA-256 67ee4905e2dbb63c6bc4010f646177f8eec5918efdc2c7de97f8cea318573fbe)
+(235835 bytes; SHA-256 1b674db4bef02e34229e86325bfc29306773aebf1606c28f2e67c02057e4e7f3)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
+
+The receipt also retains four pinned root CIPD manifest/version files and
+`ensure_bootstrap` as source data. The main manifest declares twelve package
+templates, fifteen verified platforms and 153 resolved package/version/instance
+records; the separate ChromeOS Python 2 manifest declares one package and one
+resolved record. All 154 records match exactly one declared package/version.
+Both setup helpers reference the main manifest. `ensure_bootstrap` uses the
+current checkout, permits Python bootstrap to be disabled, then invokes CIPD,
+gsutil and pylint bootstraps; gsutil/pylint contents remain unretained.
+These declarations and recorded instance IDs are not observed installed
+packages or original build selections. No package download or upstream code
+execution was performed. Independent persisted checks verified all five blobs,
+both manifests, all 154 records, five source spans and four retained callers.
+One shell syntax-only parse passed. Five controls rejected changed source, an
+omitted source, a substituted instance-map fingerprint, a swapped version-file
+binding and a falsely observed installation.
 Independent persisted readback reconstructed the root Git tree and verified
 seven blobs, four exact archive-member bindings, twenty source/AST fragments
 and four existing GN/Ninja CIPD declaration rows. Controls rejected altered
