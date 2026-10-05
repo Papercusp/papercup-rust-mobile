@@ -1500,3 +1500,55 @@ applied checkout, remaining DEPS/CIPD/tools, original GN/toolchain invocation,
 native reproduction, final notices/rights, exact signed candidate, actual
 recipient retrieval/fresh build and release acceptance remain open. No upstream
 code was executed. Existing archives and incomplete caches are unchanged.
+
+### Retained pinned crc32c repository blobs and submodule boundary
+
+Engine DEPS selects `src/third_party/crc32c/src` at
+`d3d60ac6e0f16780bcfcc825385e1d338801a558` in Google's upstream repository.
+The private archive `webrtc-crc32c-d3d60ac6-source.tar.gz` retains every one
+of its 37 repository blobs: 29,851 bytes, SHA-256
+`37f7e216fd39a60e8e05d7e4301a934cc4857fc0fbd9a14aa72ec4f0d6deaf3d`.
+All seven directory Git identities match, including root
+`a13a450ad2445b98a18f93ec9f1907cae1b1784e`. The complete recursive tree,
+archive path set, blob identities, sizes, digests, types and modes passed
+persisted readback and an independent offline reconstruction.
+
+This tree has three `160000` gitlinks. The retained `.gitmodules` supplies
+their upstream URLs, but their source is not retained by this archive:
+
+| Path | Pinned child revision |
+| --- | --- |
+| `third_party/benchmark` | `e991355c02b93fe17713efe04cbc2e278e00fdbd` |
+| `third_party/glog` | `56523194b3ce1212414c93d55f31832e94677f55` |
+| `third_party/googletest` | `3b49be074d5c1340eeb447e6a8e78427051e675a` |
+
+Directory placeholders do not supply these child repositories. The receipt
+`webrtc-crc32c-d3d60ac6-source.json` records complete repository-blob
+retention and incomplete recursive source retention. It is 34,158 bytes,
+SHA-256 `22cf6fee02588961e91d923eb9118e48e6c9b1034460f41c50288a3a06e95e98`.
+The existing build-source reference binds both files and the unretained pins.
+No upstream code was executed, and no complete dependency checkout or native
+reproduction is claimed.
+
+### Retained pinned compact_enc_det dependency source
+
+Engine DEPS selects `src/third_party/ced/src` at
+`ba412eaaacd3186085babcd901679a48863c7dd5` in Google's upstream
+`google/compact_enc_det` repository. The private archive
+`webrtc-compact-enc-det-ba412eaa-source.tar.gz` retains all 27 blobs:
+301,917 bytes, SHA-256
+`a2c967e40a4f9448e8af8e9c2594a9bc517fa9d491b70e22f1c97b35f26bacb2`.
+All five directory identities match, including root
+`6fbb4c383f8957ff9c1d9d01ad1e117f3b11fc93`. The complete recursive tree
+has no gitlinks. Exact safe unique path sets, Git blobs, sizes, SHA-256,
+types and executable semantics passed persisted readback and an independent
+offline reconstruction. Git and raw archive modes are recorded separately.
+
+The receipt `webrtc-compact-enc-det-ba412eaa-source.json` is 23,147 bytes,
+SHA-256 `6fa6905c3fc61d06fd3132187220c4d18e1cd24598e3b10ff6a4f376223d1f5e`.
+The existing build-source reference binds both files to the engine DEPS pin.
+Complete applied checkout, remaining DEPS/CIPD/tools and crc32c gitlinks,
+original GN/toolchain invocation, native reproduction, final notices/rights,
+exact signed candidate, actual recipient retrieval/fresh build and release
+acceptance remain open. No upstream code was executed. Existing evidence and
+incomplete JNI-zero/buildtools caches are unchanged.
