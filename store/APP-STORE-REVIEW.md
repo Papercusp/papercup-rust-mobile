@@ -1733,3 +1733,29 @@ native inclusion, complete applied checkout, remaining DEPS/CIPD/tool
 inputs, original GN/toolchain invocation, native reproduction, final
 notices/distribution rights, exact signed candidate, actual recipient
 retrieval/fresh build and release acceptance remain open.
+
+### Retained pinned Libjpeg-turbo dependency source
+
+The retained engine DEPS selects `src/third_party/libjpeg_turbo` at
+[`e14cbfaa85529d47f9f55b0f104a579c1061f9ad`](https://chromium.googlesource.com/chromium/deps/libjpeg_turbo.git/+/e14cbfaa85529d47f9f55b0f104a579c1061f9ad).
+The private archive `webrtc-libjpeg-turbo-e14cbfaa-source.tar.gz` retains
+all 307 repository blobs and 12 directory trees, including root
+`6b2c91d1eb3a0e6354a940339a667414952c7eaa`; there are no gitlinks.
+The archive is 2,623,903 bytes, SHA-256
+`9cfe2170e2f04392a2deabd7ee8c11f34e933df30fbf722613f6a23f808583e9`.
+Safe unique directory/blob paths, exact Git blob IDs, sizes, SHA-256,
+types, executable semantics and all Git tree identities passed readback
+and a second independent offline reconstruction from archive bytes.
+
+The receipt `webrtc-libjpeg-turbo-e14cbfaa-source.json` is 99,800 bytes,
+SHA-256 `e48abb83a61d02cc5aa0504739fa4ac5489603585e26f14afb216b3862306d6a`.
+The metadata was retained before the archive: 107,649 bytes, SHA-256
+`a7c065169e8b009adb5e41500f4b845929d1a7c9509ae8a81501c4b2f132db85`.
+The existing `implementationSourcePreparation.sources` inventory binds
+these files to the retained engine DEPS blob and digest.
+
+This is private source preparation. Original selected GN targets and
+native inclusion, complete applied checkout, remaining DEPS/CIPD/tool
+inputs, original GN/toolchain invocation, native reproduction, final
+notices/distribution rights, exact signed candidate, actual recipient
+retrieval/fresh build and release acceptance remain open.
