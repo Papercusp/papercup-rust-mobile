@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(120374 bytes; SHA-256 a709332d96e36d2f9e05ddf93d72a4026563c3b7868f51b79f579f0241f09a7d)
+(144782 bytes; SHA-256 239b229262fa4d0c0158e06ed30de520041edfccdbc2c770f992dda120c032fe)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2024,9 +2024,23 @@ The GN Python wrapper reads `python3_bin_reldir.txt` to choose an interpreter.
 That file is absent from the tracked root listing; its original runtime contents
 and interpreter digest remain unobserved. `bootstrap_python3` selects its manifest
 from `.bleeding_edge` filesystem state and invokes CIPD plus `bootstrap/bootstrap.py`.
-Those manifests, bootstrap implementation and installed packages are not retained
-by this extension. `breakpad.py` is a legacy import marker; the root listing's
-`gclient.py` identity supplies no retained contents or original presence evidence.
+The same receipt now retains `bootstrap/bootstrap.py` and both manifests,
+with their complete nine-entry bootstrap directory listing. Independent persisted
+readback verified three blobs, two manifest declarations containing two package
+rows, four Python AST fragments and the retained bootstrap caller binding. Three
+controls rejected changed source bytes, a substituted Python version and an
+omitted marker writer.
+
+Both manifests declare `infra/3pp/tools/cpython3/${platform}` at
+`version:2@3.11.8.chromium.35` under the `python3` subdirectory. Their declared
+platform lists differ; the platform placeholder and manifest-selection condition
+remain unevaluated. `bootstrap/bootstrap.py` writes `python3_bin_reldir.txt` from
+the caller-supplied bootstrap directory. This identifies the configured marker
+writer, not the original marker contents or installed interpreter. Referenced
+Windows templates, installed CIPD instances and remaining depot_tools inputs are
+not retained by this extension. `breakpad.py` is a legacy import marker; the root
+listing's `gclient.py` identity supplies no retained contents or original presence
+evidence.
 
 No upstream script, interpreter, GN, Ninja or package was executed or fetched
 as a binary. Original outer tools, environment, executable/package digests,
