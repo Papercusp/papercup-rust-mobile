@@ -1984,6 +1984,39 @@ including the inventory and review bindings.
 Effective arguments, selected graph, original tool/package/container digests,
 complete applied checkout/native reproduction and release acceptance remain open.
 
+### Retained engine-inner GN and Ninja resolution inputs
+
+The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
+(70530 bytes; SHA-256 672efb8c24bdcf846e3628487e6c54498432dcc090206b4897089350a722208c)
+retains seven selected blobs at the engine's pinned inner depot_tools revision
+`fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
+This is selected source retention, not a complete depot_tools checkout.
+Independent persisted readback reconstructed the root Git tree and verified
+seven blobs, four exact archive-member bindings, twenty source/AST fragments
+and four existing GN/Ninja CIPD declaration rows. Controls rejected altered
+source bytes, a missing root entry and an incorrectly ordered Ninja search.
+
+The per-ABI builder invokes `gn` through PATH after prepending its unpinned
+outer depot_tools. The AAR path instead invokes `gn.py` with `sys.executable`;
+the retained build helper prefers the pinned inner depot_tools only when its
+`gclient.py` exists, then searches Python/PATH/ancestor locations. AAR Ninja
+is invoked directly at `src/third_party/ninja/ninja`, bypassing the wrapper.
+The GN shell uses `python-bin/python3`; the Ninja shell uses PATH `python3`.
+
+The retained GN wrapper prefers checkout `third_party/gn`, then buildtools
+new/old layouts; `CHROMIUM_BUILDTOOLS_PATH` can override that lookup.
+Its PATH fallback runs only if no buildtools platform path is found.
+The Ninja wrapper iterates a set of checkout bases, so their order is not
+fixed. It checks Siso/remote-execution output guards before running modifying
+commands. The engine DEPS declares GN in buildtools and conditional Ninja in
+third_party; those declarations do not prove installed or invoked packages.
+
+No upstream script, interpreter, GN, Ninja or package was executed or fetched
+as a binary. Original outer tools, environment, executable/package digests,
+effective GN graph, remaining import/interpreter/source closure, complete native
+reproduction, final notices/rights, candidate, recipient and release acceptance
+remain open.
+
 ### Retained packaged native ELF notes
 
 The private `webrtc-m137.7151.07-elf-toolchain-notes.json` receipt binds the
