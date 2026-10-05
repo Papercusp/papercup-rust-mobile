@@ -1276,3 +1276,30 @@ continue. Other external DEPS/CIPD sources, applied-source verification, build
 reproduction, final notices/rights, exact-candidate, recipient and existing
 release requirements remain open. No upstream script, hook, patch, compiler
 or native payload was executed.
+
+### Retained pinned WebRTC build dependency source
+
+The engine DEPS and retained package VERSIONS both select `src/build` from
+`webrtc-sdk/build` at `01021e6c12636951a6b4e5342e16b2101b352367`. This is
+the build dependency used by the engine; the separate builder repository
+above supplies the packaging recipe. The private archive
+`webrtc-build-01021e6c-source.tar.gz` contains 1,359 verified source files
+and is 1,666,356 bytes, SHA-256
+`71df114a33c8ad4600ed4302c610f9de776147fe33d030f5e8bb16323469a9f8`.
+
+All 274 directory trees match recomputed Git tree identities. Every unique
+safe archive file matches the complete pinned blob path set, Git blob, size,
+SHA-256 and executable semantics; the tree is not truncated and has no gitlinks.
+The GitHub archive transports regular files as `664`/`775`, while Git records
+`100644`/`100755`. The receipt records both modes separately and accepts only
+those measured group-write differences, preserving executable/type checks.
+Archive and receipt readback passed. The private per-file/tree census is
+`webrtc-build-01021e6c-source.json`, SHA-256
+`0810a3c2352bda3b4b68285a29bbde937ad5bf2adf27c8134c6992522556105b`; the existing build-source
+reference binds both artifacts.
+
+This is pristine dependency-source preparation. It does not establish the
+actual applied checkout, original toolchain/invocation, source-to-binary
+reproduction, remaining dependency inputs, final notices/rights, exact signed
+candidate, recipient retrieval/build or release acceptance. The incomplete
+JNI-zero cache remains 75 of 185 files. No upstream code was executed.
