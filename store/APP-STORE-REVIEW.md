@@ -1247,28 +1247,32 @@ Their complete Git blob identities match the patch's old-index prefixes.
 Readback checked each text's size, SHA-256 and Git blob identity, and verified
 that these four paths exactly cover the patch's external JNI-zero hunk targets.
 The receipt SHA-256 is
-`b9c2aa9834c4970b6728c656097eff1d7a369bd3967edd20d0b1b8675dba82c6`;
+`df5ec0fe6ae81aee98a30e3e2865f41a84febf55fae0b56b77746a95b17a3580`;
 the existing private build-source reference binds that receipt.
 
-The earlier attempts stopped on HTTP 429 and HTTP 503. This incremental
-resume reused all sixteen verified tree objects and all four retained patch
-inputs, then completed the directory-tree census: all 33 tree objects match
-recomputed Git tree identities and parent-child links. That complete path set
-contains 185 source files. Thirteen files are now retained, including the four
-unchanged patch inputs; 172 remain missing.
+The earlier attempts stopped on HTTP 429 and HTTP 503. On 2026-10-05 the
+resume first rehashed all 33 cached directory-tree objects and checked their
+parent-child links. The resulting complete path set contains 185 source files.
+All 13 retained files passed their pinned blob, path, mode, size and SHA-256
+checks before they were reused. The attempt retained 62 additional verified
+files: 75 are now cached and 110 remain missing. The four patch inputs above
+remain byte-for-byte unchanged.
 
-The cache is `webrtc-jni-zero-8062e0e1-trees.json`, SHA-256
-`725bb259b618f86c44937ecbf36bdf0611b0616e9b10a988f088d08747d13f0c`, and `webrtc-jni-zero-8062e0e1-blobs.tar`, SHA-256
-`67f2a43ce42ca537292442601d9f055913cc550fc685d7eca359be77155a1ae5`. Readback checked every retained tar member's path, Git blob,
-mode, size and SHA-256 against the pinned tree. The progress sidecar preserves
-the previous attempt and records nine newly retained files without truncating
-or redownloading the settled inputs.
+The tree cache is `webrtc-jni-zero-8062e0e1-trees.json`, SHA-256
+`725bb259b618f86c44937ecbf36bdf0611b0616e9b10a988f088d08747d13f0c`. The blob cache is
+`webrtc-jni-zero-8062e0e1-blobs.tar`, SHA-256
+`47aaaa86c68964a391c703ef376addb72591486eb6f56ceb1037365e94c40455`. Readback checked all 75
+unique tar members against the complete pinned tree and progress fingerprints.
+The progress sidecar, SHA-256
+`039ccb7fedf073ffba9068e60bcae68471f6620ae55c9456cf923e310560bb72`, preserves prior attempts and
+records the reused and newly retained files without redownloading settled data.
 
-The resumed acquisition stopped at `benchmarks/BUILD.gn` on HTTP 503 at
-2026-10-03T14:00:07Z; the response supplied no `Retry-After`. No automatic retry
+Acquisition stopped at `sample/javatests/AndroidManifest.xml` on HTTP 503 at
+2026-10-05T15:13:31Z; the response supplied no `Retry-After`. No automatic retry
 was performed. Full-subtree source retention and source archive creation remain
-false. Resume the missing files from the complete tree census and retained blob
-cache while respecting server rate signals. Other external DEPS/CIPD sources,
-applied-source verification, build reproduction, final notices/rights,
-exact-candidate, recipient and existing release requirements remain open.
-No upstream script, hook, patch, compiler or native payload was executed.
+false. Preserve the cache and honor upstream retry/backoff signals before
+resuming the missing files; independent dependency/tool input preparation can
+continue. Other external DEPS/CIPD sources, applied-source verification, build
+reproduction, final notices/rights, exact-candidate, recipient and existing
+release requirements remain open. No upstream script, hook, patch, compiler
+or native payload was executed.
