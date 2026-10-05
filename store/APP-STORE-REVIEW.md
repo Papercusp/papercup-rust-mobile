@@ -1786,3 +1786,32 @@ native inclusion, complete applied checkout, remaining DEPS/CIPD/tool
 inputs, original GN/toolchain invocation, native reproduction, final
 notices/distribution rights, exact signed candidate, actual recipient
 retrieval/fresh build and release acceptance remain open.
+
+### Retained pinned NASM assembler source
+
+The retained engine DEPS selects `src/third_party/nasm` at
+[`9f916e90e6fc34ec302573f6ce147e43e33d68ca`](https://chromium.googlesource.com/chromium/deps/nasm.git/+/9f916e90e6fc34ec302573f6ce147e43e33d68ca).
+The private archive `webrtc-nasm-9f916e90-source.tar.gz` retains
+all 1,208 repository blobs and 28 directory trees, including root
+`9da1f5eedddbc2c047953dcb69f8238c3c2cc851`; there are no gitlinks.
+The archive is 1,654,563 bytes, SHA-256
+`981e89fa0f1c18221b776163edcfca6d2f25578d58c43cd61b9453d806975d19`.
+Safe unique directory/blob paths, exact Git blob IDs, sizes, SHA-256,
+types and executable semantics passed readback. A second independent
+verifier reconstructed every Git tree bottom-up from archive bytes
+and types/modes, then compared all recorded tree and blob identities.
+The exact retained engine DEPS AST URL, Git blob and SHA-256 binding
+also passed verification.
+
+The receipt `webrtc-nasm-9f916e90-source.json` is 372,362 bytes,
+SHA-256 `b9b0677187a9cdd2a591839cec764fd3c65eb547eb31fe13a6d846004e962aa7`.
+The metadata was retained before the archive: 403,718 bytes, SHA-256
+`9732f4be2a06e27389d699e8f63214d1c0710d51d82e504c207343809a92d7f3`.
+The existing `implementationSourcePreparation.sources` inventory binds
+these files to the exact retained engine DEPS blob and digest.
+
+This is private assembler-source preparation. Original GN selection
+and assembler invocation, complete applied checkout, remaining
+DEPS/CIPD/tool inputs, original toolchain and native reproduction,
+final notices/distribution rights, exact signed candidate, actual
+recipient retrieval/fresh build and release acceptance remain open.
