@@ -1706,3 +1706,30 @@ invocation, native reproduction, final notices/rights, exact signed
 candidate, actual recipient retrieval/fresh build and release acceptance
 remain open. No upstream code was executed; the incomplete JNI-zero and
 buildtools caches and the recorded LSS/libyuv/libsrtp failures are unchanged.
+
+### Retained pinned OpenH264 dependency source
+
+The retained engine DEPS selects `src/third_party/openh264/src` at
+[`652bdb7719f30b52b08e506645a7322ff1b2cc6f`](https://github.com/cisco/openh264/commit/652bdb7719f30b52b08e506645a7322ff1b2cc6f).
+The private archive `webrtc-openh264-652bdb77-source.tar.gz` retains all
+740 repository blobs: 60,304,787 bytes, SHA-256
+`7a060916a9fcb63ba51d83a4f2388660c0b58797be547c4fa5c52e8d65660a85`.
+All 178 directory identities match, including root
+`a13ae6006ce07d60dd6fd3bd7db2912375b839d2`; the complete recursive tree has no gitlinks.
+Exact safe unique directory/blob path sets, Git blob IDs, sizes,
+SHA-256, types and executable semantics passed persisted readback and
+a second independent offline bottom-up Git-tree reconstruction.
+
+The receipt `webrtc-openh264-652bdb77-source.json` is 262,985 bytes,
+SHA-256 `580c92a149135400ddfd342700b6f81af22164cf23b3decbd96288ef7ba7bdc1`.
+The metadata was retained before downloading the archive; its
+290,197 bytes have SHA-256
+`a815a672d891f1a69eebe574bdef99f79bc6d4c5500d4ddb60777a968272b792`.
+The existing `implementationSourcePreparation.sources` inventory binds
+these files to the retained engine DEPS blob and digest.
+
+This is private source preparation. Original selected GN targets and
+native inclusion, complete applied checkout, remaining DEPS/CIPD/tool
+inputs, original GN/toolchain invocation, native reproduction, final
+notices/distribution rights, exact signed candidate, actual recipient
+retrieval/fresh build and release acceptance remain open.
