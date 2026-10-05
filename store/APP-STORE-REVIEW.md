@@ -1348,3 +1348,29 @@ explicitly marks complete tree enumeration and source retention false.
 The existing source reference records this as pending preparation. Preserve
 this cache and upstream backoff; the JNI-zero cache remains 75 of 185 files.
 Binary tools and the other existing release requirements remain open.
+
+### Retained pinned Libvpx dependency source
+
+Engine DEPS selects `src/third_party/libvpx/source/libvpx` at
+`ff1d193f4b9dfa9b2ced51efbb6ec7a69e58e88c`. The `webmproject/libvpx`
+repository resolves that exact commit. The private archive
+`webrtc-libvpx-ff1d193f-source.tar.gz` retains all 1,245 repository files:
+5,627,705 bytes, SHA-256
+`69dd79503f4d2a497a3e52d0f8679d7539b4bc4c019b8787edd8d620366505a6`.
+
+All 85 directory trees match recomputed Git identities, including root
+`e0323714cad9d5b0541b92e08d780e47c9a4fc35`. The tree is complete and has no
+gitlinks. Every unique safe archive file matches the pinned blob path set,
+Git blob, size, SHA-256, type and executable semantics. Git and archive modes
+are recorded separately; only the measured GitHub `664`/`775` group-write
+variants are accepted. The persisted archive passed a second full readback.
+The complete per-file/tree receipt is `webrtc-libvpx-ff1d193f-source.json`,
+SHA-256 `389f39ce8237606657dce722fcc1a94f4d9233af817edd39d91b37bc934b265a`;
+the existing private build-source reference binds both artifacts.
+
+This selection comes from engine DEPS. The retained package VERSIONS does
+not report a separate Libvpx checkout. Pristine source retention does not
+establish applied source, dependency closure, original GN/toolchain
+invocation, source-to-binary reproduction, final notices/rights, exact signed
+candidate, recipient retrieval/build or release acceptance. No upstream code
+was executed. The incomplete JNI-zero and buildtools caches are unchanged.
