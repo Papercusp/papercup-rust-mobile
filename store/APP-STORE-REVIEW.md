@@ -1916,6 +1916,41 @@ No upstream code was executed and no tool package
 was downloaded. Neither configured package identifies the original compiler;
 selected package digests, GN/build evidence and release acceptance remain open.
 
+### Retained Rust updater source and declared inputs
+
+The complete `rust` subtree at package-reported `src/tools` revision
+`ffcbc837bbb14d80d09147c2af5302ff6bd4bd69` is retained privately: 13 exact
+blobs, with Git identities, sizes, SHA-256 values and executable modes checked.
+The archive SHA-256 is `12c1b9398d8f2944fa0557b608e1569e9a2effa9f2307b264fb7204714360b05`
+(23180 bytes); its Rust tree is `71dec17060d0d2091bc3bdf9ed761ff15374674d`.
+The root/subtree tree listings and archive-only Rust tree reconstruction passed.
+This retains the Rust subtree; the rest of `src/tools` remains incomplete.
+
+The engine DEPS declares four conditional Rust GCS objects. Its Linux object
+is `Linux_x64/rust-toolchain-9fcc9cf4a202aadfe1f44722b39c83536eba3dba-2-llvmorg-21-init-1655-g7b473dfe.tar.xz`,
+with SHA-256 `4bf96a6d0d9bdff23475e556d925bb6846036859ea3868c2c74caa8e5fab42df`.
+The retained hook names `python3 src/tools/rust/update_rust.py`. That updater's
+configured package is `c8f94230282a8e8c1148f3e657f0199aad909228-1-llvmorg-21-init-9266-g09006611`,
+which differs from the DEPS declaration. It combines the Rust revision and
+subrevision with `CLANG_REVISION`, excluding the Clang subrevision. Its platform
+URL helper inherits `CDS_CLANG_BUCKET_OVERRIDE` from the retained Clang updater.
+
+The Rust updater can reuse an existing `VERSION` stamp only when it matches
+and no `.*_is_first_class_gcs` marker exists. Otherwise it removes the existing
+Rust toolchain directory, downloads its configured package and asserts the
+extracted stamp matches. Conditions, original marker/stamp state, environment,
+hook execution and the original compiler package digest remain unobserved.
+
+The private receipt `webrtc-tools-ffcbc837-rust-provenance.json`
+(13425 bytes; SHA-256 `9e2286c7fa6b4a46b3b9efd517b4284789d1a7918b1e67c01ea8aa40f371c3a7`)
+binds four retained inputs and records the four GCS declarations and eight
+source/AST fragments. Independent persisted readback passed for 13 blobs,
+two tree listings, those bindings/fragments and three rejecting controls
+(changed updater bytes, substituted package label and omitted marker exclusion).
+No upstream script or compiler was executed and no toolchain package was downloaded.
+This is configured-source preparation; complete source/tool closure, effective
+GN graph, native reproduction, candidate, recipient and release acceptance remain open.
+
 ### Retained packaged native ELF notes
 
 The private `webrtc-m137.7151.07-elf-toolchain-notes.json` receipt binds the
