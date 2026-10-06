@@ -2360,3 +2360,22 @@ saved-byte/tree/mode/AST/import/helper/caller/lookup declaration readback passed
 with six rejecting controls. Removing this extension restores the exact prior
 receipt, reference and review. Verification input fingerprints are distinct from
 final bindings. The earlier source proofs retain their scopes.
+
+### Pinned depot_tools commit-footer declarations
+
+The private wrapper receipt retains `git_footers.py` (9236 bytes) at
+`fa8fc854e1766b86f10c9a15902cf3cc23adaac2` as static source data. Its parser
+reads the last nonblank paragraph, normalizes footer keys, excludes `http` and
+`https` keys, and gives later entries precedence. Change-Id insertion follows
+Bug/Issue/Test/Feature keys. The CLI declares Git-log or stdin input and optional
+JSON-file output. Two retained helpers and the retained `git_cl.py` caller sites
+are bound by byte and AST identities.
+
+Original interpreter, Git/ref/stdin, configuration, environment, filesystem and
+JSON-output choices remain unobserved. This source was not executed. Complete
+checkout/runtime/native reproduction, final notices/rights, signed candidate,
+recipient retrieval/fresh build and release acceptance remain open. Earlier
+source proofs retain their scopes. Independent saved-byte/tree/mode/AST/import,
+helper/caller and declaration readback passed, with six rejecting controls.
+Removing this extension restores the exact prior receipt, reference and review.
+Verification input fingerprints remain distinct from final bindings.
