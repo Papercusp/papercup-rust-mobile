@@ -108,8 +108,11 @@ jobs:
       # invalidates proof. Earlier pin b7e4e4e4 was a half-swept commit
       # (proxy.ts imported isFastFailPrecheck before mcp-proxy-beats.ts
       # exported it), so the host bundle failed in run 37531012396; 2a0d28b2
-      # is the first pushed staging commit carrying both halves.
-      PAPERCUP_OPERATOR_SHA: 2a0d28b2351da53fbbb31143e0a03700e8096920
+      # is the first pushed staging commit carrying both halves. 88409fd9
+      # adds WI-10006976: the host-bundle restricted-hold gate no longer
+      # fails closed on GitHub Actions, where no Papercusp operator exists
+      # (run 37534227373 failed there at 2a0d28b2).
+      PAPERCUP_OPERATOR_SHA: 88409fd94dfcea7aa9fedcfaede5c2d78ea4b31c
     concurrency:
       group: android-check-${{ github.ref }}
       cancel-in-progress: false
