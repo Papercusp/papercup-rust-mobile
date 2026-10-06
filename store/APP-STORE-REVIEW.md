@@ -2524,3 +2524,24 @@ mode/qualified-AST/import/edge/helper/caller checks passed with fourteen rejecti
 controls, including omitted literal text, snippets as files and false runtime/
 nested/requests claims. Removing this extension restores all three exact prior
 byte streams. Verification inputs remain separate from final saved fingerprints.
+
+## Pinned depot_tools metadata root source preparation
+
+Twelve pinned metadata root files are retained in the existing wrapper provenance
+receipt as static source data, including discover.py, validate.py, their root
+support modules, README and ownership files. The retained parent presubmit caller
+declares affected-file filtering, deleted-file exclusion, injected reader and
+repository root, open-source validation and error/warning output mapping.
+
+Nested metadata/fields and metadata/tests remain unretained. Original metadata
+files, license paths, repository-root/filesystem decisions, interpreter/packages
+and injected API outcomes remain unobserved. Upstream sources were neither imported
+nor executed. Complete source/runtime/native reproduction, final rights/notices,
+exact signed candidate, recipient retrieval/fresh build and release acceptance
+remain open. WI-10006524 retains its separate unconfirmed scope.
+
+Independent saved-byte/root/package-tree/per-entry-mode/qualified-AST/import/
+edge/helper/caller and exact test API declaration checks passed with sixteen
+rejecting controls. Removing this extension restores all three exact prior byte
+streams. Verification inputs remain separate from final saved fingerprints.
+Earlier proofs retain their original scopes.
