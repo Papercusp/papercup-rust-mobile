@@ -2417,4 +2417,7 @@ Original interpreter/VPython packages, formatter binaries/JARs, checkout,
 configuration, environment, filesystem and child process outcomes remain
 unobserved. Full checkout/native reproduction, final notices/rights, signed
 candidate, recipient retrieval and release acceptance remain open. Earlier
-proofs retain their scopes. Saved-byte verification is pending.
+proofs retain their scopes. Independent saved-byte/tree/per-entry-mode/AST/import,
+helper/caller and process-declaration readback passed with seven rejecting controls.
+Removing this extension restores the exact prior receipt, reference and review.
+Verification input fingerprints remain distinct from final saved-file bindings.
