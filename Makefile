@@ -7,7 +7,7 @@
 .PHONY: help build-rust build-android build-ios install-android \
         bindings-kotlin bindings-swift test test-ios test-ios-ui \
         verify-ios-release test-ios-release release-ios check \
-        fmt fmt-check clippy lint-android test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices \
+        fmt fmt-check clippy lint-android test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-cloud-pending \
         test-ios-host-health test-ios-template-runner bindings-smoke install-hooks clean tokens tokens-check
 
 help:
@@ -45,7 +45,7 @@ help:
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-git-hooks
+check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-store-cloud-pending test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-git-hooks
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -105,6 +105,10 @@ test-android-library-notices:
 
 test-store-packet-scope:
 	bash tools/tests/store-packet-scope-test.sh
+
+# Cloud-workspace store copy stays pending until the relay ships (D-016).
+test-store-cloud-pending:
+	bash tools/tests/store-cloud-pending-test.sh
 
 # The pre-push hook must skip automated git-sync pushes (WI-10006870).
 test-git-hooks:

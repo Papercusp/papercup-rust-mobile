@@ -20,11 +20,10 @@ respond from your phone.
 ## Full description
 
 Papercusp turns your iPhone or Android phone into a voice and chat companion
-for the Papercusp operator you control, whether it runs on your own desktop or
-in a Papercusp cloud workspace.
+for the Papercusp operator you control on your own desktop.
 
-In the operator's Settings → Remote access → Pair a phone, on your desktop or
-in your cloud workspace, scan the code or paste the pairing payload. Then:
+In the operator's Settings → Remote access → Pair a phone, scan the code or
+paste the pairing payload. Then:
 
 - Talk or type to your operator from anywhere.
 - See plans, current fleets and pots, agent availability, notifications, and recent work.
@@ -36,10 +35,8 @@ in your cloud workspace, scan the code or paste the pairing payload. Then:
 
 Papercusp has no ads and does not use behavioral analytics or sell personal
 data. Public internet connections use encrypted HTTPS. Local-network access is
-limited to connecting directly to a paired desktop. Cloud workspaces connect
-through Papercusp's relay; for a workspace in your own cloud account, content is
-end-to-end encrypted between your phone and that workspace. A paired Papercusp
-desktop or cloud workspace is required for live operator features.
+limited to connecting directly to a paired desktop. A paired Papercusp desktop
+is required for live operator features.
 
 ## Keywords (iOS)
 
@@ -80,3 +77,22 @@ Keep the official wordmark and the DejaVu Sans font available during rendering;
 inspect the exported PNG before upload. The graphic is prepared locally and
 does not establish that a candidate or store listing has shipped. Final Android
 screenshots still come from the exact accepted signed candidate after P-009.
+
+## Pending: cloud workspace copy (do not submit)
+
+**Pending — not yet available. Do not paste into App Store Connect or Google
+Play.** Neither platform can pair with a Papercusp cloud workspace until the
+device relay (P-015) is verified live on that platform. Only then move these
+sentences into the sections above, together with the pending section of
+`store/PRIVACY-POLICY.md`. `tools/tests/store-cloud-pending-test.sh` fails if
+cloud-workspace wording appears above this heading.
+
+- Full description, first paragraph: "…for the Papercusp operator you control,
+  whether it runs on your own desktop or in a Papercusp cloud workspace."
+- Pairing sentence: "In the operator's Settings → Remote access → Pair a phone,
+  on your desktop or in your cloud workspace, scan the code or paste the
+  pairing payload."
+- Security paragraph: "Cloud workspaces connect through Papercusp's relay; for
+  a workspace in your own cloud account, content is end-to-end encrypted
+  between your phone and that workspace. A paired Papercusp desktop or cloud
+  workspace is required for live operator features."
