@@ -68,7 +68,7 @@ jobs:
         run: cargo test --workspace --all-targets
 
       - name: Native test result guard regressions
-        run: make test-ios-template-runner
+        run: make test-ios-template-runner test-ios-archive-validator
 
   uniffi-bindings:
     name: UniFFI bindings (Linux)

@@ -140,6 +140,11 @@ test-ios-template-runner:
 test-p016-runner:
 	bash tools/tests/verify-byoc-cloud-relay-test.sh
 
+# P-009 archive validation (identity, SDK, device slice, privacy, signing):
+# fixture archives, runs on Linux.
+test-ios-archive-validator:
+	bash tools/tests/validate-ios-archive-test.sh
+
 build-rust:
 	cargo build --workspace
 
