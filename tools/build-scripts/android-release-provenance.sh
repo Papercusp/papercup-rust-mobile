@@ -1311,15 +1311,116 @@ assert_canonical_artifact() {
         || die "non-canonical Android artifact path: got $supplied_real, expected $expected_real"
 }
 
+# Publication gate. tools/run-android-checks.sh records one pass per phase,
+# bound to the clean commit it checked; a candidate may only be written or
+# verified when every required phase passed for exactly that commit. A failed,
+# skipped, dirty-tree or other-commit run leaves no usable record, so failed
+# checks block publication instead of merely being reported.
+CHECKS_DIR_REL="android/app/build/outputs/papercusp-android-checks"
+REQUIRED_CHECK_PHASES=(host connected)
+
+checks_record_path() {
+    printf '%s/%s/%s.json\n' "$REPO_ROOT" "$CHECKS_DIR_REL" "$1"
+}
+
+valid_check_phase() {
+    [[ "$1" == host || "$1" == connected ]]
+}
+
+# Usage: checks-pass <phase> <start-commit|dirty>. Called by the check runner
+# only after the phase passed; <start-commit> is HEAD captured before the
+# phase ran on a clean tree, so a run whose source moved or was dirty at either
+# end records nothing.
+record_checks_pass() {
+    local phase="$1" start="$2" record commit dirty tmp
+    valid_check_phase "$phase" || die "check phase must be host or connected (got $phase)"
+    record="$(checks_record_path "$phase")"
+    rm -f "$record"
+    dirty="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=normal)"
+    commit="$(source_commit)"
+    if [[ "$start" == dirty || -n "$dirty" ]]; then
+        echo "==> Android $phase checks passed on a dirty tree; no publishable pass recorded (commit, then re-run)" >&2
+        return 0
+    fi
+    [[ "$start" =~ ^[0-9a-f]{40}$ ]] || die "checks-pass start commit must be a full SHA or 'dirty' (got $start)"
+    if [[ "$start" != "$commit" ]]; then
+        echo "==> Android $phase checks started at $start but HEAD is now $commit; no publishable pass recorded" >&2
+        return 0
+    fi
+    mkdir -p "$(dirname "$record")"
+    tmp="${record}.tmp.$$"
+    PHASE="$phase" SOURCE_COMMIT="$commit" PASSED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)" node - "$tmp" <<'NODE'
+const fs = require('node:fs');
+const record = {
+  schemaVersion: 1,
+  phase: process.env.PHASE,
+  result: 'pass',
+  sourceCommit: process.env.SOURCE_COMMIT,
+  sourceDirty: false,
+  passedAt: process.env.PASSED_AT,
+  runner: 'tools/run-android-checks.sh',
+};
+fs.writeFileSync(process.argv[2], `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
+NODE
+    mv -f "$tmp" "$record"
+    echo "==> Recorded Android $phase check pass for $commit: $record"
+}
+
+# Validate check-pass records (files) or embedded manifest entries against one
+# commit. Prints the validated records as one JSON object keyed by phase.
+check_records_json() {
+    local commit="$1" source="$2"
+    EXPECTED_COMMIT="$commit" PHASES="${REQUIRED_CHECK_PHASES[*]}" CHECKS_DIR="$REPO_ROOT/$CHECKS_DIR_REL" \
+        MANIFEST="$MANIFEST" SOURCE="$source" node <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const fail = (message) => { console.error(`ERROR: publication gate: ${message}`); process.exit(1); };
+const phases = process.env.PHASES.split(' ');
+let embedded = null;
+if (process.env.SOURCE === 'manifest') {
+  embedded = JSON.parse(fs.readFileSync(process.env.MANIFEST, 'utf8')).checks;
+  if (!embedded || typeof embedded !== 'object') fail('manifest carries no passing check records');
+}
+const out = {};
+for (const phase of phases) {
+  let record;
+  if (embedded) {
+    record = embedded[phase];
+    if (!record) fail(`manifest carries no passing ${phase} check record`);
+  } else {
+    const file = path.join(process.env.CHECKS_DIR, `${phase}.json`);
+    if (!fs.existsSync(file)) {
+      fail(`no passing Android ${phase} check record for ${process.env.EXPECTED_COMMIT}; run 'bash tools/run-android-checks.sh full' on this clean commit first`);
+    }
+    try { record = JSON.parse(fs.readFileSync(file, 'utf8')); }
+    catch (error) { fail(`cannot parse ${phase} check record: ${error.message}`); }
+  }
+  if (record.schemaVersion !== 1 || record.phase !== phase || record.result !== 'pass') fail(`${phase} check record is not a pass record`);
+  if (record.sourceCommit !== process.env.EXPECTED_COMMIT) {
+    fail(`${phase} checks passed for ${record.sourceCommit}, not for candidate source ${process.env.EXPECTED_COMMIT}`);
+  }
+  if (record.sourceDirty !== false) fail(`${phase} checks ran on a dirty tree`);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(record.passedAt || '')) fail(`${phase} check record has no valid passedAt`);
+  out[phase] = record;
+}
+process.stdout.write(JSON.stringify(out));
+NODE
+}
+
+assert_checks_passed() {
+    check_records_json "$1" files >/dev/null || exit 1
+}
+
 write_manifest() {
     local version="$1" apk="${2:-$REPO_ROOT/$APK_REL}" aab="${3:-$REPO_ROOT/$AAB_REL}"
-    local commit analyzer apk_version apk_version_code expected_version_code built_at tmp
+    local commit analyzer apk_version apk_version_code expected_version_code built_at tmp checks
     [[ -n "$version" ]] || die "release version is required"
     expected_version_code="$(version_code_for "$version")"
     assert_canonical_artifact "$apk" "$APK_REL"
     assert_canonical_artifact "$aab" "$AAB_REL"
     assert_clean_source
     commit="$(source_commit)"
+    checks="$(check_records_json "$commit" files)" || exit 1
     analyzer="$(resolve_apkanalyzer)"
     apk_version="$("$analyzer" manifest version-name "$apk")"
     [[ "$apk_version" == "$version" ]] \
@@ -1337,7 +1438,7 @@ write_manifest() {
         APK_SIZE="$(stat -c%s "$apk")" APK_SHA256="$(sha256_file "$apk")" \
         AAB_SIZE="$(stat -c%s "$aab")" AAB_SHA256="$(sha256_file "$aab")" \
         SOURCE_SIZE="$(stat -c%s "$REPO_ROOT/$SOURCE_REL")" SOURCE_SHA256="$(sha256_file "$REPO_ROOT/$SOURCE_REL")" \
-        node - "$tmp" <<'NODE'
+        CHECKS="$checks" node - "$tmp" <<'NODE'
 const fs = require('node:fs');
 const out = process.argv[2];
 const artifact = (kind, relativePath, size, sha256) => ({
@@ -1358,6 +1459,7 @@ const manifest = {
     aab: artifact('aab', 'android/app/build/outputs/bundle/release/app-release.aab', process.env.AAB_SIZE, process.env.AAB_SHA256),
     source: artifact('source', 'android/app/build/outputs/papercusp-mobile-source.tar.gz', process.env.SOURCE_SIZE, process.env.SOURCE_SHA256),
   },
+  checks: JSON.parse(process.env.CHECKS),
 };
 fs.writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
 NODE
@@ -1478,6 +1580,7 @@ for (const [kind, rel] of [
   if (!/^[0-9a-f]{64}$/.test(entry.sha256) || hashFile(file) !== entry.sha256) fail(`${kind} sha256 mismatch`);
 }
 NODE
+    check_records_json "$commit" manifest >/dev/null || exit 1
     source_archive verify "$commit"
 }
 
@@ -1490,6 +1593,17 @@ case "${1:-}" in
         [[ $# -eq 2 ]] || die "usage: $0 verify <version>"
         verify_manifest "$2"
         echo "==> Verified Android release provenance for $2"
+        ;;
+    checks-pass)
+        [[ $# -eq 3 ]] || die "usage: $0 checks-pass <host|connected> <start-commit|dirty>"
+        record_checks_pass "$2" "$3"
+        ;;
+    checks-gate)
+        [[ $# -eq 1 ]] || die "usage: $0 checks-gate"
+        assert_clean_source
+        commit="$(source_commit)"
+        assert_checks_passed "$commit"
+        echo "==> Android checks passed for release source $commit"
         ;;
     render)
         [[ $# -eq 1 ]] || die "usage: $0 render"
@@ -1533,6 +1647,6 @@ case "${1:-}" in
         verify_source_build notices
         ;;
     *)
-        die "usage: $0 {write <version> [apk] [aab]|verify <version>|render|path|record|source-archive [jna [source-directory]]|source-notices|source-verify-build [host|android|android-apk|jna-inputs|jna-configure|jna-native [package-directory [abi]]]}"
+        die "usage: $0 {write <version> [apk] [aab]|verify <version>|checks-pass <host|connected> <start-commit|dirty>|checks-gate|render|path|record|source-archive [jna [source-directory]]|source-notices|source-verify-build [host|android|android-apk|jna-inputs|jna-configure|jna-native [package-directory [abi]]]}"
         ;;
 esac

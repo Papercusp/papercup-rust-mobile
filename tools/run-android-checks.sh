@@ -934,7 +934,19 @@ ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_HOME ANDROID_SDK_ROOT
 export PATH="$ANDROID_HOME/platform-tools:$PATH"
 
+# A phase that passes records a publication pass bound to the clean commit it
+# started from (tools/build-scripts/android-release-provenance.sh checks-pass);
+# release provenance refuses a candidate without both host and connected passes.
+phase_start() {
+    if [[ -z "$(git status --porcelain --untracked-files=normal)" ]]; then
+        git rev-parse HEAD
+    else
+        echo dirty
+    fi
+}
+
 if [[ "$mode" != connected ]]; then
+    host_start="$(phase_start)"
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace --all-targets
@@ -950,9 +962,11 @@ if [[ "$mode" != connected ]]; then
         :app:lintRelease --rerun-tasks
     bash tools/tests/android-privacy-permissions-test.sh
     verify_results android/app/build host
+    tools/build-scripts/android-release-provenance.sh checks-pass host "$host_start"
 fi
 
 if [[ "$mode" != host ]]; then
+    connected_start="$(phase_start)"
     mapfile -t devices < <(adb devices | awk 'NR>1 && $2=="device"{print $1}')
     [[ ${#devices[@]} == 1 ]] || {
         echo 'Android native gate requires exactly one connected test device.' >&2
@@ -968,4 +982,5 @@ if [[ "$mode" != host ]]; then
     rm -rf android/app/build/outputs/androidTest-results/connected/debug
     ANDROID_SERIAL="$device" android/gradlew -p android :app:connectedDebugAndroidTest --rerun-tasks
     verify_results android/app/build connected
+    tools/build-scripts/android-release-provenance.sh checks-pass connected "$connected_start"
 fi

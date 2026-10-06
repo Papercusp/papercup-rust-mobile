@@ -151,6 +151,8 @@ verify_16kb_alignment() {
 if [ -f android/gradlew ]; then
     cd android
     if [ "$BUILD_MODE" = "release" ]; then
+        # Refuse before the expensive build: provenance write repeats this gate.
+        "$REPO_ROOT/tools/build-scripts/android-release-provenance.sh" checks-gate
         echo "==> Assembling Android release APK + AAB"
         ./gradlew :app:assembleRelease :app:bundleRelease
         verify_packaged_abis \

@@ -75,6 +75,66 @@ run_helper() {
     PAPERCUP_MOBILE_ROOT="$TMP" PAPERCUP_APKANALYZER="$TMP/bin/apkanalyzer" "$HELPER" "$@"
 }
 
+CHECKS_DIR="$TMP/android/app/build/outputs/papercusp-android-checks"
+# Simulates tools/run-android-checks.sh finishing both phases on clean HEAD.
+record_passes() {
+    local head
+    head="$(git -C "$TMP" rev-parse HEAD)"
+    run_helper checks-pass host "$head" >/dev/null
+    run_helper checks-pass connected "$head" >/dev/null
+}
+
+# Publication gate: without passing check records for this exact commit, no
+# candidate can be written. These controls run before any record exists.
+expect_gate_refusal() {
+    local label="$1" log="$TMP/bin/gate-$2.log"
+    shift 2
+    if "$@" >"$log" 2>&1; then
+        fail "$label"
+    fi
+    grep -q 'publication gate' "$log" || fail "$label (refused for an unrelated reason: $(tail -1 "$log"))"
+}
+expect_gate_refusal 'release write passed without any Android check pass record' no-records \
+    run_helper write 0.0.17 "$APK" "$AAB"
+expect_gate_refusal 'checks-gate passed without any Android check pass record' gate-no-records \
+    run_helper checks-gate
+HEAD_SHA="$(git -C "$TMP" rev-parse HEAD)"
+run_helper checks-pass host "$HEAD_SHA" >/dev/null
+expect_gate_refusal 'release write passed with only the host phase recorded' host-only \
+    run_helper write 0.0.17 "$APK" "$AAB"
+run_helper checks-pass connected dirty >/dev/null 2>&1
+[[ ! -f "$CHECKS_DIR/connected.json" ]] || fail 'a check run that started dirty recorded a publishable pass'
+run_helper checks-pass connected "$(printf '0%.0s' {1..40})" >/dev/null 2>&1
+[[ ! -f "$CHECKS_DIR/connected.json" ]] || fail 'a check run whose source moved recorded a publishable pass'
+printf 'uncommitted\n' >"$TMP/uncommitted.txt"
+run_helper checks-pass connected "$HEAD_SHA" >/dev/null 2>&1
+rm -f "$TMP/uncommitted.txt"
+[[ ! -f "$CHECKS_DIR/connected.json" ]] || fail 'a check run that ended dirty recorded a publishable pass'
+run_helper checks-pass connected "$HEAD_SHA" >/dev/null
+python3 - "$CHECKS_DIR/connected.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+record = json.load(open(path))
+record['sourceCommit'] = 'f' * 40
+json.dump(record, open(path, 'w'))
+PY
+expect_gate_refusal 'release write accepted a check pass recorded for another commit' other-commit \
+    run_helper write 0.0.17 "$APK" "$AAB"
+python3 - "$CHECKS_DIR/connected.json" "$HEAD_SHA" <<'PY'
+import json, sys
+path = sys.argv[1]
+record = json.load(open(path))
+record.update(sourceCommit=sys.argv[2], result='fail')
+json.dump(record, open(path, 'w'))
+PY
+expect_gate_refusal 'release write accepted a failed check record' failed-record \
+    run_helper write 0.0.17 "$APK" "$AAB"
+[[ ! -f "$TMP/android/app/build/outputs/papercusp-release-provenance.json" ]] \
+    || fail 'a refused publication gate still produced a provenance manifest'
+record_passes
+run_helper checks-gate >/dev/null || fail 'checks-gate refused passing records for clean HEAD'
+
+record_passes
 run_helper write 0.0.17 "$APK" "$AAB" >/dev/null
 run_helper verify 0.0.17 >/dev/null
 
@@ -90,7 +150,35 @@ if (manifest.sourceCommit !== commit || manifest.sourceDirty !== false) process.
 if (manifest.artifacts.apk.sha256 !== hash(apk) || manifest.artifacts.aab.sha256 !== hash(aab)) process.exit(1);
 const source = manifest.artifacts.source;
 if (!source || source.path !== 'android/app/build/outputs/papercusp-mobile-source.tar.gz') process.exit(1);
+for (const phase of ['host', 'connected']) {
+  const check = manifest.checks?.[phase];
+  if (!check || check.result !== 'pass' || check.sourceCommit !== commit || check.sourceDirty !== false) process.exit(1);
+}
 NODE
+
+# The candidate carries its check passes; verify refuses a manifest whose
+# embedded passes were removed or rebound, even after the on-disk records go.
+cp "$MANIFEST" "$TMP/bin/manifest-gate-backup.json"
+rm -rf "$CHECKS_DIR"
+run_helper verify 0.0.17 >/dev/null || fail 'verify depended on local check records instead of the manifest'
+for tamper in drop-connected rebind-host fail-host; do
+    python3 - "$MANIFEST" "$tamper" <<'PY'
+import json, sys
+path, tamper = sys.argv[1:]
+manifest = json.load(open(path))
+if tamper == 'drop-connected':
+    del manifest['checks']['connected']
+elif tamper == 'rebind-host':
+    manifest['checks']['host']['sourceCommit'] = 'e' * 40
+else:
+    manifest['checks']['host']['result'] = 'fail'
+json.dump(manifest, open(path, 'w'))
+PY
+    expect_gate_refusal "verify accepted a manifest with tampered check passes ($tamper)" "verify-$tamper" \
+        run_helper verify 0.0.17
+    cp "$TMP/bin/manifest-gate-backup.json" "$MANIFEST"
+done
+run_helper verify 0.0.17 >/dev/null
 
 SOURCE="$TMP/android/app/build/outputs/papercusp-mobile-source.tar.gz"
 python3 - "$SOURCE" <<'PY'
@@ -174,6 +262,7 @@ git -C "$TMP" rm -q .gitattributes
 printf 'source\n' >"$TMP/source.txt"
 git -C "$TMP" add source.txt
 git -C "$TMP" commit -qm restore-source
+record_passes
 run_helper write 0.0.17 "$APK" "$AAB" >/dev/null
 
 # The candidate record must be GENERATED into gitignored build output, and
@@ -245,6 +334,7 @@ checksum = "abababababababababababababababababababababababababababababababab"
 LOCK
 git -C "$TMP" add Cargo.toml Cargo.lock src/lib.rs
 git -C "$TMP" commit -qm source-build-fixture
+record_passes
 run_helper write 0.0.17 "$APK" "$AAB" >/dev/null
 
 DEPENDENCIES="$TMP/android/app/build/outputs/papercusp-rust-dependencies.tar.gz"
@@ -412,6 +502,7 @@ PY
 printf '#[no_mangle]\npub extern "C" fn delivered_value() -> u32 { source_proof_dependency::value() }\n' >"$TMP/src/lib.rs"
 git -C "$TMP" add src/lib.rs
 git -C "$TMP" commit -qm restore-source-build-fixture
+record_passes
 run_helper write 0.0.17 "$APK" "$AAB" >/dev/null
 run_helper source-verify-build host >/dev/null
 echo 'Offline exported-source compilation PASS: real locked dependency and eight rejecting controls'
@@ -474,6 +565,7 @@ PY
 chmod +x "$TMP/android/gradlew"
 git -C "$TMP" add android/gradlew tools/build-scripts/resolve-java-home.sh tools/build-scripts/verify-android-uniffi-abi.sh
 git -C "$TMP" commit -qm exported-apk-orchestration-fixture
+record_passes
 run_helper write 0.0.17 "$APK" "$AAB" >/dev/null
 REAL_CARGO="$(command -v cargo)"
 cat >"$TMP/bin/cargo" <<'SH'
@@ -582,6 +674,9 @@ fi
 truncate -s 2048 "$APK"
 printf 'apk' | dd of="$APK" conv=notrunc status=none
 
+# Passing check records exist for HEAD, so these refusals are the version and
+# clean-source checks, not the publication gate.
+record_passes
 if FAKE_APK_VERSION=9.9.9 run_helper write 0.0.17 "$APK" "$AAB" >/dev/null 2>&1; then
     echo "FAIL: APK version mismatch produced provenance" >&2
     exit 1
