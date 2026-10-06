@@ -224,6 +224,42 @@ reaches CI after it is on the operator's `origin/staging` and the pin is bumped
 to a pushed commit containing it. Dispatch a run with
 `gh workflow run ci.yml -R Papercusp/papercup-rust-mobile`.
 
+### TestFlight (signed iPhone builds)
+
+`.github/workflows/testflight.yml` builds a signed App Store IPA on the macOS 26
+runner and uploads it to App Store Connect, where it appears in TestFlight. It is
+dispatch only, because every run uses up a build number:
+
+```sh
+gh workflow run testflight.yml -R Papercusp/papercup-rust-mobile            # build number = run number
+gh workflow run testflight.yml -R Papercusp/papercup-rust-mobile \
+  -f build_number=42 -f upload=false                                         # signed export only
+```
+
+Its first step, `ios-ci-signing.sh require-secrets`, runs before any toolchain
+setup. It prints `MISSING_SECRET: <name>` for every absent repository secret and
+rejects a malformed team ID or non-base64 file:
+
+| Repository secret | Contents |
+|---|---|
+| `APPLE_TEAM_ID` | 10-character Apple Developer team ID |
+| `IOS_DIST_CERT_P12_BASE64` | base64 of the Apple Distribution certificate + private key (`.p12`) |
+| `IOS_DIST_CERT_PASSWORD` | password of that `.p12` |
+| `IOS_APPSTORE_PROFILE_BASE64` | base64 of the App Store provisioning profile for `com.papercuspai.operator.mobile` (Push Notifications enabled) |
+| `ASC_API_KEY_ID` | App Store Connect API key ID |
+| `ASC_API_ISSUER_ID` | App Store Connect issuer ID |
+| `ASC_API_KEY_P8_BASE64` | base64 of that key's `AuthKey_<id>.p8` |
+
+`ios-ci-signing.sh install` then refuses a profile that names another team or
+app, lists devices, allows debugging, lacks production push, has expired, or
+does not contain the imported certificate. It imports the identity into a
+temporary keychain under `$RUNNER_TEMP`, and `cleanup` (an `always()` step)
+deletes it. `release-ios.sh` signs manually in this mode
+(`PAPERCUP_SIGNING_STYLE=manual`). The profile reaches only the app target, via
+`PAPERCUP_APP_PROVISIONING_PROFILE` in `ios/project.yml`. Local
+`make release-ios` keeps automatic signing through the Mac's Xcode account.
+`make test-ios-signing` covers all of this with fixtures.
+
 ## Known issues
 
 - **Xcode 16.2 destination race**: `xcodebuild` occasionally fails first-try with "iOS 18.2 is not installed" because the SDK and the only-installed 18.3.1 runtime mismatch on the destination resolver. The `make test-ios` wrapper retries 8x. Switching to Xcode 16.3 resolves it.

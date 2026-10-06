@@ -11,6 +11,8 @@ RUN_ID="${PAPERCUP_RELEASE_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 RELEASE_ROOT="${PAPERCUP_RELEASE_DIR:-$REPO_ROOT/ios/build/release/$VERSION-$BUILD_NUMBER-$RUN_ID}"
 ARCHIVE_PATH="$RELEASE_ROOT/Papercusp.xcarchive"
 EXPORT_DIR="$RELEASE_ROOT/export"
+SIGNING_STYLE="${PAPERCUP_SIGNING_STYLE:-automatic}"
+APP_BUNDLE_ID="${PAPERCUP_APP_BUNDLE_ID:-com.papercuspai.operator.mobile}"
 
 usage() {
     cat >&2 <<'EOF'
@@ -19,6 +21,10 @@ Usage: release-ios.sh [preflight|archive|export|validate|upload]
 Environment for signing:
   PAPERCUP_DEVELOPMENT_TEAM       Apple Developer team ID
   PAPERCUP_BUILD_NUMBER           Monotonically increasing App Store build number
+  PAPERCUP_SIGNING_STYLE          automatic (default: the Mac's Xcode account)
+                                  or manual (CI: installed identity + profile)
+  PAPERCUP_PROVISIONING_PROFILE   App Store profile name (manual signing only)
+  PAPERCUP_CI_KEYCHAIN            Keychain holding the identity (optional)
 
 Environment for validate/upload:
   PAPERCUP_IPA_PATH               Explicit path to the exported IPA
@@ -36,15 +42,77 @@ preflight() {
 
 require_signing() {
     : "${PAPERCUP_DEVELOPMENT_TEAM:?Set PAPERCUP_DEVELOPMENT_TEAM to the Apple Developer team ID}"
-    if ! security find-identity -v -p codesigning | grep -q 'Apple Distribution'; then
+    case "$SIGNING_STYLE" in
+        automatic) ;;
+        manual)
+            : "${PAPERCUP_PROVISIONING_PROFILE:?Set PAPERCUP_PROVISIONING_PROFILE to the App Store profile name for manual signing}"
+            ;;
+        *)
+            echo "ERROR: PAPERCUP_SIGNING_STYLE must be automatic or manual, got: $SIGNING_STYLE" >&2
+            exit 1
+            ;;
+    esac
+    # With an explicit CI keychain, look for the identity there rather than
+    # trusting whatever else is on the search list.
+    if ! security find-identity -v -p codesigning ${PAPERCUP_CI_KEYCHAIN:+"$PAPERCUP_CI_KEYCHAIN"} \
+        | grep -q 'Apple Distribution'; then
         echo "ERROR: no valid Apple Distribution signing identity is installed" >&2
         exit 1
     fi
 }
 
+# Automatic signing needs an Xcode account and may refresh profiles. Manual
+# signing must not: CI has no account, and the installed App Store profile is
+# the only one allowed. The profile reaches the app target alone through
+# PAPERCUP_APP_PROVISIONING_PROFILE (ios/project.yml); a command-line
+# PROVISIONING_PROFILE_SPECIFIER would apply to every target and fail on the
+# PapercupCore framework and the Swift package products.
+set_signing_args() {
+    if [ "$SIGNING_STYLE" = manual ]; then
+        SIGNING_ARGS=(
+            CODE_SIGN_STYLE=Manual
+            "CODE_SIGN_IDENTITY=Apple Distribution"
+            "PAPERCUP_APP_PROVISIONING_PROFILE=$PAPERCUP_PROVISIONING_PROFILE"
+        )
+        if [ -n "${PAPERCUP_CI_KEYCHAIN:-}" ]; then
+            SIGNING_ARGS+=("OTHER_CODE_SIGN_FLAGS=--keychain $PAPERCUP_CI_KEYCHAIN")
+        fi
+    else
+        SIGNING_ARGS=(-allowProvisioningUpdates)
+    fi
+}
+
+# Manual export options are derived from the tracked ExportOptions.plist so the
+# method and symbol settings stay single-sourced; only signing fields differ.
+write_export_options() {
+    if [ "$SIGNING_STYLE" != manual ]; then
+        EXPORT_OPTIONS="$REPO_ROOT/ios/ExportOptions.plist"
+        return
+    fi
+    EXPORT_OPTIONS="$RELEASE_ROOT/ExportOptions.manual.plist"
+    python3 - "$REPO_ROOT/ios/ExportOptions.plist" "$EXPORT_OPTIONS" \
+        "$PAPERCUP_DEVELOPMENT_TEAM" "$APP_BUNDLE_ID" "$PAPERCUP_PROVISIONING_PROFILE" <<'PY'
+import plistlib
+import sys
+
+source, target, team, bundle_id, profile = sys.argv[1:]
+with open(source, "rb") as handle:
+    options = plistlib.load(handle)
+options.update({
+    "signingStyle": "manual",
+    "teamID": team,
+    "signingCertificate": "Apple Distribution",
+    "provisioningProfiles": {bundle_id: profile},
+})
+with open(target, "wb") as handle:
+    plistlib.dump(options, handle)
+PY
+}
+
 build_archive() {
     preflight
     require_signing
+    set_signing_args
     mkdir -p "$RELEASE_ROOT"
     "$REPO_ROOT/tools/build-scripts/build-ios.sh"
     (cd "$REPO_ROOT/ios" && xcodegen generate)
@@ -54,7 +122,7 @@ build_archive() {
         -configuration Release \
         -destination 'generic/platform=iOS' \
         -archivePath "$ARCHIVE_PATH" \
-        -allowProvisioningUpdates \
+        "${SIGNING_ARGS[@]}" \
         DEVELOPMENT_TEAM="$PAPERCUP_DEVELOPMENT_TEAM" \
         MARKETING_VERSION="$VERSION" \
         CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
@@ -64,11 +132,17 @@ build_archive() {
 export_ipa() {
     build_archive
     mkdir -p "$EXPORT_DIR"
+    write_export_options
+    if [ "$SIGNING_STYLE" = manual ]; then
+        export_args=()
+    else
+        export_args=(-allowProvisioningUpdates)
+    fi
     xcodebuild -exportArchive \
         -archivePath "$ARCHIVE_PATH" \
         -exportPath "$EXPORT_DIR" \
-        -exportOptionsPlist "$REPO_ROOT/ios/ExportOptions.plist" \
-        -allowProvisioningUpdates
+        -exportOptionsPlist "$EXPORT_OPTIONS" \
+        ${export_args[@]+"${export_args[@]}"}
     ipa_path="$(find "$EXPORT_DIR" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
     if [ -z "$ipa_path" ]; then
         echo "ERROR: export completed without an IPA in $EXPORT_DIR" >&2

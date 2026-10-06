@@ -81,6 +81,11 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Papercup/Papercup.entitlements
         CODE_SIGN_STYLE: Automatic
+        # Empty locally (automatic signing). CI manual signing passes
+        # PAPERCUP_APP_PROVISIONING_PROFILE on the xcodebuild command line so
+        # only this target gets a profile: a global PROVISIONING_PROFILE_SPECIFIER
+        # would also hit PapercupCore and the ElevenLabs package, which refuse one.
+        PROVISIONING_PROFILE_SPECIFIER: $(PAPERCUP_APP_PROVISIONING_PROFILE)
         SUPPORTS_MACCATALYST: NO
         TARGETED_DEVICE_FAMILY: "1"
       configs:
