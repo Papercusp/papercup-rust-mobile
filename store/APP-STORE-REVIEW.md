@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(548442 bytes; SHA-256 3b4a60589535084a267c0f3d0bb0e127bd13c1f7308fe87d3e9d681728148433)
+(589216 bytes; SHA-256 d5494e1e3d10e926a62b8dee4f735f2d78db8710d2b0606ce822cad0ee4bffe3)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2135,6 +2135,28 @@ declaration. Twelve root import edges now have retained target sources; eleven
 edges point to nine unretained root files. Five controls rejected changed source
 bytes, an omitted source, an omitted caller, a changed executable declaration
 and a falsely observed original runtime. Receipt/reference/review bindings passed.
+
+The receipt now retains all thirteen blobs in the pinned `third_party/schema`
+directory, including its package initializer, validator source, tests as source
+data, `LICENSE-MIT` and `README.chromium`. Complete third_party and schema tree
+listings are bound through the retained root tree. The upstream metadata declares
+version `0.6.6`, MIT and `Shipped: no`; these are pinned upstream declarations,
+not a determination about the mobile package or final notices and rights.
+
+Independent persisted readback verified thirteen blobs (50724 source bytes),
+the root/third_party/schema trees (240/4/13 entries), five validator AST spans,
+two production import declarations and the retained evaluator caller. Five
+controls rejected changed bytes, an omitted directory source, a changed parent
+tree, a changed evaluator import and a falsely observed runtime. Removing this
+preparation restored the exact prior receipt bytes. Final receipt, inventory and
+review fingerprints are checked separately after retaining this proof.
+
+The package initializer imports its sibling validator; that production module
+imports `re`. Its retained source checks missing dictionary keys and, unless
+configured to ignore them, unexpected keys. The caller imports this package from
+`third_party`; original import paths, DEPS/configuration and actual validation
+execution remain unobserved. Other third_party packages and the previously named
+root/import/interpreter/runtime/source/native/candidate/release gaps remain open.
 
 No upstream script, interpreter, GN, Ninja or package was executed or fetched
 as a binary. Original outer tools, environment, executable/package digests,
