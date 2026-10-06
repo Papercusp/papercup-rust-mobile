@@ -2399,3 +2399,22 @@ Independent saved-byte/tree/mode/AST/import/helper/caller and Git-command
 declaration readback passed, with seven rejecting controls. Removing this
 extension restores the exact prior receipt, reference and review. Verification
 input fingerprints remain distinct from final saved-file bindings.
+
+### Pinned depot_tools formatter helper declarations
+
+The private wrapper receipt retains `google_java_format.py`,
+`metrics_xml_format.py`, `rustfmt.py` and `swift_format.py` at
+`fa8fc854e1766b86f10c9a15902cf3cc23adaac2` as static source data. Java
+formatting declares a solution-relative `GOOGLE_JAVA_FORMAT_PATH` override and
+launcher/JAR checks. Metrics XML declares checkout/directory/basename checks and
+`vpython3` lookup; its CLI invokes `subprocess.run` and then returns zero without
+reading the child return code. Rust declares a checkout tool path with an executable
+suffix. Swift declares a Darwin support probe and a separate CLI entry path.
+Retained `gclient_paths.py` and `git_cl.py` byte/AST bindings connect these
+declarations. These sources were not imported or executed.
+
+Original interpreter/VPython packages, formatter binaries/JARs, checkout,
+configuration, environment, filesystem and child process outcomes remain
+unobserved. Full checkout/native reproduction, final notices/rights, signed
+candidate, recipient retrieval and release acceptance remain open. Earlier
+proofs retain their scopes. Saved-byte verification is pending.
