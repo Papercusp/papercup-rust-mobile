@@ -14,6 +14,20 @@ struct DeviceCredentials: Equatable {
     /// itself. Reachability falls back to the public `server` URL (and
     /// LAN) transparently, so there's no mesh URL to prefer at the client.
     var defguardEnrollmentUrl: String? = nil
+    /// The pair response's `baseUrls` route list as raw JSON (D-018). A kind
+    /// `relay` entry means a cloud (BYOC) workspace reached through the
+    /// hosted relay rather than a desktop tunnel or LAN.
+    var baseUrlsJson: String? = nil
+
+    /// True when the stored route list advertises a hosted relay route.
+    var isCloudRelay: Bool { DeviceCredentials.routesIncludeRelay(baseUrlsJson) }
+
+    static func routesIncludeRelay(_ json: String?) -> Bool {
+        guard let json, let data = json.data(using: .utf8),
+              let routes = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else { return false }
+        return routes.contains { ($0["kind"] as? String) == "relay" }
+    }
 
     /// Build an OperatorClient against the desktop. Mesh routing (when the
     /// device is Defguard-enrolled) is transparent at the network layer;
@@ -55,7 +69,8 @@ enum CredentialStore {
             deviceToken: token,
             deviceId: deviceId,
             workspaceId: workspaceId,
-            defguardEnrollmentUrl: dict["defguardEnrollmentUrl"]
+            defguardEnrollmentUrl: dict["defguardEnrollmentUrl"],
+            baseUrlsJson: dict["baseUrlsJson"]
         )
     }
 
@@ -67,6 +82,7 @@ enum CredentialStore {
             "workspaceId": creds.workspaceId,
         ]
         if let u = creds.defguardEnrollmentUrl { dict["defguardEnrollmentUrl"] = u }
+        if let b = creds.baseUrlsJson, !b.isEmpty { dict["baseUrlsJson"] = b }
         let data = try! JSONSerialization.data(withJSONObject: dict)
         clear()
         let query: [String: Any] = [

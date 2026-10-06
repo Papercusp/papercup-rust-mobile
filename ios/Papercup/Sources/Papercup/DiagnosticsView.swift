@@ -110,9 +110,11 @@ struct DiagnosticsView: View {
             dividerLine()
             infoRow(
                 "Reachability",
-                value: creds.defguardEnrollmentUrl != nil
-                    ? "Defguard mesh + public tunnel / LAN fallback"
-                    : "public tunnel / LAN",
+                value: creds.isCloudRelay
+                    ? "Cloud workspace (relay)"
+                    : creds.defguardEnrollmentUrl != nil
+                        ? "Defguard mesh + public tunnel / LAN fallback"
+                        : "public tunnel / LAN",
                 isLast: true
             )
         }
