@@ -441,10 +441,16 @@ jobs:
           xcodebuild archive -project ios/Papercup.xcodeproj -scheme Papercup \
             -configuration Release -destination 'generic/platform=iOS' \
             -archivePath ios/build/ci-release/Papercusp.xcarchive CODE_SIGNING_ALLOWED=NO
-          test -f ios/build/ci-release/Papercusp.xcarchive/Info.plist
           git rev-parse HEAD > ios/build/ci-release/source-sha.txt
           xcodebuild -version > ios/build/ci-release/xcode-version.txt
           xcrun --sdk iphoneos --show-sdk-version > ios/build/ci-release/ios-sdk.txt
+          # P-009: validate the archive itself (identity, resolved versions,
+          # arm64 device executable on the iOS 26+ SDK, embedded privacy
+          # manifest, no Sentry) and bind it to the exact source revision.
+          python3 tools/build-scripts/validate-ios-archive.py \
+            ios/build/ci-release/Papercusp.xcarchive \
+            --source-sha "$(git rev-parse HEAD)" \
+            --manifest ios/build/ci-release/candidate-manifest.json
 
       - name: Export candidate UI screenshots
         run: |

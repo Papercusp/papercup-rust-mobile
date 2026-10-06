@@ -111,6 +111,16 @@ jobs:
           PAPERCUP_RELEASE_DIR: ${{ runner.temp }}/papercup-release
         run: tools/build-scripts/release-ios.sh export
 
+      - name: Validate signed archive against the release contract
+        env:
+          PAPERCUP_RELEASE_DIR: ${{ runner.temp }}/papercup-release
+          BUILD_NUMBER: ${{ steps.build-number.outputs.value }}
+        run: |
+          python3 tools/build-scripts/validate-ios-archive.py \
+            "$PAPERCUP_RELEASE_DIR/Papercusp.xcarchive" \
+            --source-sha "$(git rev-parse HEAD)" --build "$BUILD_NUMBER" --require-signed \
+            --manifest "$PAPERCUP_RELEASE_DIR/candidate-manifest.json"
+
       - name: Upload to App Store Connect (TestFlight)
         if: inputs.upload
         env:
@@ -142,6 +152,7 @@ jobs:
           name: testflight-${{ steps.build-number.outputs.value }}-${{ github.sha }}
           path: |
             ${{ runner.temp }}/papercup-release/provenance.txt
+            ${{ runner.temp }}/papercup-release/candidate-manifest.json
             ${{ runner.temp }}/papercup-release/export/*.ipa
             ${{ runner.temp }}/papercup-release/ExportOptions.manual.plist
           if-no-files-found: warn
