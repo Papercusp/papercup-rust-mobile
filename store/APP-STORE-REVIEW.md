@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(589216 bytes; SHA-256 d5494e1e3d10e926a62b8dee4f735f2d78db8710d2b0606ce822cad0ee4bffe3)
+(609018 bytes; SHA-256 ef56e69617b2486ba012ef72f4982867e3d57738a6f7827f50b7558fafce1da5)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2157,6 +2157,20 @@ configured to ignore them, unexpected keys. The caller imports this package from
 `third_party`; original import paths, DEPS/configuration and actual validation
 execution remain unobserved. Other third_party packages and the previously named
 root/import/interpreter/runtime/source/native/candidate/release gaps remain open.
+
+The receipt additionally retains pinned `lockfile.py`, `setup_color.py` and
+`subcommand.py` (18479 source bytes), closing six earlier caller/import links
+as source data. Six AST spans and sixteen import declarations are bound to the
+exact bytes, Git blobs and root modes. Four pre-retention controls rejected
+changed source, an omitted source, a changed caller and a falsely observed
+runtime. Independent persisted byte/tree/mode/AST/import/caller/color lookup
+checks and all four rejecting controls passed; removing this preparation
+restored the exact prior receipt bytes. Final reference/review bindings are
+checked after retaining that proof.
+Conditional Windows `win32imports` and nested `third_party.colorama` remain
+unretained. Subcommand color lookup reads existing `sys.modules` entries; it
+does not import colorama. The six other previously named root paths and complete
+source/platform/environment/interpreter/runtime/release closure remain open.
 
 No upstream script, interpreter, GN, Ninja or package was executed or fetched
 as a binary. Original outer tools, environment, executable/package digests,
