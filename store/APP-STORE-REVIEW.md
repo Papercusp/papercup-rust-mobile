@@ -2243,6 +2243,18 @@ all five altered-input controls passed. Removing this extension restores the
 exact prior receipt, reference and review bytes. Final bindings are checked
 separately after retaining this proof.
 
+The receipt additionally retains pinned `auth.py` (9014 bytes) as static
+source data. Its source declarations cover LUCI_CONTEXT selection, token refresh,
+request-header wrapping and `luci-auth token` / `git-credential-luci get`.
+The two retained callers and the retained `subprocess2.py` helper are bound;
+installed `httplib2`, original credentials, executable identities and request
+activity remain unobserved. The three other root source texts and complete
+source/runtime/native/candidate/recipient/release closure remain open.
+Independent saved-byte/tree/mode/AST/import/caller/helper/declaration readback
+and all six altered-input controls passed. Removing this extension restores the
+exact prior receipt, reference and review bytes. Final bindings are checked
+separately after retaining this proof.
+
 ### Retained packaged native ELF notes
 
 The private `webrtc-m137.7151.07-elf-toolchain-notes.json` receipt binds the
