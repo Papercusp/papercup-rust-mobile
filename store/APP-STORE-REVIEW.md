@@ -2379,3 +2379,20 @@ source proofs retain their scopes. Independent saved-byte/tree/mode/AST/import,
 helper/caller and declaration readback passed, with six rejecting controls.
 Removing this extension restores the exact prior receipt, reference and review.
 Verification input fingerprints remain distinct from final bindings.
+
+### Pinned depot_tools branch helper declarations
+
+The private wrapper receipt retains `git_new_branch.py` (3707 bytes) and
+`git_squash_branch.py` (3761 bytes) at
+`fa8fc854e1766b86f10c9a15902cf3cc23adaac2` as static source data. The first
+declares upstream/current/tag tracking and branch injection; the second declares
+dirty-tree and descendant-divergence checks, squash, recursive rebase with
+`--update-refs`, and returning to the original branch. Both reject non-Git Cog
+environments. Retained helper and `git_cl.py` caller bindings record these
+declarations; these scripts were not imported or executed.
+
+Original interpreter, Git executable, refs/branch graph, configuration,
+environment, filesystem and actual commands remain unobserved. Full checkout,
+native reproduction, final notices/rights, signed candidate, recipient retrieval
+and release acceptance remain open. Earlier proofs retain their scopes.
+Independent saved-file provenance readback is pending.
