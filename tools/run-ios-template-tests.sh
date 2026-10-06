@@ -19,7 +19,7 @@ UDID="${PAPERCUP_IOS_SIM_UDID:-$(xcrun simctl list devices available | awk -F '[
 [ -n "$UDID" ] || { echo "ERROR: simulator is unavailable" >&2; exit 2; }
 xcrun simctl boot "$UDID" 2>/dev/null || true
 simulator_ready=false
-for attempt in $(seq 1 60); do
+for _ in $(seq 1 60); do
     if xcrun simctl spawn "$UDID" launchctl print system >/dev/null 2>&1; then
         simulator_ready=true
         break

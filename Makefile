@@ -45,7 +45,7 @@ help:
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-store-cloud-pending test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-git-hooks
+check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-store-cloud-pending test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-git-hooks test-rust-toolchain-pin test-ios-signing lint-workflows lint-shell
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -114,6 +114,12 @@ test-store-cloud-pending:
 test-git-hooks:
 	bash tools/tests/install-git-hooks-test.sh
 
+# Local make check and every CI job use the ONE toolchain pinned in
+# rust-toolchain.toml; CI derives it from that file (WI-10006894).
+.PHONY: test-rust-toolchain-pin
+test-rust-toolchain-pin:
+	bash tools/tests/rust-toolchain-pin-test.sh
+
 # The same Android gate runs locally and in CI. Host mode needs no device;
 # full mode also requires a booted API 36 device with 16 KB pages.
 check-android-host:
@@ -160,6 +166,22 @@ verify-ios-release:
 
 test-ios-release:
 	./tools/tests/verify-ios-release-test.sh
+
+# TestFlight signing route: secrets gate, profile checks, release-ios.sh
+# signing modes and the testflight.yml contract (fixtures only, runs on Linux).
+test-ios-signing:
+	bash tools/tests/ios-release-signing-test.sh
+	bash tools/tests/ios-signing-secrets-test.sh
+
+# GitHub's load-time workflow rules (expression contexts, keys, needs wiring),
+# checked with a pinned, checksum-verified actionlint (WI-10006909).
+lint-workflows:
+	bash tools/build-scripts/lint-workflows.sh
+
+# Every *.sh through a pinned, checksum-verified ShellCheck (WI-10006930).
+.PHONY: lint-shell
+lint-shell:
+	bash tools/build-scripts/lint-shell.sh
 
 test-ios-host-health:
 	./tools/tests/ios-build-host-health-test.sh

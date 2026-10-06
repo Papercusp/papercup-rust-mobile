@@ -254,6 +254,7 @@ git -C "$TMP" add .gitattributes
 git -C "$TMP" commit -qm export-ignore
 if run_helper source-archive >/dev/null 2>&1; then fail 'export-ignore silently omitted source'; fi
 printf 'source.txt export-subst\n' >"$TMP/.gitattributes"
+# shellcheck disable=SC2016 # the literal git export-subst placeholder, not an expansion
 printf '$Format:%%H$\n' >"$TMP/source.txt"
 git -C "$TMP" add .gitattributes source.txt
 git -C "$TMP" commit -qm export-subst

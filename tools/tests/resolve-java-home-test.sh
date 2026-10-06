@@ -51,7 +51,7 @@ assert_path "$JDK17" "$resolved"
 # A versioned Android Studio JBR is found without a hard-coded Snap revision.
 JBR="$TMP_ROOT/android-studio/999/jbr"
 make_fake_jdk "$JBR" '17.0.13'
-resolved="$(JAVA_HOME= PAPERCUP_JAVA_SEARCH_ROOTS="$TMP_ROOT/android-studio" PAPERCUP_SKIP_AMBIENT_JAVA=1 "$RESOLVER")"
+resolved="$(JAVA_HOME='' PAPERCUP_JAVA_SEARCH_ROOTS="$TMP_ROOT/android-studio" PAPERCUP_SKIP_AMBIENT_JAVA=1 "$RESOLVER")"
 assert_path "$JBR" "$resolved"
 
 # Discover a standalone system JDK after rejecting the current Studio JBR.
@@ -59,18 +59,18 @@ NEW_JBR="$TMP_ROOT/new-studio/244/jbr"
 SYSTEM_JDK="$TMP_ROOT/system-jvm/java-17-openjdk"
 make_fake_jdk "$NEW_JBR" '25.0.3'
 make_fake_jdk "$SYSTEM_JDK" '17.0.12'
-resolved="$(JAVA_HOME= PAPERCUP_JAVA_SEARCH_ROOTS="$TMP_ROOT/new-studio:$TMP_ROOT/system-jvm" PAPERCUP_SKIP_AMBIENT_JAVA=1 "$RESOLVER")"
+resolved="$(JAVA_HOME='' PAPERCUP_JAVA_SEARCH_ROOTS="$TMP_ROOT/new-studio:$TMP_ROOT/system-jvm" PAPERCUP_SKIP_AMBIENT_JAVA=1 "$RESOLVER")"
 assert_path "$SYSTEM_JDK" "$resolved"
 
 # Failure is actionable and names the discovered stale candidate.
-if diagnostics="$(JAVA_HOME= PAPERCUP_JAVA_CANDIDATES="$JDK11" PAPERCUP_SKIP_AMBIENT_JAVA=1 "$RESOLVER" 2>&1)"; then
+if diagnostics="$(JAVA_HOME='' PAPERCUP_JAVA_CANDIDATES="$JDK11" PAPERCUP_SKIP_AMBIENT_JAVA=1 "$RESOLVER" 2>&1)"; then
     fail 'an obsolete Java 11 candidate unexpectedly resolved'
 fi
 grep -F "no Java 17..21 runtime" <<<"$diagnostics" >/dev/null || fail 'missing supported-version error'
 grep -F "$JDK11" <<<"$diagnostics" >/dev/null || fail 'missing candidate diagnostics'
 
 # A machine containing only an unsupported newer runtime fails explicitly.
-if diagnostics="$(JAVA_HOME= PAPERCUP_JAVA_CANDIDATES="$JDK25" PAPERCUP_SKIP_AMBIENT_JAVA=1 "$RESOLVER" 2>&1)"; then
+if diagnostics="$(JAVA_HOME='' PAPERCUP_JAVA_CANDIDATES="$JDK25" PAPERCUP_SKIP_AMBIENT_JAVA=1 "$RESOLVER" 2>&1)"; then
     fail 'an unsupported Java 25 candidate unexpectedly resolved'
 fi
 grep -F 'above supported maximum 21' <<<"$diagnostics" >/dev/null || fail 'missing maximum-version diagnostics'

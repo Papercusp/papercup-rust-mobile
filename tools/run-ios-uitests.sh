@@ -121,7 +121,7 @@ while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
         -derivedDataPath build/dd 2>&1 | tee "$TEST_OUT"
     rc=${PIPESTATUS[0]}
     set -e
-    if [ $rc -eq 0 ]; then
+    if [ "$rc" -eq 0 ]; then
         rm -f "$TEST_OUT"
         exit 0
     fi

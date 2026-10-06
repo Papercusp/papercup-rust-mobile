@@ -121,7 +121,8 @@ if [[ "$mode" == isolated-native ]]; then
     cargo test -p papercup-core --lib biometric::tests -- --nocapture
     export PAPERCUP_ANDROID_RUNNER="$ROOT/tools/run-android-checks.sh"
     export PAPERCUP_OPERATOR_ROOT="$operator_root"
-    export PAPERCUP_ANDROID_EVIDENCE="$(realpath -m "${3:-android/app/build/ci-evidence/isolated-native-$(date -u +%Y%m%dT%H%M%SZ)}")"
+    PAPERCUP_ANDROID_EVIDENCE="$(realpath -m "${3:-android/app/build/ci-evidence/isolated-native-$(date -u +%Y%m%dT%H%M%SZ)}")"
+    export PAPERCUP_ANDROID_EVIDENCE
     # The runtime's private HOME must not hide the explicitly selected build
     # toolchain. These paths contain toolchain state, not operator identity.
     export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
@@ -129,7 +130,8 @@ if [[ "$mode" == isolated-native ]]; then
     export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
     export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/27.0.12077973}"
     if [[ -z "${JAVA_HOME:-}" ]]; then
-        export JAVA_HOME="$(bash tools/build-scripts/resolve-java-home.sh)"
+        JAVA_HOME="$(bash tools/build-scripts/resolve-java-home.sh)"
+        export JAVA_HOME
     fi
     exec node "$operator_root/scripts/with-test-pg.mjs" --isolated-runtime=operator-api \
         -- bash "$PAPERCUP_ANDROID_RUNNER" isolated-native-child
@@ -218,7 +220,10 @@ try:
         proof['executionStarted'] = True
         native = subprocess.Popen(['bash', os.environ['PAPERCUP_ANDROID_RUNNER'], 'live',
                                    str(evidence), 'native'], env=env, start_new_session=True)
-        proof['exitCode'] = native.wait(timeout=1800)
+        # The native child owns its own build budget (PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC);
+        # wait for that plus the original 1800s test allowance, never less.
+        native_build_budget = int(os.environ.get('PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC', '2400'))
+        proof['exitCode'] = native.wait(timeout=1800 + native_build_budget)
 except Exception as error:
     proof['error'] = str(error)
 finally:
@@ -279,6 +284,12 @@ if (url.scheme != 'http' or url.hostname not in ('127.0.0.1', 'localhost', '::1'
 timeout = int(os.environ.get('PAPERCUP_LIVE_TIMEOUT_SEC', '240'))
 if not 1 <= timeout <= 600:
     raise SystemExit('live timeout must be between 1 and 600 seconds')
+# The native four-ABI Rust + Gradle build is not a live-smoke step: a cold
+# Cargo cache (for example right after a toolchain target is added) compiles
+# every dependency for four ABIs and cannot fit the live budget. Give it its own.
+build_timeout = int(os.environ.get('PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC', '2400'))
+if not 60 <= build_timeout <= 7200:
+    raise SystemExit('native build timeout must be between 60 and 7200 seconds')
 attempt = uuid.uuid4().hex
 out = Path(sys.argv[1] or f'android/app/build/ci-evidence/live-{attempt}')
 out.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -363,10 +374,10 @@ def prepare_native():
         # Reuse the four-ABI/JNI/checksum/alignment build; a Gradle-only
         # rebuild could otherwise execute a stale Rust shared library.
         subprocess.run(['bash', 'tools/build-scripts/build-android.sh', 'debug'],
-                       env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
+                       env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=build_timeout)
         subprocess.run(['android/gradlew', '-p', 'android',
                         ':app:assembleDebugAndroidTest', '--console=plain'],
-                       env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
+                       env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=build_timeout)
     adb('install', '-r', 'android/app/build/outputs/apk/debug/app-debug.apk')
     app_shell('test ! -e files/native-pairing-fixture.json && test ! -e files/native-pairing-result.json && test ! -e files/native-pairing-failure.png')
     app_shell('mkdir -p files')
@@ -842,6 +853,7 @@ if [[ "$mode" == verify-emulator ]]; then
         # Reject ports outside it instead of relying on a remembered transport
         # from an earlier emulator or a manual adb connection.
         port="$3"
+        # shellcheck disable=SC2015 # either check failing must reach the error branch
         [[ "$port" =~ ^[0-9]{4}$ ]] && (( port >= 5554 && port <= 5584 && port % 2 == 0 )) || {
             echo 'Android emulator console port must be even and between 5554 and 5584 for ADB discovery.' >&2
             exit 2
