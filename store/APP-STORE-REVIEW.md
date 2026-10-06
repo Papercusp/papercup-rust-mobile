@@ -2545,3 +2545,20 @@ edge/helper/caller and exact test API declaration checks passed with sixteen
 rejecting controls. Removing this extension restores all three exact prior byte
 streams. Verification inputs remain separate from final saved fingerprints.
 Earlier proofs retain their original scopes.
+
+## Pinned depot_tools metadata fields root source preparation
+
+Four pinned metadata/fields root files are retained in the existing wrapper
+provenance receipt as static source data. Exact field declarations, imports,
+parent metadata caller imports, and prior validation-result helper bytes are bound.
+Nested metadata/fields/custom and metadata/tests remain unretained. Original field
+values, README.chromium/license inputs, filesystem, interpreter/packages and
+validation outcomes remain unobserved. Complete source/runtime/native reproduction,
+final rights/notices, exact signed candidate, recipient retrieval/fresh build and
+release acceptance remain open. WI-10006524 retains its separate unconfirmed scope.
+
+Independent saved-byte/root/package-tree/per-entry-mode/qualified-AST/import/
+edge/helper/caller and exact field import declarations checks passed with sixteen
+rejecting controls. Removing this extension restores all three exact prior byte
+streams. Verification inputs remain separate from final saved fingerprints.
+Earlier proofs retain their original scopes.
