@@ -2296,3 +2296,27 @@ candidate, recipient retrieval/fresh build and release acceptance remain open.
 Independent saved-byte/tree/mode/AST/import/caller/helper/configuration readback
 and six rejecting controls passed. Removing this extension restores the exact
 prior receipt, reference and review. Final bindings are checked separately.
+
+### Pinned depot_tools Google Storage downloader declarations
+
+The existing private wrapper receipt additionally retains
+`download_from_google_storage.py` (30801 bytes) at
+`fa8fc854e1766b86f10c9a15902cf3cc23adaac2` as static source data.
+It declares VPython delegation to `gsutil.py`, inherited environment and
+optional `AWS_CREDENTIAL_FILE`/`BOTO_CONFIG` overrides. `--no_auth` and
+`NO_AUTH_BOTO_CONFIG` are deprecated and have no effect; their presence cannot
+establish anonymous downloads. Thread selection can depend on
+`DOWNLOAD_FROM_GOOGLE_STORAGE_THREADS`. The worker checks downloaded SHA1 and
+extraction/migration markers, while its early local check does not inspect
+extracted contents. The retained retry helper is declared separately; the
+worker calls `check_call`, not that helper. Two retained callers and the
+`subprocess2.py`/`gsutil.py` helpers are bound to their saved source hashes.
+Original executable/package identities, credentials/boto/environment/platform,
+filesystem/markers, transfers and extraction choices remain unobserved.
+`git_cl.py`, complete source/runtime/native reproduction, final notices/rights,
+signed candidate, recipient retrieval/fresh build and release acceptance remain
+open. This source was not executed and no package or binary was downloaded.
+Independent saved-byte/tree/mode/AST/import/caller/helper and declared
+VPython/credential/environment/cache/worker readback passed, with six rejecting
+controls. Removing this extension restores the exact prior receipt, reference
+and review; proof-input fingerprints are kept distinct from final bindings.
