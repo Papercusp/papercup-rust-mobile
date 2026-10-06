@@ -58,7 +58,10 @@ candidate path because managed commit subjects contain `[skip ci]`.
 A successful simulator test or unsigned archive is preparation. Real hardware,
 production push, signed export, TestFlight processing and approved public App Store
 installation have separate acceptance requirements in
-[the submission packet](store/APP-STORE-REVIEW.md).
+[the submission packet](store/APP-STORE-REVIEW.md). The Google Play packet is
+[store/PLAY-STORE-REVIEW.md](store/PLAY-STORE-REVIEW.md); Android build, license
+and source-provenance evidence lives in
+[android/SOURCE-EVIDENCE.md](android/SOURCE-EVIDENCE.md), not in either packet.
 
 ## License
 
