@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Run the iOS XCTest unit suite. Splits build-for-testing + test-without-
-# building to dodge the Xcode 16.2 "iOS 18.2 not installed" destination
-# resolver race; retries each step up to 8x with 6s sleeps.
+# Run the iOS XCTest unit suite (CI 'Test iOS app' via `make test-ios`).
+# Splits build-for-testing + test-without-building to dodge the Xcode 16.2
+# "iOS 18.2 not installed" destination resolver race, and retries each step
+# up to 8x with 6s sleeps. The test step retries only an attempt in which
+# no test executed, and passes only on result-bundle evidence. Tests:
+# tools/tests/run-ios-tests-test.sh (`make test-ios-unit-runner`).
 #
 # After Sentry SwiftPM landed the destination race fires more often
 # (Xcode spends more on package resolution per scheme invocation).
@@ -59,19 +62,52 @@ for i in 1 2 3 4 5 6 7 8; do
     fi
 done
 
+# Each attempt writes its own result bundle, and the shared guard
+# (tools/build-scripts/check-xctest-summary.py, also used by
+# run-ios-template-tests.sh) admits it only with nonzero passing tests,
+# zero failures and zero skips. The destination race fails before any
+# test runs, so only "xcodebuild failed and nothing executed" is retried.
+# The following fail at once: executed tests that failed or skipped, an
+# empty suite, a passing bundle with a failing xcodebuild, and a success
+# with no readable result.
+SUMMARY_GUARD="$REPO_ROOT/tools/build-scripts/check-xctest-summary.py"
+mkdir -p build
 for i in 1 2 3 4 5 6 7 8; do
+    bundle="build/unit-$i.xcresult"
+    summary="build/unit-$i-summary.json"
+    rm -rf "$bundle" "$summary"
     set +e
     xcodebuild test-without-building \
         -project Papercup.xcodeproj -scheme Papercup \
         -destination "$DEST" -derivedDataPath build/dd \
-        -only-testing PapercupTests
+        -only-testing PapercupTests -resultBundlePath "$bundle"
     rc=$?
-    set -e
-    if [ $rc -eq 0 ]; then
-        exit 0
+    verdict=3
+    if [ -d "$bundle" ] && xcrun xcresulttool get test-results summary \
+            --path "$bundle" --format json > "$summary"; then
+        python3 "$SUMMARY_GUARD" "$summary" PapercupTests
+        verdict=$?
     fi
-    echo "[test retry $i: rc=$rc]"
-    sleep 6
+    set -e
+    case "$verdict" in
+        0)
+            [ "$rc" -eq 0 ] && exit 0
+            echo "ERROR: PapercupTests passed but xcodebuild exited $rc (attempt $i)" >&2
+            exit 1
+            ;;
+        3)
+            if [ "$rc" -eq 0 ]; then
+                echo "ERROR: xcodebuild exited 0 but no PapercupTests test executed (attempt $i)" >&2
+                exit 1
+            fi
+            ;;
+        *)
+            echo "ERROR: PapercupTests failed on attempt $i (xcodebuild rc=$rc); a real test failure is not retried" >&2
+            exit 1
+            ;;
+    esac
+    echo "[test retry $i: rc=$rc, no test executed]"
+    [ "$i" = 8 ] || sleep 6
 done
-echo "ERROR: test-without-building failed after 8 retries" >&2
+echo "ERROR: no PapercupTests test executed after 8 attempts (destination race)" >&2
 exit 1

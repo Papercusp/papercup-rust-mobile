@@ -7,6 +7,7 @@ TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 mkdir -p "$TEST_ROOT/tools/build-scripts" "$TEST_ROOT/ios/build/template-checks" "$TEST_ROOT/bin"
 cp "$REPO_ROOT/tools/run-ios-template-tests.sh" "$TEST_ROOT/tools/"
+cp "$REPO_ROOT/tools/build-scripts/check-xctest-summary.py" "$TEST_ROOT/tools/build-scripts/"
 for script in check-ios-build-host-health build-ios; do
     printf '#!/usr/bin/env bash\nexit 0\n' > "$TEST_ROOT/tools/build-scripts/$script.sh"
     chmod +x "$TEST_ROOT/tools/build-scripts/$script.sh"
