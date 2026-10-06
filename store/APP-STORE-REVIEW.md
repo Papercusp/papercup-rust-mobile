@@ -2341,3 +2341,22 @@ acceptance remain open. Independent saved-byte/tree/mode/AST/import/helper/calle
 auth/trace/metrics/dispatch declaration readback and six rejecting controls passed.
 Removing this extension restores the exact prior receipt, reference and review.
 The verification input digest is separate from the final receipt binding.
+### Pinned depot_tools clang-format lookup declarations
+
+The existing private wrapper receipt retains `clang_format.py` (4132 bytes) at
+`fa8fc854e1766b86f10c9a15902cf3cc23adaac2` as static source data. It checks a
+primary solution formatter first, then three platform buildtools paths in their
+declared order. The Darwin arm64 branch adds an architecture suffix. Helper
+scripts use a separate primary-solution/buildtools lookup. The Python entry
+point delegates to `subprocess.call([tool] + args)`. These declarations bind two
+retained local helpers and the five import/reference sites in retained `git_cl.py`.
+
+Original interpreter, architecture, checkout, environment, filesystem and
+selected formatter/helper-script/binary identities remain unobserved. This
+source was not executed and no binary or package was downloaded. Complete
+checkout/runtime/native reproduction, final notices/rights, signed candidate,
+recipient retrieval/fresh build and release acceptance remain open. Independent
+saved-byte/tree/mode/AST/import/helper/caller/lookup declaration readback passed,
+with six rejecting controls. Removing this extension restores the exact prior
+receipt, reference and review. Verification input fingerprints are distinct from
+final bindings. The earlier source proofs retain their scopes.
