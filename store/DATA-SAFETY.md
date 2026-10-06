@@ -1,6 +1,7 @@
 # Papercusp Android — Google Play data-safety answers
 
-_Source draft reconciled October 2, 2026 against the Android manifest,
+_Cloud-workspace rows added October 6, 2026 against D-013 and the shared copy
+from iPhone D-016; still pending P-015. Source draft reconciled October 2, 2026 against the Android manifest,
 `VoicePrivacyConsent`, `PrivacyPolicyScreen`, `VoiceManager`,
 `DesktopVoiceSession`, `PushService`, `Credentials`, and Gradle dependencies._
 
@@ -19,6 +20,8 @@ and retain the submitted Console answers with its APK/AAB hashes.
 | Analytics and advertising identifiers are disabled | The source manifest disables Firebase Analytics, ad-ID and SSAID collection and removes inherited advertising, attribution and install-referrer permissions. `android-privacy-permissions-test.sh` checks the merged release manifest. | Inspect the exact APK/AAB merged manifest and retain the executed privacy-check result. |
 | Configured Android wake-word builds continuously use the microphone | `MainActivity.kt` starts `WakeWordService` when a wake-word engine is configured and microphone permission is granted, including idle state. The service declares the microphone foreground-service type and displays an ongoing notification. | Record the candidate's effective wake-word configuration without exposing its key; test idle/background listening, notification, permission denial and teardown. Review Picovoice operational reporting, account terms and sharing declarations if activated. |
 | Android release connections require HTTPS | Release configuration disables cleartext; the release pairing boundary rejects non-HTTPS endpoints. | Exercise rejected HTTP and accepted production HTTPS pairing on the exact signed candidate. |
+| Cloud workspace connections are **pending**, not shipped on Android | Under `android-public-release-2026-10-01#D-013`, a phone paired with a BYOC cloud workspace reaches it at `https://app.papercusp.com/api/workspaces/<workspaceId>` through the Papercusp relay. Device traffic is end-to-end sealed with Noise XX between phone and workspace, so the relay sees only ciphertext and routing metadata. The relay refuses unsealed BYOC device content. On October 6, 2026 the tracked Android sources (`crates/*`, `android/app/src/**`) contained no Noise implementation, so cloud pairing cannot work in the current source. The shared store copy from `iphone-public-release-2026-08-11#D-016` describes it, but it stays pending until P-015 is verified live. | After P-015, pair the exact candidate from a cloud workspace's Settings → Remote access. Prove the relay observes only ciphertext, sealing cross-tests against `byoc-sealed-channel.ts`, and unsealed content is refused. Until then, keep the cloud rows below out of the submitted Console answers. |
+| QR pairing uses the camera on device | `PairScreen` scans pairing QR codes with CameraX and the bundled ML Kit barcode model (`com.google.mlkit:barcode-scanning`); the camera is optional because pairing payloads can be pasted. | Retain Google's ML Kit Android data disclosure for the shipped version, plus any SDK telemetry it lists, before answering Device or other IDs / Diagnostics. It was not retrieved during the October 6 review because WebFetch was refused (EI-25206021611352116). |
 | Public privacy and deletion contacts exist | The public privacy and support pages returned HTTP 200 with their privacy/deletion content during the October 1 review. The public policy includes the same shipped processors as the in-app policy. | Recheck both URLs immediately before submission and exercise the support/deletion process. |
 
 Provider contracts, configured retention, the service-provider exception used
@@ -61,8 +64,31 @@ must not be treated as proof that all processing is solely on our behalf.
 | App info & performance → Diagnostics (device model, OS, failure context) | Yes | No only with verified processor exception | Automatic when a crash occurs | Diagnostics | No | No |
 | Device or other IDs → FCM token and Crashlytics installation ID | Yes | Review each destination's exception separately | FCM functional; Crashlytics automatic | App functionality, diagnostics | FCM token links to the paired device; Crashlytics ID is pseudonymous | No |
 
-Chat and command content sent only to the user's paired operator is not collected
-by the developer. If the paired operator sends that content to its configured AI
+### Cloud workspace rows — pending P-015, do not submit yet
+
+Add these rows to the Console answers only when the exact candidate ships cloud
+pairing and its P-015 sealed-relay evidence passes. Cloud scope is BYOC (a
+workspace in the user's own cloud account), per owner directives #1484/#1487 as
+recorded in D-013. A Papercusp-hosted workspace processes content on
+Papercusp-operated infrastructure. If the release ever reaches one, chat,
+voice and other operator content must be declared collected; that is outside
+this release's scope.
+
+| Play data type | Collected | Shared | Required/optional | Purpose | Linked to identity | Tracking |
+|---|---:|---:|---|---|---:|---:|
+| Device or other IDs → device ID and workspace ID processed by the Papercusp relay | Yes | No | Required for cloud workspaces | App functionality; fraud prevention, security and compliance | Yes, to the workspace account | No |
+| Chat, voice and plan content between phone and a BYOC workspace | No (end-to-end sealed; relay sees ciphertext only) | No | — | — | — | — |
+
+The relay also processes connection times, data sizes and IP addresses
+(`store/PRIVACY-POLICY.md`). Before submission, confirm whether any of this
+requires a Play data type, for example approximate location if the relay
+derives location from IP. Treat the end-to-end exception for BYOC content as
+established only once the candidate's P-015 evidence shows ciphertext-only
+relay frames.
+
+Chat and command content sent only to the user's paired desktop operator, or
+end-to-end sealed to a BYOC workspace, is not collected by the developer. If
+the paired operator sends that content to its configured AI
 provider, that processing is controlled by the operator administrator. Firebase
 Analytics, ad-ID collection, and Android-ID analytics collection are disabled.
 
