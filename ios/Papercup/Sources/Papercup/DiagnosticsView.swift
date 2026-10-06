@@ -265,7 +265,7 @@ struct DiagnosticsView: View {
         switch status {
         case .online:
             return .success
-        case .offline:
+        case .offline, .unpaired:
             return .error
         case .unknown:
             return .muted
@@ -293,6 +293,8 @@ private extension ConnState {
             return "ONLINE"
         case .offline:
             return "OFFLINE"
+        case .unpaired:
+            return "UNPAIRED"
         case .unknown:
             return "UNKNOWN"
         }
