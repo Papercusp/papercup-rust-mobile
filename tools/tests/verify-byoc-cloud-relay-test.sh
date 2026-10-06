@@ -88,4 +88,8 @@ expect "canary in journal fails" 1 "FAIL plaintext_seen" -- env P016_JOURNAL_CMD
 expect "canary in extra scan fails" 1 "FAIL plaintext_seen" -- "${NP[@]}" P016_MACHINE_SCAN_CMD="echo 1" P016_EXTRA_SCAN_CMD="echo 3" "$RUNNER" no-plaintext "$C"
 expect "machine scan is required" 2 "P016_MACHINE_SCAN_CMD is required" -- "$RUNNER" no-plaintext "$C"
 
-[ "$fails" -eq 0 ] && echo "verify-byoc-cloud-relay-test: all passed" || { echo "verify-byoc-cloud-relay-test: $fails failed"; exit 1; }
+if [ "$fails" -ne 0 ]; then
+    echo "verify-byoc-cloud-relay-test: $fails failed"
+    exit 1
+fi
+echo "verify-byoc-cloud-relay-test: all passed"

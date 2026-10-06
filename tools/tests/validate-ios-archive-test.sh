@@ -83,6 +83,7 @@ reject 'missing source revision' '--source-sha' ''
 reject 'short source revision' '40-hex' '--source-sha abc123'
 reject 'wrong bundle id' 'bundle id' "$S" bundle=com.example.other
 reject 'non-app archive' 'ApplicationPath' "$S" apppath=usr/local/lib
+# shellcheck disable=SC2016 # the unexpanded build-setting literal IS the fixture
 reject 'unresolved marketing version' 'unresolved' "$S" 'version=$(MARKETING_VERSION)'
 reject 'marketing version drift' '!= 1.0.0' "$S" version=1.0.1
 reject 'non-numeric build' 'positive integer' "$S" build=1.2
