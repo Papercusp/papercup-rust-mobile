@@ -41,6 +41,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Cheap gates first. These run in local `make check` too, but CI does not
+      # call `make check`, so without this step a push that skipped it is
+      # unguarded (WI-10006935). Pinned, checksum-verified actionlint and
+      # ShellCheck; the TestFlight signing tests need only bash/openssl/python3.
+      - name: Workflow lint, shell lint and TestFlight signing tests
+        run: make lint-workflows lint-shell test-ios-signing
+
       # Toolchain comes from rust-toolchain.toml (channel + rustfmt/clippy), the
       # same pin local `make check` uses — never a floating `stable` (WI-10006894).
       - name: Install pinned Rust toolchain (rust-toolchain.toml)
