@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(609018 bytes; SHA-256 ef56e69617b2486ba012ef72f4982867e3d57738a6f7827f50b7558fafce1da5)
+(618361 bytes; SHA-256 88f121fcdeb5b604c3f20ded24db9cca448209ad771e000f1ab75b33b66c78aa)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2167,8 +2167,16 @@ runtime. Independent persisted byte/tree/mode/AST/import/caller/color lookup
 checks and all four rejecting controls passed; removing this preparation
 restored the exact prior receipt bytes. Final reference/review bindings are
 checked after retaining that proof.
-Conditional Windows `win32imports` and nested `third_party.colorama` remain
-unretained. Subcommand color lookup reads existing `sys.modules` entries; it
+The receipt now also retains conditional Windows `win32imports.py` (2245
+source bytes), its root blob/mode, seventeen AST declarations, two standard
+library imports and the pinned `lockfile.py` Windows branch/caller. Four
+pre-retention controls rejected changed source, an omitted source, a changed
+caller condition and a falsely observed runtime. Independent persisted checks
+and all four rejecting controls passed; removing this preparation restored the
+exact prior receipt bytes. Final reference/review bindings are checked after
+retaining this proof. Nested `third_party.colorama` remains unretained.
+Original Windows platform, interpreter/ctypes/DLL identity and lock execution
+remain unobserved. Subcommand color lookup reads existing `sys.modules` entries; it
 does not import colorama. The six other previously named root paths and complete
 source/platform/environment/interpreter/runtime/release closure remain open.
 
