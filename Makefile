@@ -137,6 +137,9 @@ test-android-ci:
 test-ios-template-runner:
 	bash tools/tests/run-ios-template-tests-test.sh
 
+test-p016-runner:
+	bash tools/tests/verify-byoc-cloud-relay-test.sh
+
 build-rust:
 	cargo build --workspace
 
