@@ -2504,3 +2504,23 @@ thirteen rejecting controls. The census includes literal-text sources, excludes
 snippets, and preserves the missing helper/nested/runtime gaps. Removing only
 this extension restores exact prior receipt, reference and review bytes.
 Verification inputs must remain distinct from final saved-file fingerprints.
+
+## Pinned depot_tools presubmit diff and ResultSink helper source preparation
+
+Pinned presubmit_diff.py and rdb_wrapper.py are retained in the existing wrapper
+provenance receipt as static source data. Their declarations cover Gitiles
+retrieval, temporary old-file materialization, git diff --no-index, concurrent
+per-file diffs, optional LUCI_CONTEXT selection and requests-based ResultSink
+reporting. Original files, Git/interpreter/packages, network/context inputs and
+outcomes remain unobserved. The upstream sources were neither imported nor
+executed. Nested metadata/installed/runtime closure, complete applied-source/
+native reproduction, final rights/notices, exact signed candidate, recipient
+retrieval/fresh build and release acceptance remain open.
+
+A suspected historical failure-reason truncation discrepancy is recorded on
+owned WI-10006524; no current runtime defect, fix or closure is claimed. The
+immutable source bytes are preserved. Independent saved-byte/root-tree/per-entry-
+mode/qualified-AST/import/edge/helper/caller checks passed with fourteen rejecting
+controls, including omitted literal text, snippets as files and false runtime/
+nested/requests claims. Removing this extension restores all three exact prior
+byte streams. Verification inputs remain separate from final saved fingerprints.
