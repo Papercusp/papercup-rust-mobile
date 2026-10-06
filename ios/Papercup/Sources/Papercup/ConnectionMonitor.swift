@@ -13,6 +13,10 @@ struct ConnState: Equatable {
     var status: ConnStatus = .unknown
     var offlineSinceMs: Int64? = nil
     var lastPingMs: Int? = nil
+    /// True while `offline` because a BYOC cloud workspace's relay answered
+    /// `workspace_offline` (P-015). The relay itself is reachable; the
+    /// workspace behind it is stopped or starting. The pairing is kept.
+    var cloudWorkspaceOffline: Bool = false
 
     /// Pure heartbeat-outcome transition, unit-tested in
     /// `ConnectionMonitorTests`. `roundTripMs` is the success latency;
@@ -25,7 +29,17 @@ struct ConnState: Equatable {
             return ConnState(status: .unpaired, offlineSinceMs: nil, lastPingMs: nil)
         }
         let since = prev.status == .offline ? (prev.offlineSinceMs ?? nowMs) : nowMs
-        return ConnState(status: .offline, offlineSinceMs: since, lastPingMs: nil)
+        return ConnState(
+            status: .offline,
+            offlineSinceMs: since,
+            lastPingMs: nil,
+            cloudWorkspaceOffline: FriendlyError.isCloudWorkspaceOffline(error)
+        )
+    }
+
+    /// Offline banner title. A cloud workspace is not "your desktop".
+    var offlineTitle: String {
+        cloudWorkspaceOffline ? "Cloud workspace offline" : "Desktop offline"
     }
 
     /// The native client maps both 401 and 403 from the device API to

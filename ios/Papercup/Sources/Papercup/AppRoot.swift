@@ -644,8 +644,9 @@ private struct OfflineBanner: View {
             HStack(spacing: 8) {
                 Text("●")
                     .font(.system(size: 13, weight: .semibold))
-                Text("Desktop offline")
+                Text(state.offlineTitle)
                     .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("offline-banner-title")
                 Spacer(minLength: 12)
                 Text(durationText(now: context.date))
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))

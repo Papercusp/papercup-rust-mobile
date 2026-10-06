@@ -62,6 +62,54 @@ final class ConnectionMonitorTests: XCTestCase {
         await monitor.probe()
         XCTAssertEqual(monitor.state.status, .unpaired)
     }
+
+    // ── P-015 (BYOC-P-015-offline-message / -offline-recovery) ──
+    // The hosted relay answers 503 {"error":"workspace_offline"} while a
+    // cloud workspace's connector is down; the client surfaces it as
+    // ApiError.Server(503, "workspace_offline").
+
+    func testCloudWorkspaceOfflineIsOfflineNotUnpairedAndNamesTheCloud() {
+        let s = ConnState.next(after: ConnState(), roundTripMs: nil,
+                               error: ApiError.Server(status: 503, detail: "workspace_offline"),
+                               nowMs: 1_000)
+        XCTAssertEqual(s.status, .offline, "workspace_offline is reachability, never re-pair")
+        XCTAssertTrue(s.cloudWorkspaceOffline)
+        XCTAssertEqual(s.offlineTitle, "Cloud workspace offline")
+    }
+
+    func testOtherServerErrorsKeepTheDesktopTitle() {
+        let s = ConnState.next(after: ConnState(), roundTripMs: nil,
+                               error: ApiError.Server(status: 503, detail: "concurrent_limit"),
+                               nowMs: 1_000)
+        XCTAssertEqual(s.status, .offline)
+        XCTAssertFalse(s.cloudWorkspaceOffline)
+        XCTAssertEqual(s.offlineTitle, "Desktop offline")
+    }
+
+    @MainActor
+    func testRelaySequenceWorkspaceOfflineThenBackReconnectsWithoutRepairing() async {
+        var outcomes: [Error?] = [
+            ApiError.Server(status: 503, detail: "workspace_offline"),
+            ApiError.Server(status: 503, detail: "workspace_offline"),
+            nil,
+        ]
+        var calls = 0
+        let monitor = ConnectionMonitor(heartbeat: {
+            calls += 1
+            let next = outcomes.removeFirst()
+            if let next { throw next }
+        })
+        await monitor.probe()
+        XCTAssertEqual(monitor.state.status, .offline)
+        XCTAssertTrue(monitor.state.cloudWorkspaceOffline)
+        let firstOffline = monitor.state.offlineSinceMs
+        await monitor.probe()
+        XCTAssertEqual(monitor.state.offlineSinceMs, firstOffline, "offline timer counts from the first refusal")
+        await monitor.probe()
+        XCTAssertEqual(monitor.state.status, .online, "same heartbeat (same stored credential) reconnects")
+        XCTAssertFalse(monitor.state.cloudWorkspaceOffline)
+        XCTAssertEqual(calls, 3)
+    }
 }
 
 /// P-008: Keychain items survive app deletion; UserDefaults do not. A clean

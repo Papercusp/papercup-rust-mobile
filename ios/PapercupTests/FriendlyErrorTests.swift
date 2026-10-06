@@ -32,6 +32,29 @@ final class FriendlyErrorTests: XCTestCase {
         XCTAssertFalse(msg.contains("exploded"), "server-side detail stays out of user copy")
     }
 
+    // ── P-015 BYOC-P-015-offline-message: relay workspace_offline ──
+
+    func testCloudWorkspaceOfflineSaysTheCloudWorkspaceIsOffline() {
+        let msg = FriendlyError.message(
+            ApiError.Server(status: 503, detail: "workspace_offline"),
+            doing: "loading your workspaces"
+        )
+        XCTAssertTrue(msg.contains("Your cloud workspace is offline"))
+        XCTAssertTrue(msg.contains("while loading your workspaces"))
+        XCTAssertFalse(msg.contains("HTTP 503"), "not the generic server-error copy")
+        XCTAssertFalse(msg.contains("Re-pair"), "offline is never a re-pair")
+    }
+
+    func testCloudWorkspaceOfflineMatchesOnlyThe503RelayCode() {
+        XCTAssertTrue(FriendlyError.isCloudWorkspaceOffline(
+            ApiError.Server(status: 503, detail: "workspace_offline — connector reconnecting")))
+        XCTAssertFalse(FriendlyError.isCloudWorkspaceOffline(
+            ApiError.Server(status: 503, detail: "concurrent_limit")))
+        XCTAssertFalse(FriendlyError.isCloudWorkspaceOffline(
+            ApiError.Server(status: 502, detail: "workspace_offline")))
+        XCTAssertFalse(FriendlyError.isCloudWorkspaceOffline(ApiError.Network(detail: "workspace_offline")))
+    }
+
     func testApiUnauthorizedPointsAtRePairing() {
         let msg = FriendlyError.message(ApiError.Unauthorized)
         XCTAssertTrue(msg.contains("Re-pair"))

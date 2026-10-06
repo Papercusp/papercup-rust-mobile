@@ -17,6 +17,9 @@ enum FriendlyError {
     static func message(_ error: Error, doing what: String = "") -> String {
         let suffix = what.isEmpty ? "" : " while \(what)"
         logRawDetail(error, doing: what)
+        if isCloudWorkspaceOffline(error) {
+            return "Your cloud workspace is offline\(suffix). It may be stopped or still starting — the app reconnects on its own when it's back, or try again in about 30 seconds."
+        }
         switch error {
         case let api as ApiError:
             switch api {
@@ -57,6 +60,18 @@ enum FriendlyError {
             let detail = compactDetail(error)
             return "Something went wrong\(suffix). Try again — if it keeps happening: \(detail)"
         }
+    }
+
+    /// BYOC cloud workspaces (iphone#D-014, P-015): when the workspace's
+    /// connector is down, the hosted relay refuses at once with HTTP 503
+    /// and body `{"error":"workspace_offline"}` (Retry-After: 30; see
+    /// papercusp hosted-app-relay.ts). The native client surfaces that as
+    /// `ApiError.Server(503, "workspace_offline…")` — the flat code, plus
+    /// any hint/detail the relay appends. It is reachability, never
+    /// authorization, so the stored pairing stays valid.
+    static func isCloudWorkspaceOffline(_ error: Error) -> Bool {
+        guard let api = error as? ApiError, case let .Server(status, detail) = api else { return false }
+        return status == 503 && detail.hasPrefix("workspace_offline")
     }
 
     /// Bounded, single-line detail for genuinely unknown errors.
