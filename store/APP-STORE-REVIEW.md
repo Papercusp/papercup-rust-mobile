@@ -2213,6 +2213,20 @@ environment, metrics selection, network activity, imported package/Git and
 interpreter identity remain unobserved. Five earlier root paths and the
 broader source/runtime/native/candidate/recipient/release closure remain open.
 
+The receipt additionally retains pinned `metrics.py` (11505 bytes) as static
+source data. Its Git blob/root mode, 9 AST fragments, 15 import declarations,
+three retained helper imports and three retained caller bindings are checked.
+The source declares `metrics.cfg`, a conditional `/should-upload` request and a
+`vpython3` upload-script invocation; their runtime selection and network activity
+remain unobserved. `detect_host_arch.py`, `newauth.py`, `utils.py` and the declared
+`upload_metrics.py` remain unretained in this preparation. These tool-source
+declarations do not establish mobile app telemetry. Independent saved-byte
+verification and all four rejecting controls passed; removing this preparation
+restores the exact prior receipt bytes. Final receipt/reference/review bindings
+are checked separately after proof insertion. Four earlier
+root paths and broader source/runtime/native/candidate/recipient/release closure
+remain open.
+
 ### Retained packaged native ELF notes
 
 The private `webrtc-m137.7151.07-elf-toolchain-notes.json` receipt binds the
