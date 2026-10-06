@@ -81,7 +81,8 @@ struct AppRoot: View {
                 deviceToken: outcome.deviceToken,
                 deviceId: outcome.deviceId,
                 workspaceId: outcome.workspaceId,
-                defguardEnrollmentUrl: outcome.defguardEnrollmentUrl
+                defguardEnrollmentUrl: outcome.defguardEnrollmentUrl,
+                baseUrlsJson: outcome.baseUrlsJson.isEmpty ? nil : outcome.baseUrlsJson
             )
             CredentialStore.save(fresh)
             creds = fresh
