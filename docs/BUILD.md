@@ -250,6 +250,25 @@ rejects a malformed team ID or non-base64 file:
 | `ASC_API_ISSUER_ID` | App Store Connect issuer ID |
 | `ASC_API_KEY_P8_BASE64` | base64 of that key's `AuthKey_<id>.p8` |
 
+Only three things need the owner's Apple login: Apple Developer Program
+membership, the App Store Connect app record for
+`com.papercuspai.operator.mobile` (Apple's API cannot create apps), and one App
+Store Connect API key with the Admin role. Save the key as
+`~/.papercusp/secrets/apple/asc/AuthKey_<KEY ID>.p8` and put the Issuer ID in
+`notes.txt` there. Everything else comes from that key:
+
+```sh
+python3 tools/build-scripts/ios-asc-provision.py plan    # read-only: EXISTS / CREATE lines
+python3 tools/build-scripts/ios-asc-provision.py apply   # bundle ID + Push, Apple Distribution
+                                                         # cert for dist.csr, App Store profile
+bash tools/build-scripts/ios-signing-secrets.sh plan     # then apply: sets the 7 secrets above
+```
+
+`apply` writes `dist.cer` and `appstore.mobileprovision` into the folder and is
+safe to re-run. It exits 3 with `WAITING_FOR` while the app record is missing.
+`make test-ios-signing` runs it against a stub API that verifies every ES256
+token.
+
 `ios-ci-signing.sh install` then refuses a profile that names another team or
 app, lists devices, allows debugging, lacks production push, has expired, or
 does not contain the imported certificate. It imports the identity into a

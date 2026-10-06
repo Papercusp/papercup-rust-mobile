@@ -172,6 +172,7 @@ test-ios-release:
 test-ios-signing:
 	bash tools/tests/ios-release-signing-test.sh
 	bash tools/tests/ios-signing-secrets-test.sh
+	bash tools/tests/ios-asc-provision-test.sh
 
 # GitHub's load-time workflow rules (expression contexts, keys, needs wiring),
 # checked with a pinned, checksum-verified actionlint (WI-10006909).
