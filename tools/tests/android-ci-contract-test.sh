@@ -21,6 +21,7 @@ assert 'test -n "$SUBMODULES_PAT"' in android, 'private dependency access must f
 assert android.index('Require private operator dependency access') < android.index('Restore exact-content native success proof')
 assert 'node-version: 25' in android, 'actual operator native dependencies require Node25'
 assert 'node scripts/npm-install-safe.mjs ci --legacy-peer-deps' in android and 'bash apps/operator/bin/bundle-host.sh' in android, 'reuse canonical dependency and host builders'
+assert "PAPERCUSP_SKIP_DEP_GENERATION: '1'" in android, 'a one-shot runner cannot hold the shared-tree dependency generation snapshot (exit 77)'
 assert 'node apps/operator/bin/bundle-host-freshness.mjs check' in android, 'stale counterpart bundle must be refused'
 assert 'PAPERCUSP_BUNDLE_REUSE_FRESH=1 bash apps/operator/bin/bundle-host.sh' in android, 'freshness validation requires the canonical builder to stamp its manifest'
 assert 'emulator-port: 5554' in android and 'ANDROID_SERIAL=emulator-5554 bash tools/run-android-checks.sh isolated-native android-ci-attempt/operator android-ci-attempt/paired' in android, 'automatic native leg must execute the owned paired journey'

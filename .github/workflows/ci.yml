@@ -187,6 +187,12 @@ jobs:
       - name: Prepare actual operator dependencies and host bundle
         if: steps.android-proof.outputs.cache-hit != 'true'
         working-directory: android-ci-attempt/operator
+        env:
+          # The immutable dependency-generation snapshot exists for the shared
+          # operator checkpoint tree. A one-shot runner never reuses it and
+          # lacks its ~12 GB headroom (run 37528627087 exited 77 after a
+          # healthy install), so publish is skipped; the install is still verified.
+          PAPERCUSP_SKIP_DEP_GENERATION: '1'
         run: |
           node scripts/npm-install-safe.mjs ci --legacy-peer-deps
           PAPERCUSP_BUNDLE_REUSE_FRESH=1 bash apps/operator/bin/bundle-host.sh
@@ -381,6 +387,7 @@ jobs:
             -derivedDataPath ios/build/dd \
             -only-testing:PapercupUITests/PairFlowUITests/testFreshLaunchShowsPairChoices \
             -only-testing:PapercupUITests/CloudWorkspaceOfflineUITests/testCloudWorkspaceOfflineThenRecoversWithoutRepairing \
+            -only-testing:PapercupUITests/CloudWorkspaceOfflineUITests/testCloudWorkspaceShowsRelayLabelInSettings \
             -resultBundlePath ios/build/ci-pair-smoke.xcresult
           xcrun xcresulttool get test-results summary \
             --path ios/build/ci-pair-smoke.xcresult --format json > ios/build/ci-pair-smoke-summary.json
@@ -388,7 +395,7 @@ jobs:
           import json
           from pathlib import Path
           result = json.loads(Path('ios/build/ci-pair-smoke-summary.json').read_text())
-          assert result['passedTests'] == 2, result
+          assert result['passedTests'] == 3, result
           assert result['failedTests'] == 0, result
           assert result['skippedTests'] == 0, result
           PY
