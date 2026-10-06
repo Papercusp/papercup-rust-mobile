@@ -4,6 +4,9 @@ import PapercupCore
 import AVFoundation
 
 struct PairView: View {
+    /// Failure from a pair-by-link attempt made outside this view (AppRoot
+    /// autoPair). Shown until this view starts its own redeem.
+    var externalError: String? = nil
     let onPaired: (DeviceCredentials) -> Void
 
     enum Mode: Equatable {
@@ -96,7 +99,7 @@ struct PairView: View {
                     .foregroundStyle(PapercupTheme.textMuted)
                 }
 
-                if let error {
+                if let error = error ?? (redeeming ? nil : externalError) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(error)
                             .font(.footnote.monospaced())

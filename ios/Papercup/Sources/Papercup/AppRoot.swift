@@ -88,6 +88,7 @@ struct AppRoot: View {
             tab = .inbox
         } catch {
             os_log(.info, log: log, "FAILED %{public}@", String(describing: error))
+            autoPairError = FriendlyError.message(error, doing: "pairing")
         }
     }
 }
@@ -177,7 +178,9 @@ private struct PairedShell: View {
                 onTap: { showPotSwitcher = true }
             )
             PausedBanner(creds: current)
-            if monitor.state.status == .offline {
+            if monitor.state.status == .unpaired {
+                UnpairedBanner(onPairAgain: onForget)
+            } else if monitor.state.status == .offline {
                 OfflineBanner(state: monitor.state)
             }
             VoiceErrorBanner(voice: voice)
@@ -376,6 +379,9 @@ private struct PairedShell: View {
         // session duration so we shouldn't keep burning minutes when
         // the user has navigated away.
         .onChange(of: pairedScenePhase) { _, newPhase in
+            // Returning to the foreground: re-probe now so a reconnect, or a
+            // revoke that happened while suspended, shows immediately.
+            if newPhase == .active { Task { await monitor.probe() } }
             guard newPhase == .background else { return }
             switch voice.state {
             case .idle, .failed: break
@@ -601,6 +607,32 @@ private final class ShellBadgeHost: ObservableObject {
         level.caseInsensitiveCompare("error") == .orderedSame
             || level.caseInsensitiveCompare("warning") == .orderedSame
             || level.caseInsensitiveCompare("warn") == .orderedSame
+    }
+}
+
+/// Shown when the desktop refused this phone's device token (revoked from
+/// desktop Settings → Remote access, or expired). Unlike OfflineBanner this
+/// will not self-heal, so it offers the way back to pairing.
+private struct UnpairedBanner: View {
+    let onPairAgain: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("This phone is no longer paired with your desktop.")
+                .font(.caption.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 12)
+            Button("Pair again", action: onPairAgain)
+                .font(.caption.weight(.bold))
+                .accessibilityIdentifier("pairAgainButton")
+        }
+        .foregroundStyle(Color(red: 1.0, green: 0.80, blue: 0.84))
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color(red: 0.28, green: 0.02, blue: 0.07).opacity(0.94))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("unpairedBanner")
     }
 }
 

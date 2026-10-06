@@ -11,6 +11,9 @@ struct PapercupApp: App {
     @StateObject private var deepLink = DeepLinkRouter.shared
 
     init() {
+        // Must run before AppRoot reads the Keychain: a reinstall starts at
+        // pairing, never on a previous install's credentials.
+        CredentialStore.resetIfFreshInstall()
         #if DEBUG
         // XCUITest hooks — DEBUG-only so release builds can't be
         // pair-injected via Xcode launch args. Both no-ops without args.

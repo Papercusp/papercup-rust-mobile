@@ -76,7 +76,32 @@ enum CredentialStore {
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             kSecValueData as String: data,
         ]
-        SecItemAdd(query as CFDictionary, nil)
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status != errSecSuccess {
+            // The pairing still works for this launch (creds live in memory)
+            // but will not survive a relaunch — make that diagnosable.
+            NSLog("CredentialStore.save failed: OSStatus %d", status)
+        }
+    }
+
+    static let installMarkerKey = "papercup.installMarker.v1"
+
+    /// iOS keeps Keychain items after the app is DELETED, but wipes the
+    /// app's UserDefaults. Without this, a "clean install" silently resumed
+    /// the previous install's pairing — possibly a revoked device or another
+    /// workspace — and skipped onboarding (P-008 / WI-10004735). The first
+    /// launch of each install (no marker yet) clears stored credentials.
+    /// Returns true when it cleared. Note: an upgrade from a build that
+    /// predates the marker is also treated as fresh once (pre-1.0 only).
+    @discardableResult
+    static func resetIfFreshInstall(
+        defaults: UserDefaults = .standard,
+        clearStored: () -> Void = { CredentialStore.clear() }
+    ) -> Bool {
+        guard !defaults.bool(forKey: installMarkerKey) else { return false }
+        clearStored()
+        defaults.set(true, forKey: installMarkerKey)
+        return true
     }
 
     static func clear() {
