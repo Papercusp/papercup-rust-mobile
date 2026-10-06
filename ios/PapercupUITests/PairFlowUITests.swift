@@ -47,6 +47,10 @@ final class PairFlowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Scan QR"].exists, "Scan QR button should be present")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Remote access")).firstMatch.exists,
                       "Pairing instructions should point to the current desktop settings")
+        // iphone D-014(4): BYOC cloud workspaces pair from the cloud desktop's
+        // Settings → Remote access, so the instructions must name them too.
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "cloud workspace")).firstMatch.exists,
+                      "Pairing instructions should tell cloud-workspace users where to pair")
         XCTAssertTrue(app.buttons["Paste manually"].exists, "Paste pairing should remain available without camera access")
 
         // Retain a real candidate image for the review packet after the
