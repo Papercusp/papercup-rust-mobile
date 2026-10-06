@@ -539,7 +539,7 @@ impl From<CoreRuntimeConfig> for RuntimeConfig {
             device_kind: c.device_kind,
             voice_ws_port: c.voice_ws.port,
             voice_ws_path: c.voice_ws.path,
-            base_urls_json: c.base_urls.to_string(),
+            base_urls_json: routes_json(&c.base_urls),
         }
     }
 }
@@ -578,7 +578,7 @@ impl From<CoreVoiceSessionInit> for VoiceSessionInit {
             audience_mode: v.audience_mode,
             device_id: v.device_id,
             workspace_id: v.workspace_id,
-            base_urls_json: v.base_urls.to_string(),
+            base_urls_json: routes_json(&v.base_urls),
         }
     }
 }
@@ -1753,7 +1753,36 @@ impl OperatorClient {
             workspace_id: resp.workspace_id,
             desktop_host: resp.desktop_host,
             defguard_enrollment_url: resp.defguard_enrollment_url,
-            base_urls_json: resp.base_urls.to_string(),
+            base_urls_json: routes_json(&resp.base_urls),
         })
+    }
+}
+
+/// `baseUrls` as the raw JSON route list the native clients decode (D-018).
+/// An absent field deserializes to `Value::Null`; hand the clients an empty
+/// string for that rather than the literal `null`, so "no route list" has one
+/// spelling across Swift and Kotlin.
+fn routes_json(v: &serde_json::Value) -> String {
+    if v.is_null() {
+        String::new()
+    } else {
+        v.to_string()
+    }
+}
+
+#[cfg(test)]
+mod routes_json_tests {
+    use super::routes_json;
+
+    #[test]
+    fn absent_route_list_is_empty_string() {
+        assert_eq!(routes_json(&serde_json::Value::Null), "");
+    }
+
+    #[test]
+    fn relay_route_list_round_trips_as_json() {
+        let v = serde_json::json!([{ "kind": "relay", "url": "https://relay.example/w/1" }]);
+        let back: serde_json::Value = serde_json::from_str(&routes_json(&v)).unwrap();
+        assert_eq!(back, v);
     }
 }

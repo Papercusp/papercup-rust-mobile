@@ -35,7 +35,8 @@ struct PapercupApp: App {
                 server: server,
                 deviceToken: token,
                 deviceId: deviceId,
-                workspaceId: workspaceId
+                workspaceId: workspaceId,
+                baseUrlsJson: dict["baseUrlsJson"]
             ))
         }
         if let i = args.firstIndex(of: "-com.papercuspai.uitests.pairPayload"),
