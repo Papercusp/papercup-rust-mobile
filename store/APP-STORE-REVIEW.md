@@ -2421,3 +2421,43 @@ proofs retain their scopes. Independent saved-byte/tree/per-entry-mode/AST/impor
 helper/caller and process-declaration readback passed with seven rejecting controls.
 Removing this extension restores the exact prior receipt, reference and review.
 Verification input fingerprints remain distinct from final saved-file bindings.
+### Pinned depot_tools watchlist and owner helper declarations
+
+The private wrapper receipt retains `watchlists.py` (4852 bytes),
+`owners_client.py` (8468 bytes) and `owners_finder.py` (12369 bytes) at
+`fa8fc854e1766b86f10c9a15902cf3cc23adaac2` as static source data. Watchlists
+declares the checkout `WATCHLISTS` mapping, restricted-builtins evaluation,
+regex path matching and a sorted unique watcher result. The owner client
+declares a Gerrit code-owners plugin availability guard, seeded lookups,
+separate caches, thread pools and approval precedence. The finder accepts an
+injected owner client and declares reviewer filtering, color selection and
+interactive commands. Retained `gerrit_util.py`, `git_common.py`,
+`gclient_utils.py` and `git_cl.py` bindings connect these declarations. The
+sources were not imported or executed.
+
+Original rules/OWNERS, interpreter/packages, checkout, authentication, Gerrit
+configuration, filesystem/environment, random seed, pool behavior, interactive
+input and network outcomes remain unobserved. Complete checkout/native
+reproduction, final notices/rights, signed candidate, recipient retrieval and
+release acceptance remain open. Earlier proofs retain their scopes.
+Independent saved-byte/tree/per-entry-mode/AST/import, helper/caller and
+remote-owner-selection declaration readback passed with eight rejecting controls.
+The remaining-root census includes both compressed and literal-text records.
+Removing this extension restores the exact prior receipt, reference and review.
+Verification input fingerprints remain distinct from final saved-file bindings.
+
+## Pinned depot_tools split change source preparation
+
+Pinned split_cl.py is retained in the existing wrapper provenance receipt.
+Its source declares grouping changes, reviewer selection, description and
+splitting validation, interactive editing, branch creation and uploads through
+injected interfaces. Dry-run handling still declares temporary-file output and
+a final checkout. These are source declarations; the upstream source was neither
+imported nor executed. Original checkout, configuration, files, reviewer policy,
+Git/runtime identities, editor/input, authentication and upload results remain
+unobserved. Full source/native reproduction, final rights/notices, exact signed
+candidate, recipient retrieval and release acceptance remain open.
+Independent saved-byte/tree/per-entry-mode/qualified-AST/import/helper/caller
+and dry-run/upload declaration checks passed with nine rejecting controls.
+Removing the extension restores the exact prior receipt, reference and review.
+Proof input fingerprints remain distinct from final saved-file bindings.
