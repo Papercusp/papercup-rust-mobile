@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(420982 bytes; SHA-256 8732480fb8368ce8edf3d45ab7e8b6ec754051acaab73616eae126b6b2b04c35)
+(548442 bytes; SHA-256 3b4a60589535084a267c0f3d0bb0e127bd13c1f7308fe87d3e9d681728148433)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2113,13 +2113,28 @@ version resolution invoke the client selected through PATH; ensure rows use the
 caller-supplied root. The evaluator combines built-in variables and existing-key
 overrides before standardizing dependencies and merging OS-specific branches.
 These declarations leave the actual DEPS/configuration, host platform, client
-and installed packages unobserved. The new sources still import five unretained
-root sources and an unretained nested schema; complete import closure stays open.
+and installed packages unobserved. At that preparation, five root imports and a nested schema remained
+unretained. The five root imports are retained below; schema and complete
+import closure remain open.
 Independent persisted readback verified both blobs, the pinned root tree, all
 fifteen spans, eight callers, eight root import edges, one nested import and
 three command declarations. Five controls rejected altered source bytes, an
 omitted source, a changed command prefix, an omitted caller and a falsely
 observed runtime; current receipt/reference/review bindings also passed.
+
+The receipt additionally retains five pinned delegate imports: `gerrit_util.py`,
+`git_auth.py`, `git_cache.py`, `git_common.py` and `scm.py`. Their exact source
+blobs and modes agree with the pinned root tree. Recorded AST spans and import
+edges describe Git executable, cache-path and configuration/authentication
+selection. Original environment/configuration, executables and installed
+Python packages remain unobserved; further root and nested imports remain open.
+Independent persisted readback verified all five source blobs, the root tree,
+seventeen AST spans, twenty-three root import edges, three nested or installed
+imports, five newly retained delegate bindings and the Git executable
+declaration. Twelve root import edges now have retained target sources; eleven
+edges point to nine unretained root files. Five controls rejected changed source
+bytes, an omitted source, an omitted caller, a changed executable declaration
+and a falsely observed original runtime. Receipt/reference/review bindings passed.
 
 No upstream script, interpreter, GN, Ninja or package was executed or fetched
 as a binary. Original outer tools, environment, executable/package digests,
