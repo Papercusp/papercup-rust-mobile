@@ -2630,3 +2630,23 @@ Independent saved-byte/Git-tree/per-entry-mode/spec/wrapper/caller checks passed
 with thirteen rejecting controls. Removing this extension restores the exact
 prior receipt/reference/review bytes; verification inputs remain distinct from
 final saved fingerprints. Earlier source and native proofs retain their scopes.
+
+## Pinned depot_tools gsutil wrapper and package declaration source preparation
+
+Three pinned root files (gsutil.py, gsutil.py.bat and gsutil.vpython3;
+13,252 bytes) are retained as static source data in the existing wrapper receipt.
+The wrapper declares gsutil 4.68 and a separate Python 3.8 spec with one crcmod
+wheel; the downloader caller and retained lockfile/VPython helpers are bound.
+Windows update, cache/sentinel, LUCI/.boto/environment and platform branches are
+source declarations. Original installed package/cache/metadata, credential,
+PATH/spec selection and execution remain unobserved. No upstream source was
+imported or executed and no package/binary was downloaded. The historical cache
+MD5 declaration finding is separately owned and unconfirmed on WI-10006601;
+ResultSink WI-10006524 remains separately unconfirmed. Complete repository/native,
+final rights/notices, exact signed candidate, recipient retrieval/fresh build and
+public release acceptance remain open.
+
+Independent saved-byte/Git-tree/per-entry-mode/15-AST/14-import/spec/helper/caller
+checks passed with sixteen rejecting controls. Removing this extension restores
+the exact prior receipt/reference/review bytes; verification inputs remain distinct
+from final saved fingerprints. Earlier evidence retains its original scope.
