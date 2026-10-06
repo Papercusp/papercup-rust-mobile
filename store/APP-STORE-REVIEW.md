@@ -2279,3 +2279,20 @@ compiler executable or package digest, and the SDK note does not establish the
 app manifest minimum SDK. No native binary or upstream script was executed.
 Original compiler/GN/tool identities, complete source closure and reproduction,
 signed candidate, recipient retrieval/fresh build and release acceptance remain open.
+
+### Pinned depot_tools auth migration conditions
+
+The existing private wrapper receipt additionally retains `newauth.py`
+(2460 bytes) at `fa8fc854e1766b86f10c9a15902cf3cc23adaac2` as static source data.
+Its declared default enables the new auth stack unless Git configuration
+`depot-tools.usenewauthstack` explicitly disables it. An existing `~/.gitcookies`
+file disables `Enabled()` and emits a guarded warning recommending
+`git cl creds-check`; that advice is text, not an executed command. The retained
+Gerrit helper references `Enabled()` at three sites and `scm.py` is retained.
+Original Git configuration, home/cwd/filesystem/gitcookies choices and auth or
+network activity remain unobserved. `download_from_google_storage.py`, `git_cl.py`,
+complete source/runtime/native reproduction, final notices/rights, signed
+candidate, recipient retrieval/fresh build and release acceptance remain open.
+Independent saved-byte/tree/mode/AST/import/caller/helper/configuration readback
+and six rejecting controls passed. Removing this extension restores the exact
+prior receipt, reference and review. Final bindings are checked separately.
