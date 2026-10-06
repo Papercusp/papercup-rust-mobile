@@ -2650,3 +2650,22 @@ Independent saved-byte/Git-tree/per-entry-mode/15-AST/14-import/spec/helper/call
 checks passed with sixteen rejecting controls. Removing this extension restores
 the exact prior receipt/reference/review bytes; verification inputs remain distinct
 from final saved fingerprints. Earlier evidence retains its original scope.
+
+## Pinned depot_tools Windows launcher source preparation
+
+Five pinned root Windows launchers (update_depot_tools.bat, gclient.bat,
+download_from_google_storage.bat, gn.bat and ninja.bat; 4,604 bytes)
+are retained as static source data. The update/TEMP/Git/CIPD routes, gclient
+update gate, explicit GN python-bin wrapper and PATH-based downloader/Ninja
+launches are bound to eight retained helper identities. Original Windows
+filesystem/TEMP/update revision, markers/environment/PATH, generated wrappers,
+selected interpreter/packages and execution remain unobserved. No upstream
+source was imported or executed and no package/binary was downloaded. Complete
+repository/native, final rights/notices, exact signed candidate, recipient
+retrieval/fresh build and public release acceptance remain open. Historical
+WI-10006524 and WI-10006601 remain separately owned and unconfirmed.
+
+Independent saved-byte/tree/mode/63-command/eight-helper checks passed with
+sixteen rejecting controls. Removing this extension restores the exact prior
+receipt/reference/review bytes; verification inputs remain distinct from final
+saved fingerprints. Earlier evidence retains its original scope.
