@@ -276,6 +276,8 @@ fi
 # skipped/empty exits, failed tests and interruption must all clean only the
 # resources created for this attempt, without changing desktop selection.
 python3 - "$runner" "$TMP_ROOT" <<'PY'
+# Upper bound for one stubbed live-runner invocation (see its use below).
+STUB_HANG_TIMEOUT_SEC = 120
 import json
 import os
 from pathlib import Path
@@ -556,8 +558,12 @@ else:
             (native_root / 'private-fixture.json').write_text('{"owner":"pre-existing"}')
     evidence = root / ('live-evidence-' + case)
     try:
+        # A hang detector, not a performance budget: native stub cases measured
+        # 3.8-7.8s at load ~194/128 cores (WI-10006927), and a fixed 15s failed
+        # isolated-native preflight under fleet load. Timeout behaviour itself is
+        # asserted through PAPERCUP_LIVE_TIMEOUT_SEC=1 inside the runner.
         run = subprocess.run(['bash', selected_runner, 'live', str(evidence), 'native' if native_mode else 'rust'], env=env,
-                             capture_output=True, text=True, timeout=15)
+                             capture_output=True, text=True, timeout=STUB_HANG_TIMEOUT_SEC)
         result = json.loads((evidence / 'result.json').read_text())
         assert (run.returncode == 0) == (case in ('pass', 'native-pass')), (case, run.stdout, run.stderr, result)
         assert state['current'] == 'original'
@@ -620,7 +626,7 @@ with socket.socket() as reserved:
 offline = root / 'connection-refused'
 run = subprocess.run(['bash', runner, 'live', str(offline), 'native'],
     env=dict(os.environ, PAPERCUP_LIVE_BASE=f'http://127.0.0.1:{offline_port}'),
-    capture_output=True, text=True, timeout=15)
+    capture_output=True, text=True, timeout=STUB_HANG_TIMEOUT_SEC)
 failure = json.loads((offline / 'result.json').read_text())
 assert run.returncode != 0 and failure['exitCode'] != 0
 assert failure['setupFailed'] and failure['setupFailureClass'] == 'URLError'
@@ -893,3 +899,23 @@ C
     grep -Fq 'libandroid_guard_core.so => not found' "$TMP_ROOT/real-missing-library-proof/emulator-libraries.txt"
     echo 'Android emulator real-loader guards: bundled and inherited libraries accepted; missing dependency rejected'
 fi
+
+# The native Rust + Gradle build owns its own budget, separate from the
+# live-smoke PAPERCUP_LIVE_TIMEOUT_SEC (a cold four-ABI Cargo cache exceeds
+# 240s). Out-of-range budgets are refused before any build or network call.
+for bad_budget in 59 7201; do
+    if PAPERCUP_LIVE_BASE=http://127.0.0.1:9 PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC="$bad_budget" \
+        bash "$runner" live "$TMP_ROOT/build-budget-$bad_budget" native > "$TMP_ROOT/output" 2>&1; then
+        echo "FAIL: native build timeout $bad_budget was accepted" >&2
+        exit 1
+    fi
+    grep -Fq 'native build timeout must be between 60 and 7200 seconds' "$TMP_ROOT/output"
+done
+# Both build subprocesses (assemble + test APK) use the build budget, not the
+# live timeout, and the isolated wrapper waits at least test allowance + budget.
+if [[ "$(grep -c 'check=True, timeout=build_timeout)' "$runner")" != 2 ]]; then
+    echo 'FAIL: native build steps do not both use the dedicated build timeout' >&2
+    exit 1
+fi
+grep -Fq 'native.wait(timeout=1800 + native_build_budget)' "$runner"
+echo 'Android native build budget: out-of-range budgets rejected; build steps and isolated wrapper use the dedicated budget'
