@@ -235,6 +235,42 @@ async fn pair_serialises_camel_case_and_returns_defguard_url() {
         resp.defguard_enrollment_url.as_deref(),
         Some("https://mesh.papercuspai.com/enroll")
     );
+    // An older server that omits baseUrls still pairs.
+    assert!(resp.base_urls.is_null());
+}
+
+// Pair on a cloud workspace (iPhone D-018 / D-014(3)): the machine
+// advertises its relay URL as a baseUrls entry of kind `relay`. The core
+// keeps the list opaque and in order, so an unknown kind cannot fail the
+// decode and the client can label the connection from it.
+#[tokio::test]
+async fn pair_keeps_advertised_base_urls_including_relay() {
+    let server = MockServer::start().await;
+    let client = OperatorClient::new(server.uri(), None);
+    let base_urls = json!([
+        { "kind": "relay", "url": "https://ws-1.cloud.papercuspai.com/r/abc" },
+        { "kind": "some-future-kind", "url": "https://example.invalid" }
+    ]);
+    Mock::given(method("POST"))
+        .and(path("/api/device/pair"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "deviceToken": "JWT",
+            "deviceId": "did-1",
+            "desktopHost": "ws-1.cloud.papercuspai.com",
+            "workspaceId": "default",
+            "baseUrls": base_urls.clone()
+        })))
+        .mount(&server)
+        .await;
+
+    let resp = client
+        .pair(PairBody {
+            pair_token: "PT-123".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(resp.base_urls, base_urls);
+    assert_eq!(resp.base_urls[0]["kind"], "relay");
 }
 
 // Pair failure: handler-level flat 401 {error:'invalid_or_expired_token'}.
@@ -353,7 +389,8 @@ async fn runtime_config_decodes_voice_ws_port() {
             "meshHost": "10.10.0.2:3055",
             "workspaceId": "default",
             "deviceKind": "mobile",
-            "voiceWs": { "port": 3068, "path": "/api/device/voice" }
+            "voiceWs": { "port": 3068, "path": "/api/device/voice" },
+            "baseUrls": [{ "kind": "relay", "url": "https://ws-1.cloud.papercuspai.com/r/abc" }]
         })))
         .mount(&server)
         .await;
@@ -361,6 +398,8 @@ async fn runtime_config_decodes_voice_ws_port() {
     assert_eq!(cfg.mesh_host, "10.10.0.2:3055");
     assert_eq!(cfg.voice_ws.port, Some(3068));
     assert_eq!(cfg.voice_ws.path, "/api/device/voice");
+    // Re-read on app start so a stored pairing sees route changes (D-018).
+    assert_eq!(cfg.base_urls[0]["kind"], "relay");
 }
 
 // voiceWs.port is null when the server's WS failed to bind.
@@ -379,6 +418,7 @@ async fn runtime_config_null_voice_port_decodes_as_none() {
         .await;
     let cfg = client.runtime_config().await.unwrap();
     assert_eq!(cfg.voice_ws.port, None);
+    assert!(cfg.base_urls.is_null());
 }
 
 // rest-query: the polling-sync fetch. Asserts the query params land

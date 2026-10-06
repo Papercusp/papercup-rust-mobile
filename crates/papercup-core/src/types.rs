@@ -327,6 +327,12 @@ pub struct PairResp {
     /// Defguard configured still pairs; LAN/public-tunnel fallbacks work).
     #[serde(default)]
     pub defguard_enrollment_url: Option<String>,
+    /// Ordered routes the machine advertises (`[{kind, url}]`, kinds
+    /// mesh/lan/tunnel and — on a cloud workspace — relay). Kept opaque,
+    /// like `VoiceSessionInit::base_urls`, so a new kind cannot break
+    /// pairing; `Null` when an older server omits it.
+    #[serde(default)]
+    pub base_urls: serde_json::Value,
 }
 
 // ── /api/device/runtime-config ─────────────────────────────────────────
@@ -339,6 +345,11 @@ pub struct RuntimeConfig {
     /// Currently always "mobile".
     pub device_kind: String,
     pub voice_ws: VoiceWsInfo,
+    /// Same opaque route list as `PairResp::base_urls`, re-read on every
+    /// app start so a stored pairing picks up a route change (iPhone
+    /// D-018: the cloud-workspace label derives from a `relay` entry).
+    #[serde(default)]
+    pub base_urls: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

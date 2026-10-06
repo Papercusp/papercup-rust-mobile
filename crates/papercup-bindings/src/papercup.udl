@@ -198,6 +198,10 @@ dictionary PairOutcome {
     /// time so the device joins the mesh. Null when the server has no
     /// Defguard configured (LAN/public-tunnel reachability still works).
     string? defguard_enrollment_url;
+    /// The machine's advertised routes as JSON (`[{kind, url}]`; kinds
+    /// mesh/lan/tunnel, and relay on a cloud workspace). `"null"` when
+    /// the server omits it. Persist it to label the connection.
+    string base_urls_json;
 };
 
 /// `GET /api/device/runtime-config` — post-pair device config. The
@@ -210,6 +214,9 @@ dictionary RuntimeConfig {
     string device_kind;
     u16? voice_ws_port;
     string voice_ws_path;
+    /// Same route list as `PairOutcome.base_urls_json`, current as of
+    /// this call — refresh the stored copy from it on app start.
+    string base_urls_json;
 };
 
 /// `GET /api/device/voice-session-init` — mobile voice bootstrap for the

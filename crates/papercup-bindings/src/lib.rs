@@ -514,6 +514,8 @@ pub struct PairOutcome {
     /// so the device joins the mesh. None when the server has no Defguard
     /// configured (LAN/public-tunnel reachability still works).
     pub defguard_enrollment_url: Option<String>,
+    /// Advertised routes as opaque JSON (`"null"` from an older server).
+    pub base_urls_json: String,
 }
 
 /// `GET /api/device/runtime-config` — post-pair device config. The voice
@@ -526,6 +528,7 @@ pub struct RuntimeConfig {
     pub device_kind: String,
     pub voice_ws_port: Option<u16>,
     pub voice_ws_path: String,
+    pub base_urls_json: String,
 }
 
 impl From<CoreRuntimeConfig> for RuntimeConfig {
@@ -536,6 +539,7 @@ impl From<CoreRuntimeConfig> for RuntimeConfig {
             device_kind: c.device_kind,
             voice_ws_port: c.voice_ws.port,
             voice_ws_path: c.voice_ws.path,
+            base_urls_json: c.base_urls.to_string(),
         }
     }
 }
@@ -1749,6 +1753,7 @@ impl OperatorClient {
             workspace_id: resp.workspace_id,
             desktop_host: resp.desktop_host,
             defguard_enrollment_url: resp.defguard_enrollment_url,
+            base_urls_json: resp.base_urls.to_string(),
         })
     }
 }

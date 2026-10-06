@@ -21,6 +21,23 @@ struct PapercupApp: App {
         if args.contains("-com.papercuspai.uitests.wipeCredentials") {
             CredentialStore.clear()
         }
+        // Paired-state backdoor that needs no backend pair round-trip: persist
+        // {server, deviceToken, deviceId, workspaceId} directly, so a UI test
+        // can point the app at an in-process relay stub (P-015 cloud
+        // workspace offline → recovery, CloudWorkspaceOfflineUITests).
+        if let i = args.firstIndex(of: "-com.papercuspai.uitests.seedCredentials"),
+           i + 1 < args.count,
+           let data = args[i + 1].data(using: .utf8),
+           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+           let server = dict["server"], let token = dict["deviceToken"],
+           let deviceId = dict["deviceId"], let workspaceId = dict["workspaceId"] {
+            CredentialStore.save(DeviceCredentials(
+                server: server,
+                deviceToken: token,
+                deviceId: deviceId,
+                workspaceId: workspaceId
+            ))
+        }
         if let i = args.firstIndex(of: "-com.papercuspai.uitests.pairPayload"),
            i + 1 < args.count {
             // App.init is main-actor isolated. Install the launch payload

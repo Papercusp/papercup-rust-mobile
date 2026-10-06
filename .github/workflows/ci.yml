@@ -95,9 +95,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      # Current operator-api isolation/profile and Inbox fixes. Advance this
-      # exact counterpart deliberately; a floating branch invalidates proof.
-      PAPERCUP_OPERATOR_SHA: eb13aa50f54114aedbceb873d45e3928fc2c9a81
+      # Current operator-api isolation/profile and Inbox fixes, plus the
+      # WI-10006890 patch-package fix (0cf1fb11) so `npm ci` succeeds in CI.
+      # Advance this exact counterpart deliberately; a floating branch
+      # invalidates proof.
+      PAPERCUP_OPERATOR_SHA: b7e4e4e4180b42f94d1781878808279e674cea23
     concurrency:
       group: android-check-${{ github.ref }}
       cancel-in-progress: false
@@ -358,7 +360,10 @@ jobs:
           make test-ios-release
           tools/build-scripts/verify-ios-release.sh --require-current-sdk
 
-      - name: Clean-install pairing UI smoke
+      # Backend-free UI tests: the clean-install pairing smoke, and the
+      # cloud workspace offline -> recovery flow (P-015) against an
+      # in-process relay stub with seeded DEBUG credentials.
+      - name: Clean-install pairing and cloud-offline UI tests
         run: |
           set -euo pipefail
           sim_udid="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/{print $2; exit}')"
@@ -368,6 +373,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$sim_udid" \
             -derivedDataPath ios/build/dd \
             -only-testing:PapercupUITests/PairFlowUITests/testFreshLaunchShowsPairChoices \
+            -only-testing:PapercupUITests/CloudWorkspaceOfflineUITests/testCloudWorkspaceOfflineThenRecoversWithoutRepairing \
             -resultBundlePath ios/build/ci-pair-smoke.xcresult
           xcrun xcresulttool get test-results summary \
             --path ios/build/ci-pair-smoke.xcresult --format json > ios/build/ci-pair-smoke-summary.json
@@ -375,7 +381,7 @@ jobs:
           import json
           from pathlib import Path
           result = json.loads(Path('ios/build/ci-pair-smoke-summary.json').read_text())
-          assert result['passedTests'] == 1, result
+          assert result['passedTests'] == 2, result
           assert result['failedTests'] == 0, result
           assert result['skippedTests'] == 0, result
           PY
