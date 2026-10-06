@@ -2612,3 +2612,21 @@ public release acceptance remain open. WI-10006524 remains separately unconfirme
 Independent saved-byte/tree/mode/package-population checks passed with ten
 rejecting controls, including false filesystem, execution and repository claims. Removing
 this extension restores all three exact prior byte streams.
+
+## Pinned depot_tools root VPython declaration source preparation
+
+Three pinned root files (.vpython3, vpython3 and vpython3.bat; 3,966 bytes)
+are retained as static source data in the existing wrapper receipt. The spec
+declares Python 3.11, six verification tags and eleven wheels, including one
+Brotli tag exclusion. The POSIX bypass/normal CIPD/Windows routes and six
+retained helper/caller identities are bound as declarations. Original PATH,
+working directory, spec lookup, environment and installed Python/VPython/wheel
+instances remain unobserved. No upstream source was imported or executed and no
+package/binary was downloaded. Full repository/runtime/native reproduction,
+final rights/notices, exact signed candidate, recipient retrieval/fresh build
+and public release acceptance remain open. WI-10006524 remains unconfirmed.
+
+Independent saved-byte/Git-tree/per-entry-mode/spec/wrapper/caller checks passed
+with thirteen rejecting controls. Removing this extension restores the exact
+prior receipt/reference/review bytes; verification inputs remain distinct from
+final saved fingerprints. Earlier source and native proofs retain their scopes.
