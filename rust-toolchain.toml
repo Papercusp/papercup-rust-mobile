@@ -1,0 +1,32 @@
+# The ONE Rust toolchain for this repository — local `make check`, the Xcode /
+# Gradle native builds, and every CI job all compile with exactly this version.
+#
+# Why pinned (WI-10006894): CI used `dtolnay/rust-toolchain@stable` while local
+# machines used whatever `stable` they last installed. When stable moved to
+# 1.99 it shipped a new clippy lint (large_const_arrays) that fired on generated
+# UniFFI scaffolding, so `cargo clippy -D warnings` went red ONLY on CI while
+# `make check` stayed green locally (WI-10006891). A floating channel makes the
+# local gate and the CI gate two different gates.
+#
+# Bumping: change `channel`, run `make check`, fix any new lints in the same
+# change. CI derives its toolchain from this file (`rustup toolchain install`
+# with no arguments), so there is no second version string to keep in sync.
+# tools/tests/rust-toolchain-pin-test.sh (part of `make check`) fails if this
+# becomes a floating channel or if CI stops deriving from this file.
+#
+# rustup >= 1.28 no longer auto-installs a missing pinned toolchain; on a fresh
+# machine run `rustup toolchain install` once from the repo root.
+#
+# targets: the four Android ABIs `cargo ndk` cross-compiles for
+# (tools/build-scripts/build-android.sh, which does not add targets itself).
+# A pinned toolchain is a separate rustup install, so targets you added to your
+# old `stable` do not carry over; without this list a fresh 1.99.0 has only the
+# host std and the JNI build fails with "can't find crate for `std`".
+# iOS targets are added by tools/build-scripts/build-ios.sh into this same
+# pinned toolchain, so they are deliberately not listed (every Linux CI job
+# would download them for nothing).
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-linux-android", "armv7-linux-androideabi", "i686-linux-android", "x86_64-linux-android"]
+profile = "minimal"

@@ -41,9 +41,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # Toolchain comes from rust-toolchain.toml (channel + rustfmt/clippy), the
+      # same pin local `make check` uses — never a floating `stable` (WI-10006894).
+      - name: Install pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc -Vv
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -69,7 +70,8 @@ jobs:
     needs: rust
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc -Vv
       - uses: Swatinem/rust-cache@v2
 
       - name: Generate Kotlin bindings
@@ -158,11 +160,12 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned Rust toolchain (rust-toolchain.toml) + Android targets
         if: steps.android-proof.outputs.cache-hit != 'true'
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
-          components: rustfmt, clippy
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+          rustc -Vv
 
       - uses: Swatinem/rust-cache@v2
         if: steps.android-proof.outputs.cache-hit != 'true'
@@ -323,9 +326,11 @@ jobs:
           path: libs/token-kit
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+      - name: Install pinned Rust toolchain (rust-toolchain.toml) + iOS targets
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+          rustc -Vv
 
       - uses: Swatinem/rust-cache@v2
 
