@@ -1,7 +1,8 @@
 # App Store privacy answers — iPhone 1.0
 
 _Source-reconciled August 11, 2026 against the iPhone source, dependencies,
-privacy manifest, and public privacy policy._
+privacy manifest, and public privacy policy. Cloud workspace answers added
+October 6, 2026; re-reconcile them against the relay build before submission._
 
 Use this as the exact App Store Connect worksheet for bundle ID
 `com.papercuspai.operator.mobile`. Re-check it against the exported archive
@@ -20,14 +21,18 @@ Apple treats data sent off the device and retained beyond the immediate request
 as collected. Optional cloud voice can be retained by ElevenLabs, and the
 operator retains a functional device identity and APNs token, so the answer is
 Yes even though Papercusp has no consumer account or advertising profile.
+A Papercusp-hosted cloud workspace stores the user's chat, commands, and voice
+on Papercusp-operated infrastructure, so that content is collected too. A
+workspace in the customer's own cloud account receives content end-to-end
+encrypted through the Papercusp relay, which processes only routing data.
 
 ## Data types to declare
 
 | App Store data type | Collected | Linked | Tracking | Purpose | Required |
 |---|---:|---:|---:|---|---|
-| User Content → Audio Data | Yes | Yes | No | App Functionality | Optional; cloud voice only |
-| User Content → Other User Content | Yes | Yes | No | App Functionality | Optional; cloud voice transcripts and replies |
-| Identifiers → Device ID | Yes | Yes | No | App Functionality | Required after pairing; includes functional device ID and APNs token |
+| User Content → Audio Data | Yes | Yes | No | App Functionality | Optional; cloud voice, or voice sent to a Papercusp-hosted cloud workspace |
+| User Content → Other User Content | Yes | Yes | No | App Functionality | Cloud voice transcripts and replies; chat and commands sent to a Papercusp-hosted cloud workspace |
+| Identifiers → Device ID | Yes | Yes | No | App Functionality | Required after pairing; includes functional device ID, APNs token, and relay routing for cloud workspaces |
 
 ## Data types not collected by the iPhone 1.0 app
 
@@ -35,8 +40,10 @@ Yes even though Papercusp has no consumer account or advertising profile.
   History, Search History, Purchases, Usage Data, Sensitive Info, and Other Data.
 - Crash Data and Performance Data. The iPhone 1.0 target does not link or
   initialize a crash-reporting SDK.
-- Typed chat and command content is sent to the user's paired operator rather
-  than collected by Papercusp. An operator administrator may separately direct
+- Typed chat and command content sent to a paired desktop, or end-to-end
+  encrypted to a workspace in the customer's own cloud account, is not
+  collected by Papercusp. Content sent to a Papercusp-hosted cloud workspace is
+  collected as declared above. An operator administrator may separately direct
   that content to its configured AI provider.
 
 ## Submission-time verification
@@ -48,5 +55,9 @@ Yes even though Papercusp has no consumer account or advertising profile.
 4. Start cloud voice and prove the disclosure blocks transmission until the
    user taps **Allow cloud voice**.
 5. Revoke cloud voice in Settings and prove the next cloud session prompts again.
-6. Compare the App Store Connect form, this worksheet, and the live policy URL
+6. Pair with a sanitized workspace in a customer's own cloud account through the
+   Papercusp relay, and prove the relay records no plaintext chat, voice, or
+   command content for it. Pair with a sanitized Papercusp-hosted workspace and
+   confirm its content handling matches the declarations above.
+7. Compare the App Store Connect form, this worksheet, and the live policy URL
    immediately before submission.

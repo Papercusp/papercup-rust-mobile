@@ -20,9 +20,11 @@ respond from your phone.
 ## Full description
 
 Papercusp turns your iPhone or Android phone into a voice and chat companion
-for the Papercusp desktop operator you control.
+for the Papercusp operator you control, whether it runs on your own desktop or
+in a Papercusp cloud workspace.
 
-In desktop Settings → Remote access → Pair a phone, scan the code or paste the pairing payload. Then:
+In the operator's Settings → Remote access → Pair a phone, on your desktop or
+in your cloud workspace, scan the code or paste the pairing payload. Then:
 
 - Talk or type to your operator from anywhere.
 - See plans, current fleets and pots, agent availability, notifications, and recent work.
@@ -34,8 +36,10 @@ In desktop Settings → Remote access → Pair a phone, scan the code or paste t
 
 Papercusp has no ads and does not use behavioral analytics or sell personal
 data. Public internet connections use encrypted HTTPS. Local-network access is
-limited to connecting directly to a paired desktop. A paired Papercusp desktop
-is required for live operator features.
+limited to connecting directly to a paired desktop. Cloud workspaces connect
+through Papercusp's relay; for a workspace in your own cloud account, content is
+end-to-end encrypted between your phone and that workspace. A paired Papercusp
+desktop or cloud workspace is required for live operator features.
 
 ## Keywords (iOS)
 

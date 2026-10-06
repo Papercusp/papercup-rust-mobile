@@ -25,7 +25,17 @@ cat > "$HOOK" <<'PREPUSH'
 # Installed by tools/install-git-hooks.sh — runs `make check`
 # (fmt-check + clippy -D warnings + cargo test --workspace) before
 # every push. Bypass with `git push --no-verify`.
+#
+# Papercusp git-sync pushes set PAPERCUSP_GIT_SYNC_PUSH=1 and are skipped.
+# git opens the remote connection BEFORE it runs pre-push, so a multi-minute
+# `make check` holds GitHub's session idle until the remote closes it and
+# the automated push dies with SIGPIPE (WI-10006870). This is the same skip
+# the Papercusp superproject's pre-push hook makes for git-sync.
 set -euo pipefail
+if [ "${PAPERCUSP_GIT_SYNC_PUSH:-}" = "1" ]; then
+    echo "pre-push: skipping make check for the automated git-sync push" >&2
+    exit 0
+fi
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 echo "▶ pre-push: make check"

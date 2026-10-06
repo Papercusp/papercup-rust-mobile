@@ -319,7 +319,13 @@ private struct PlanDetailView: View {
                 ?? (obj["title"] as? String)
                 ?? (obj["name"] as? String)
                 ?? id
+            // The operator's parsed items carry the authored status as
+            // `storedStatus` (there is no `status` key). Current operators add a
+            // computed `effectiveStatus`; older or BYOC builds may not, so fall
+            // back to `storedStatus` rather than showing every item as todo.
+            // Same order as Android PlansScreen.kt.
             let status = (obj["effectiveStatus"] as? String)
+                ?? (obj["storedStatus"] as? String)
                 ?? (obj["status"] as? String)
                 ?? "todo"
             return PlanItem(id: id, title: title, status: status)

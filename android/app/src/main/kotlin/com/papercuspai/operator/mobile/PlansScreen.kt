@@ -32,16 +32,27 @@ import uniffi.papercup.PlanSummary
 // ---------------------------------------------------------------------------
 // Local item model parsed defensively from PlanDetail.itemsJson.
 // ---------------------------------------------------------------------------
-private data class PlanItem(
+internal data class PlanItem(
     val id: String,
     val status: String,
     val text: String,
     val importance: String,
-)
+    /** plan-parser `authority`: `owner` marks an owner-gated item; default `system`. */
+    val authority: String = "system",
+) {
+    val ownerGated: Boolean get() = authority.equals("owner", ignoreCase = true)
+}
 
 private data class NowBlock(val state: String?, val next: String?)
 
-private fun parsePlanItems(itemsJson: String): List<PlanItem> {
+/**
+ * Parses `GET /api/device/plans/:slug` `items`. The operator returns raw
+ * plan-parser `PlanItem`s (libs/generic/plan-parser/src/parser.ts), whose
+ * status field is `storedStatus` — there is no `status` key. Prefer a
+ * server-computed `effectiveStatus` when present, then `storedStatus`, then
+ * the legacy `status` key, so every item is not misread as `todo`.
+ */
+internal fun parsePlanItems(itemsJson: String): List<PlanItem> {
     return try {
         val arr = JSONArray(itemsJson)
         val out = ArrayList<PlanItem>(arr.length())
@@ -49,12 +60,18 @@ private fun parsePlanItems(itemsJson: String): List<PlanItem> {
             val obj = arr.optJSONObject(i) ?: continue
             val id = obj.optString("id", "").trim()
             if (id.isEmpty()) continue
+            val status = listOf("effectiveStatus", "storedStatus", "status")
+                .map { key -> if (obj.isNull(key)) "" else obj.optString(key, "").trim() }
+                .firstOrNull { it.isNotEmpty() }
+                ?: "todo"
             out.add(
                 PlanItem(
                     id = id,
-                    status = obj.optString("status", "").ifBlank { "todo" },
+                    status = status,
                     text = obj.optString("text", ""),
                     importance = obj.optString("importance", "normal"),
+                    authority = (if (obj.isNull("authority")) "" else obj.optString("authority", ""))
+                        .trim().ifBlank { "system" },
                 ),
             )
         }
@@ -467,7 +484,7 @@ private fun PlanItemCard(
                 )
                 Spacer(Modifier.width(8.dp))
                 PapercupStatusChip(
-                    text = item.status,
+                    text = if (item.ownerGated) "${item.status} · owner" else item.status,
                     containerColor = chipContainer,
                     contentColor = chipContent,
                 )

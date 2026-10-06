@@ -45,7 +45,7 @@ help:
 
 # Mirror of .github/workflows/ci.yml — run before every push so master
 # stays green even with the org's Actions on workflow_dispatch only.
-check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-android-runner test-android-ci test-ios-host-health test-ios-template-runner
+check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-git-hooks
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -102,6 +102,13 @@ test-android-signing:
 
 test-android-library-notices:
 	bash tools/tests/android-library-notices-test.sh
+
+test-store-packet-scope:
+	bash tools/tests/store-packet-scope-test.sh
+
+# The pre-push hook must skip automated git-sync pushes (WI-10006870).
+test-git-hooks:
+	bash tools/tests/install-git-hooks-test.sh
 
 # The same Android gate runs locally and in CI. Host mode needs no device;
 # full mode also requires a booted API 36 device with 16 KB pages.
