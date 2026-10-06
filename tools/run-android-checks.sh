@@ -378,7 +378,20 @@ def prepare_native():
         subprocess.run(['android/gradlew', '-p', 'android',
                         ':app:assembleDebugAndroidTest', '--console=plain'],
                        env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=build_timeout)
-    adb('install', '-r', 'android/app/build/outputs/apk/debug/app-debug.apk')
+    apk = 'android/app/build/outputs/apk/debug/app-debug.apk'
+    installed = adb('install', '-r', apk, check=False)
+    if (installed.returncode != 0 and 'INSTALL_FAILED_UPDATE_INCOMPATIBLE'
+            in installed.stdout + installed.stderr):
+        # A differently-signed build holds the package on this owned
+        # emulator; its private data is not this build's state, and -r can
+        # never replace it. Remove both packages, then install once more.
+        for package in (app + '.test', app):
+            adb('uninstall', package, check=False)
+        result['replacedIncompatiblePackage'] = True
+        installed = adb('install', '-r', apk, check=False)
+    if installed.returncode != 0:
+        raise RuntimeError('adb install failed: '
+                           + (installed.stdout + installed.stderr).strip()[-500:])
     app_shell('test ! -e files/native-pairing-fixture.json && test ! -e files/native-pairing-result.json && test ! -e files/native-pairing-failure.png')
     app_shell('mkdir -p files')
 
