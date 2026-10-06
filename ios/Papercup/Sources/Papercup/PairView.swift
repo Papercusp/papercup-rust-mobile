@@ -42,7 +42,9 @@ struct PairView: View {
 
                 switch mode {
                 case .choose:
-                    Text("On your desktop: Settings → Remote access → Pair a phone, then scan the QR code shown.")
+                    // iphone D-014(4): a BYOC cloud workspace pairs the same way —
+                    // from the cloud desktop's own Settings → Remote access.
+                    Text("On your desktop or cloud workspace: Settings → Remote access → Pair a phone, then scan the QR code shown.")
                         .font(.callout)
                         .foregroundStyle(PapercupTheme.textMuted)
                         .frame(maxWidth: 320)
