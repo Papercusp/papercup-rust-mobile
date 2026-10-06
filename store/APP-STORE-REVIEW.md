@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(618361 bytes; SHA-256 88f121fcdeb5b604c3f20ded24db9cca448209ad771e000f1ab75b33b66c78aa)
+(679438 bytes; SHA-256 f964fe83bda847b7795be36d034377a64357358ea9d020583d61c2ed2dccd096)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2174,17 +2174,44 @@ pre-retention controls rejected changed source, an omitted source, a changed
 caller condition and a falsely observed runtime. Independent persisted checks
 and all four rejecting controls passed; removing this preparation restored the
 exact prior receipt bytes. Final reference/review bindings are checked after
-retaining this proof. Nested `third_party.colorama` remains unretained.
+retaining this proof. Nested `third_party.colorama` is retained in the preparation below.
 Original Windows platform, interpreter/ctypes/DLL identity and lock execution
 remain unobserved. Subcommand color lookup reads existing `sys.modules` entries; it
 does not import colorama. The six other previously named root paths and complete
 source/platform/environment/interpreter/runtime/release closure remain open.
+
+The receipt additionally retains all nine pinned `third_party/colorama` blobs
+and the parent package initializer. The nine-entry directory is bound through
+the retained third_party and root trees. Upstream metadata declares version
+`0.4.1`, BSD-3-Clause and `Shipped: no`; these declarations do not establish
+the final mobile artifact, notices or rights. Relative Python imports and the
+`setup_color.py` import plus `colorama.init(wrap=should_wrap)` caller are bound
+to source bytes. Independent saved-byte/tree/mode/AST/import/caller/version
+checks and all four rejecting controls passed; removing this preparation
+restored the exact prior receipt bytes. Final receipt/reference/review bindings
+are checked separately after retaining this proof.
+Original interpreter, platform, imported package/DLL and color execution remain
+unobserved. The six other root paths and complete source/runtime/release closure
+remain open.
 
 No upstream script, interpreter, GN, Ninja or package was executed or fetched
 as a binary. Original outer tools, environment, executable/package digests,
 effective GN graph, remaining import/interpreter/source closure, complete native
 reproduction, final notices/rights, candidate, recipient and release acceptance
 remain open.
+
+The receipt additionally retains pinned `metrics_utils.py` (10521 bytes) as
+static source data. Its Git blob, root mode, AST/import declarations, two
+retained helper imports and two retained caller bindings are checked. It
+declares metrics version `3`, three environment inputs and a metrics server;
+these tool-source declarations do not establish mobile app telemetry. Independent
+saved-byte/root/mode/AST/import/helper/caller/environment-declaration checks
+and all four rejecting controls passed. Removing this preparation restores the
+exact prior receipt bytes. Final receipt/reference/review bindings are checked
+separately after retaining the proof. Original
+environment, metrics selection, network activity, imported package/Git and
+interpreter identity remain unobserved. Five earlier root paths and the
+broader source/runtime/native/candidate/recipient/release closure remain open.
 
 ### Retained packaged native ELF notes
 
