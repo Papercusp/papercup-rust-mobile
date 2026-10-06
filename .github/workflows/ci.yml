@@ -105,8 +105,11 @@ jobs:
       # Current operator-api isolation/profile and Inbox fixes, plus the
       # WI-10006890 patch-package fix (0cf1fb11) so `npm ci` succeeds in CI.
       # Advance this exact counterpart deliberately; a floating branch
-      # invalidates proof.
-      PAPERCUP_OPERATOR_SHA: b7e4e4e4180b42f94d1781878808279e674cea23
+      # invalidates proof. Earlier pin b7e4e4e4 was a half-swept commit
+      # (proxy.ts imported isFastFailPrecheck before mcp-proxy-beats.ts
+      # exported it), so the host bundle failed in run 37531012396; 2a0d28b2
+      # is the first pushed staging commit carrying both halves.
+      PAPERCUP_OPERATOR_SHA: 2a0d28b2351da53fbbb31143e0a03700e8096920
     concurrency:
       group: android-check-${{ github.ref }}
       cancel-in-progress: false
