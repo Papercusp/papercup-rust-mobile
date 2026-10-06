@@ -422,7 +422,9 @@ fn cloud_error_as_server(e: &CoreApiError) -> (u16, String) {
             (503, format!("workspace_offline{}", retry(retry_after_secs)))
         }
         CoreApiError::RelayRefused { status, code } => (*status, format!("relay_refused: {code}")),
-        CoreApiError::PayloadTooLarge { detail } => (413, format!("request_body_too_large: {detail}")),
+        CoreApiError::PayloadTooLarge { detail } => {
+            (413, format!("request_body_too_large: {detail}"))
+        }
         CoreApiError::RateLimited { retry_after_secs } => {
             (429, format!("rate_limited{}", retry(retry_after_secs)))
         }

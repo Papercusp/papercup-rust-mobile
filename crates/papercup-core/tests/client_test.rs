@@ -123,7 +123,12 @@ async fn relay_error(status: u16, body: serde_json::Value, retry_after: Option<&
 async fn relay_workspace_offline_is_distinct_and_retryable() {
     let err = relay_error(503, json!({"error":"workspace_offline"}), Some("30")).await;
     assert!(
-        matches!(err, ApiError::WorkspaceOffline { retry_after_secs: Some(30) }),
+        matches!(
+            err,
+            ApiError::WorkspaceOffline {
+                retry_after_secs: Some(30)
+            }
+        ),
         "got {err:?}"
     );
 }
@@ -157,7 +162,10 @@ async fn relay_route_not_relayed_403_never_forces_repair() {
 #[tokio::test]
 async fn relay_app_key_required_401_is_relay_policy_not_repair() {
     let err = relay_error(401, json!({"error":"app_key_required"}), None).await;
-    assert!(matches!(err, ApiError::RelayRefused { status: 401, .. }), "got {err:?}");
+    assert!(
+        matches!(err, ApiError::RelayRefused { status: 401, .. }),
+        "got {err:?}"
+    );
 }
 
 // The VM's own 401 passes through the relay unchanged (D-013 §2) and is
@@ -176,7 +184,10 @@ async fn vm_401_through_relay_still_maps_to_unauthorized() {
 #[tokio::test]
 async fn relay_body_too_large_413_is_distinct() {
     let err = relay_error(413, json!({"error":"request_body_too_large"}), None).await;
-    assert!(matches!(err, ApiError::PayloadTooLarge { .. }), "got {err:?}");
+    assert!(
+        matches!(err, ApiError::PayloadTooLarge { .. }),
+        "got {err:?}"
+    );
 }
 
 #[tokio::test]
@@ -188,7 +199,12 @@ async fn relay_rate_limited_429_honours_retry_after() {
     )
     .await;
     assert!(
-        matches!(err, ApiError::RateLimited { retry_after_secs: Some(60) }),
+        matches!(
+            err,
+            ApiError::RateLimited {
+                retry_after_secs: Some(60)
+            }
+        ),
         "got {err:?}"
     );
 }
@@ -216,13 +232,13 @@ async fn workspace_offline_does_not_trigger_fallback_swap() {
         .expect(0)
         .mount(&fallback)
         .await;
-    let client = OperatorClient::new_with_fallback(
-        primary.uri(),
-        fallback.uri(),
-        Some(TOKEN.to_string()),
-    );
+    let client =
+        OperatorClient::new_with_fallback(primary.uri(), fallback.uri(), Some(TOKEN.to_string()));
     let err = client.list_harnesses().await.unwrap_err();
-    assert!(matches!(err, ApiError::WorkspaceOffline { .. }), "got {err:?}");
+    assert!(
+        matches!(err, ApiError::WorkspaceOffline { .. }),
+        "got {err:?}"
+    );
     assert_eq!(client.base_url(), primary.uri());
 }
 
@@ -241,7 +257,10 @@ async fn relay_path_prefix_base_url_is_preserved_and_normalised() {
         .expect(2)
         .mount(&server)
         .await;
-    let client = OperatorClient::new(format!("{}{prefix}/", server.uri()), Some(TOKEN.to_string()));
+    let client = OperatorClient::new(
+        format!("{}{prefix}/", server.uri()),
+        Some(TOKEN.to_string()),
+    );
     assert_eq!(client.base_url(), format!("{}{prefix}", server.uri()));
     assert!(client.list_harnesses().await.unwrap().is_empty());
     client.set_base_url(format!("{}{prefix}///", server.uri()));
@@ -254,7 +273,9 @@ async fn pair_through_relay_prefix_needs_no_bearer() {
     let prefix = "/api/workspaces/ws_123abc";
     Mock::given(method("POST"))
         .and(path(format!("{prefix}/api/device/pair")))
-        .respond_with(ResponseTemplate::new(503).set_body_json(json!({"error":"workspace_offline"})))
+        .respond_with(
+            ResponseTemplate::new(503).set_body_json(json!({"error":"workspace_offline"})),
+        )
         .expect(1)
         .mount(&server)
         .await;
@@ -265,7 +286,10 @@ async fn pair_through_relay_prefix_needs_no_bearer() {
         })
         .await
         .unwrap_err();
-    assert!(matches!(err, ApiError::WorkspaceOffline { .. }), "got {err:?}");
+    assert!(
+        matches!(err, ApiError::WorkspaceOffline { .. }),
+        "got {err:?}"
+    );
 }
 
 // Handler-level flat error envelope on a 5xx.
