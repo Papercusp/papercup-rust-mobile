@@ -10,6 +10,9 @@ struct AppRoot: View {
     @State private var creds: DeviceCredentials? = CredentialStore.load()
     @State private var liveTick: Int = 0
     @State private var lastInvalidate: String? = nil
+    /// Friendly failure from a pair-by-link (`papercup://pair?…`) attempt.
+    /// Before P-008 a used/expired link failed silently into the log.
+    @State private var autoPairError: String? = nil
     @State private var pushedDetailSlug: String? = nil
     @State private var pushedRunLogSlug: String? = nil
     @EnvironmentObject private var deepLink: DeepLinkRouter
@@ -42,7 +45,8 @@ struct AppRoot: View {
                 )
                 .id(current.deviceToken)
             } else {
-                PairView { fresh in
+                PairView(externalError: autoPairError) { fresh in
+                    autoPairError = nil
                     CredentialStore.save(fresh)
                     creds = fresh
                     tab = .inbox
@@ -67,6 +71,7 @@ struct AppRoot: View {
         os_log(.info, log: log, "starting server=%{public}@ ws=%{public}@",
                p.server, p.workspaceId)
         deepLink.pendingPair = nil
+        autoPairError = nil
         let client = OperatorClient(baseUrl: p.server, deviceToken: nil)
         do {
             let outcome = try await client.pair(pairToken: p.pairToken)
