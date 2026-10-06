@@ -55,15 +55,4 @@ env ${TEST_RUNNER_ENV[@]+"${TEST_RUNNER_ENV[@]}"} xcodebuild test-without-buildi
     -destination "$DESTINATION" -derivedDataPath "$DERIVED" \
     -only-testing:"$BUNDLE" -resultBundlePath "$RESULT"
 xcrun xcresulttool get test-results summary --path "$RESULT" --format json > "$SUMMARY"
-python3 - "$SUMMARY" "$BUNDLE" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-result = json.loads(Path(sys.argv[1]).read_text())
-counts = {key: result.get(key) for key in ('passedTests', 'failedTests', 'skippedTests')}
-valid_counts = all(type(value) is int and value >= 0 for value in counts.values())
-if not valid_counts or counts['passedTests'] == 0 or counts['failedTests'] != 0 or counts['skippedTests'] != 0:
-    raise SystemExit(f"ERROR: {sys.argv[2]} requires nonzero passing tests, zero failures and zero skips: {counts}")
-print(f"Executed {counts['passedTests']} passing tests with zero failures/skips in {sys.argv[2]}")
-PY
+python3 tools/build-scripts/check-xctest-summary.py "$SUMMARY" "$BUNDLE"
