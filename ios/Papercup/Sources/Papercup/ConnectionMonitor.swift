@@ -33,8 +33,8 @@ struct ConnState: Equatable {
     /// revoke). Anything else — transport, 5xx, decode — is reachability,
     /// not authorization, and stays `offline` so it can self-heal.
     static func isUnpaired(_ error: Error) -> Bool {
-        if case ApiError.Unauthorized = error { return true }
-        return false
+        guard let api = error as? ApiError, case .Unauthorized = api else { return false }
+        return true
     }
 }
 
