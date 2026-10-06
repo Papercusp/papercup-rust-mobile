@@ -2562,3 +2562,53 @@ edge/helper/caller and exact field import declarations checks passed with sixtee
 rejecting controls. Removing this extension restores all three exact prior byte
 streams. Verification inputs remain separate from final saved fingerprints.
 Earlier proofs retain their original scopes.
+
+## Pinned depot_tools metadata custom fields source preparation
+
+Eleven pinned metadata/fields/custom files (38,719 bytes) are retained as static
+source data in the existing wrapper provenance receipt. The nine imports in the
+known-field registry and local helper/allowlist imports are bound. This completes
+source retention for metadata/fields only; metadata/tests remains unretained.
+Original field values, README.chromium/license inputs, filesystem, interpreter/
+packages and validation outcomes remain unobserved. Full repository/runtime/GN/
+native reproduction, final rights/notices, exact signed candidate, recipient
+retrieval/fresh build and release acceptance remain open. WI-10006524 remains
+separately owned and unconfirmed. Earlier proofs retain their original scopes.
+
+Independent saved-byte/custom-and-parent-tree/per-entry-mode/qualified-AST/import/
+local-edge/helper/caller checks passed with fourteen rejecting controls. Removing
+this extension restores all three exact prior byte streams. Verification inputs
+remain separate from final saved fingerprints.
+
+## Pinned depot_tools metadata test root source preparation
+
+Five pinned metadata/tests Python modules (61,221 bytes)
+are retained as static source data in the existing wrapper provenance receipt.
+Qualified top-level AST declarations, test method declarations, local imports,
+retained helper identities, and fixture/read/root-path expressions are bound.
+The metadata/tests/data fixture subtree remains unretained. Test assertions are
+source declarations; no test result or original filesystem/interpreter/package
+identity is inferred. Full repository/runtime/native reproduction, final rights/
+notices, exact signed candidate, recipient retrieval/fresh build and public release
+acceptance remain open. WI-10006524 retains its separate unconfirmed scope.
+
+Independent saved-byte/tree/mode/AST/import/helper/fixture declaration checks
+passed with twelve rejecting controls; upstream tests were not executed.
+Removing this extension restores the three exact prior byte streams; verification
+inputs remain distinct from final fingerprints. Earlier evidence keeps its scope.
+
+## Pinned depot_tools metadata test fixture source preparation
+
+Ten pinned metadata/tests/data files (6,171 bytes), including the nested
+src/LICENSE.txt fixture, are retained as static source data in the existing
+wrapper receipt. Reconstructing the six metadata package trees accounts for all
+42 retained package blobs. This supersedes earlier missing nested-source scopes
+for retained metadata bytes only. Fixture values and test assertions remain source
+data: original selected tool package, fixture filesystem, interpreter/packages
+and test execution remain unobserved. Full repository/runtime/native reproduction,
+final rights/notices, exact signed candidate, recipient retrieval/fresh build and
+public release acceptance remain open. WI-10006524 remains separately unconfirmed.
+
+Independent saved-byte/tree/mode/package-population checks passed with ten
+rejecting controls, including false filesystem, execution and repository claims. Removing
+this extension restores all three exact prior byte streams.
