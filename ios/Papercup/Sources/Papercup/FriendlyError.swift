@@ -20,6 +20,15 @@ enum FriendlyError {
         if isCloudWorkspaceOffline(error) {
             return "Your cloud workspace is offline\(suffix). It may be stopped or still starting — the app reconnects on its own when it's back, or try again in about 30 seconds."
         }
+        if let code = relayRefusalCode(error) {
+            return "Your cloud workspace's relay refused this request\(suffix) (\(code)). Your pairing is still valid — if this keeps happening, update the app."
+        }
+        if isRateLimited(error) {
+            return "Your workspace is receiving too many requests\(suffix). Wait a few seconds and try again."
+        }
+        if isPayloadTooLarge(error) {
+            return "That was too large to send\(suffix). Try a shorter message or a smaller attachment."
+        }
         switch error {
         case let api as ApiError:
             switch api {
@@ -72,6 +81,31 @@ enum FriendlyError {
     static func isCloudWorkspaceOffline(_ error: Error) -> Bool {
         guard let api = error as? ApiError, case let .Server(status, detail) = api else { return false }
         return status == 503 && detail.hasPrefix("workspace_offline")
+    }
+
+    /// Cloud relay POLICY refusals (android#D-013). The shared core surfaces
+    /// them as `ApiError.Server(status, "relay_refused: <code>")`, e.g.
+    /// `byoc_plaintext_relay_refused` or `route_not_relayed`. Waiting does
+    /// not help and the pairing stays valid, so the copy must say neither
+    /// "give it a moment" nor "re-pair". Returns the relay's code, bounded.
+    static func relayRefusalCode(_ error: Error) -> String? {
+        guard let api = error as? ApiError, case let .Server(_, detail) = api,
+              detail.hasPrefix("relay_refused:") else { return nil }
+        let code = detail.dropFirst("relay_refused:".count)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return code.isEmpty ? "relay_refused" : String(code.prefix(60))
+    }
+
+    /// `429` from the relay or desktop, surfaced as `Server(429, "rate_limited…")`.
+    static func isRateLimited(_ error: Error) -> Bool {
+        guard let api = error as? ApiError, case let .Server(status, detail) = api else { return false }
+        return status == 429 && detail.hasPrefix("rate_limited")
+    }
+
+    /// `413` relay frame cap, surfaced as `Server(413, "request_body_too_large: …")`.
+    static func isPayloadTooLarge(_ error: Error) -> Bool {
+        guard let api = error as? ApiError, case let .Server(status, detail) = api else { return false }
+        return status == 413 && detail.hasPrefix("request_body_too_large")
     }
 
     /// Bounded, single-line detail for genuinely unknown errors.

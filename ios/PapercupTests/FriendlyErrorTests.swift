@@ -55,6 +55,46 @@ final class FriendlyErrorTests: XCTestCase {
         XCTAssertFalse(FriendlyError.isCloudWorkspaceOffline(ApiError.Network(detail: "workspace_offline")))
     }
 
+    // ── P-015: relay policy refusals, rate limits, frame cap (shared-core mapping, android#D-013) ──
+
+    func testRelayRefusalNamesTheCodeAndIsNeitherRetryNorRePair() {
+        let msg = FriendlyError.message(
+            ApiError.Server(status: 403, detail: "relay_refused: byoc_plaintext_relay_refused"),
+            doing: "loading your workspaces"
+        )
+        XCTAssertTrue(msg.contains("relay refused this request"))
+        XCTAssertTrue(msg.contains("byoc_plaintext_relay_refused"))
+        XCTAssertTrue(msg.contains("while loading your workspaces"))
+        XCTAssertFalse(msg.contains("HTTP 403"), "not the generic server-error copy")
+        XCTAssertFalse(msg.contains("Give it a moment"), "a policy refusal does not clear by waiting")
+        XCTAssertFalse(msg.contains("Re-pair"), "a relay refusal is never a credential verdict")
+    }
+
+    func testRelayRefusalCodeParsesOnlyTheRelayPrefix() {
+        XCTAssertEqual(FriendlyError.relayRefusalCode(
+            ApiError.Server(status: 401, detail: "relay_refused: route_not_relayed")), "route_not_relayed")
+        XCTAssertEqual(FriendlyError.relayRefusalCode(
+            ApiError.Server(status: 403, detail: "relay_refused:")), "relay_refused")
+        XCTAssertNil(FriendlyError.relayRefusalCode(ApiError.Server(status: 403, detail: "forbidden")))
+        XCTAssertNil(FriendlyError.relayRefusalCode(ApiError.Network(detail: "relay_refused: x")))
+        XCTAssertEqual(FriendlyError.relayRefusalCode(
+            ApiError.Server(status: 403, detail: "relay_refused: " + String(repeating: "x", count: 200)))?.count, 60)
+    }
+
+    func testRateLimitedAndPayloadTooLargeGetSpecificCopy() {
+        let limited = FriendlyError.message(ApiError.Server(status: 429, detail: "rate_limited retry_after=5"))
+        XCTAssertTrue(limited.contains("too many requests"))
+        XCTAssertFalse(limited.contains("HTTP 429"))
+        let tooBig = FriendlyError.message(
+            ApiError.Server(status: 413, detail: "request_body_too_large: 600000 > 524288"),
+            doing: "sending your message"
+        )
+        XCTAssertTrue(tooBig.contains("too large to send while sending your message"))
+        XCTAssertFalse(tooBig.contains("HTTP 413"))
+        XCTAssertFalse(FriendlyError.isRateLimited(ApiError.Server(status: 503, detail: "rate_limited")))
+        XCTAssertFalse(FriendlyError.isPayloadTooLarge(ApiError.Server(status: 413, detail: "other")))
+    }
+
     func testApiUnauthorizedPointsAtRePairing() {
         let msg = FriendlyError.message(ApiError.Unauthorized)
         XCTAssertTrue(msg.contains("Re-pair"))
