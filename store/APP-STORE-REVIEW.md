@@ -59,9 +59,12 @@ the complete paired flow.
 - Actual paired UI, cellular, APNs, permission/Bluetooth/lifecycle and endurance
   checks are separate from clean-install simulator smoke. Missing hardware or
   signing capability leaves those outcomes unverified.
-- Distribution rights are documented for every copyright holder because this
-  repository is currently licensed under GPL-3.0-or-later and App Store terms
-  may add restrictions that require separate permission.
+- Distribution rights: the repository is licensed under GPL-3.0-or-later, and
+  App Store terms may add restrictions that require separate permission.
+  Papercusp holds all copyright in this repository and permits App Store
+  distribution (owner ruling, October 6, 2026: plan
+  iphone-public-release-2026-08-11, D-017). Re-check this before submission if
+  any code from another copyright holder has been added.
 
 ## Pending: cloud workspace review notes (do not submit yet)
 
