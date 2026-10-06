@@ -2395,4 +2395,7 @@ Original interpreter, Git executable, refs/branch graph, configuration,
 environment, filesystem and actual commands remain unobserved. Full checkout,
 native reproduction, final notices/rights, signed candidate, recipient retrieval
 and release acceptance remain open. Earlier proofs retain their scopes.
-Independent saved-file provenance readback is pending.
+Independent saved-byte/tree/mode/AST/import/helper/caller and Git-command
+declaration readback passed, with seven rejecting controls. Removing this
+extension restores the exact prior receipt, reference and review. Verification
+input fingerprints remain distinct from final saved-file bindings.
