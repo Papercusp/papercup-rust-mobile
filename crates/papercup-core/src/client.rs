@@ -39,6 +39,46 @@ pub enum ApiError {
     Decode(String),
     #[error("not authenticated — re-pair the device")]
     Unauthorized,
+    /// The cloud portal relay reached no live connector for the workspace
+    /// (`503 workspace_offline`). Retryable; the pairing is still valid.
+    #[error("cloud workspace offline — retry later")]
+    WorkspaceOffline { retry_after_secs: Option<u32> },
+    /// The cloud portal relay refused the request by policy
+    /// (`route_not_relayed`, `byoc_plaintext_relay_refused`, …). This is
+    /// never a credential verdict, so it must never trigger a re-pair
+    /// (android-public-release-2026-10-01 D-013).
+    #[error("cloud relay refused the request ({status} {code})")]
+    RelayRefused { status: u16, code: String },
+    /// `413` — the body exceeded the relay frame cap (512 KiB); callers
+    /// that can chunk (voice, long turns) should split and retry.
+    #[error("request body too large: {detail}")]
+    PayloadTooLarge { detail: String },
+    /// `429` — rate limited; honour `retry_after_secs` before retrying.
+    #[error("rate limited — retry later")]
+    RateLimited { retry_after_secs: Option<u32> },
+}
+
+/// Error codes the cloud portal relay itself answers with (see
+/// `papercusp/packages/operator-core/lib/workspace-host/hosted-app-relay.ts`
+/// `refuse(...)`). A 401/403 carrying one of these is a relay POLICY
+/// refusal, not the VM rejecting the device token, so it must not map to
+/// `Unauthorized` (which wipes the pairing).
+const RELAY_POLICY_CODES: &[&str] = &[
+    "route_not_relayed",
+    "byoc_plaintext_relay_refused",
+    "app_key_required",
+    "invalid_path",
+    "method_not_allowed",
+];
+
+fn retry_after_secs(headers: &reqwest::header::HeaderMap) -> Option<u32> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<u32>()
+        .ok()
 }
 
 impl From<reqwest::Error> for ApiError {
@@ -127,21 +167,55 @@ mod stream_frame_tests {
     }
 }
 
-/// Map a non-success response to an `ApiError`. 401 and 403 both mean
-/// the device principal was rejected → `Unauthorized` (re-pair). Other
-/// statuses surface as `Server` with the decoded error envelope.
+/// Map a non-success response to an `ApiError`.
+///
+/// The body's error CODE is read before the status is trusted, because
+/// the cloud portal relay and the VM share status codes with different
+/// meanings (D-013):
+/// - a relay policy code (`RELAY_POLICY_CODES`) → `RelayRefused`, never
+///   a re-pair, whatever the status;
+/// - `workspace_offline` (503) → `WorkspaceOffline` with `retry-after`;
+/// - any other 401/403 is the VM rejecting the device principal →
+///   `Unauthorized` (re-pair);
+/// - 413 → `PayloadTooLarge`, 429 → `RateLimited`;
+/// - everything else → `Server` with the decoded error envelope.
 async fn into_api_error(resp: reqwest::Response) -> ApiError {
     let status = resp.status();
-    if status.as_u16() == 401 || status.as_u16() == 403 {
+    let code = status.as_u16();
+    let retry_after = retry_after_secs(resp.headers());
+    let bytes = resp.bytes().await.unwrap_or_default();
+    let body = serde_json::from_slice::<ErrorBody>(&bytes).ok();
+    let error_code = body.as_ref().map(|b| b.code().to_string());
+
+    if let Some(ec) = error_code.as_deref() {
+        if RELAY_POLICY_CODES.contains(&ec) {
+            return ApiError::RelayRefused {
+                status: code,
+                code: ec.to_string(),
+            };
+        }
+        if ec == "workspace_offline" {
+            return ApiError::WorkspaceOffline {
+                retry_after_secs: retry_after,
+            };
+        }
+    }
+    if code == 401 || code == 403 {
         return ApiError::Unauthorized;
     }
-    let detail = match resp.json::<ErrorBody>().await {
-        Ok(body) => body.detail_string(),
-        Err(_) => status.canonical_reason().unwrap_or("").to_string(),
+    let detail = match &body {
+        Some(b) => b.detail_string(),
+        None => status.canonical_reason().unwrap_or("").to_string(),
     };
-    ApiError::Server {
-        status: status.as_u16(),
-        detail,
+    match code {
+        413 => ApiError::PayloadTooLarge { detail },
+        429 => ApiError::RateLimited {
+            retry_after_secs: retry_after,
+        },
+        _ => ApiError::Server {
+            status: code,
+            detail,
+        },
     }
 }
 

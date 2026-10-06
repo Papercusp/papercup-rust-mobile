@@ -403,7 +403,30 @@ impl From<CoreApiError> for ApiError {
             CoreApiError::Server { status, detail } => ApiError::Server { status, detail },
             CoreApiError::Decode(detail) => ApiError::Decode { detail },
             CoreApiError::Unauthorized => ApiError::Unauthorized,
+            other => {
+                let (status, detail) = cloud_error_as_server(&other);
+                ApiError::Server { status, detail }
+            }
         }
+    }
+}
+
+/// Cloud-relay errors (D-013) surface over the current UDL as `Server`
+/// with a stable `code` prefix in `detail`, and NEVER as `Unauthorized`
+/// (which forces a re-pair). Dedicated UDL variants are a follow-up
+/// coordinated with the iPhone lane (D-010).
+fn cloud_error_as_server(e: &CoreApiError) -> (u16, String) {
+    let retry = |s: &Option<u32>| s.map(|n| format!(" retry_after={n}")).unwrap_or_default();
+    match e {
+        CoreApiError::WorkspaceOffline { retry_after_secs } => {
+            (503, format!("workspace_offline{}", retry(retry_after_secs)))
+        }
+        CoreApiError::RelayRefused { status, code } => (*status, format!("relay_refused: {code}")),
+        CoreApiError::PayloadTooLarge { detail } => (413, format!("request_body_too_large: {detail}")),
+        CoreApiError::RateLimited { retry_after_secs } => {
+            (429, format!("rate_limited{}", retry(retry_after_secs)))
+        }
+        other => (0, other.to_string()),
     }
 }
 
@@ -430,6 +453,10 @@ impl From<CoreApiError> for PairError {
             CoreApiError::Unauthorized => PairError::Unauthorized {
                 detail: "pair token rejected by server".into(),
             },
+            other => {
+                let (status, detail) = cloud_error_as_server(&other);
+                PairError::Server { status, detail }
+            }
         }
     }
 }

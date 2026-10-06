@@ -662,6 +662,14 @@ pub struct ErrorBody {
 }
 
 impl ErrorBody {
+    /// The machine-readable error code from either envelope shape.
+    pub fn code(&self) -> &str {
+        match &self.error {
+            ErrorPayload::Nested { code, .. } => code,
+            ErrorPayload::Flat(code) => code,
+        }
+    }
+
     /// One human-readable line: "code: message" or the flat code, with
     /// any `hint`/`detail` appended.
     pub fn detail_string(&self) -> String {

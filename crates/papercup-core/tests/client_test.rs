@@ -101,6 +101,173 @@ async fn nested_403_maps_to_unauthorized() {
     assert!(matches!(err, ApiError::Unauthorized));
 }
 
+// ── Cloud portal relay contract (android-public-release-2026-10-01 D-013,
+// P-015 / WI-10006956). Shapes mirror `refuse(...)` in
+// papercusp/packages/operator-core/lib/workspace-host/hosted-app-relay.ts.
+
+async fn relay_error(status: u16, body: serde_json::Value, retry_after: Option<&str>) -> ApiError {
+    let (client, server) = paired_client().await;
+    let mut tpl = ResponseTemplate::new(status).set_body_json(body);
+    if let Some(ra) = retry_after {
+        tpl = tpl.insert_header("retry-after", ra);
+    }
+    Mock::given(method("GET"))
+        .and(path("/api/device/harnesses"))
+        .respond_with(tpl)
+        .mount(&server)
+        .await;
+    client.list_harnesses().await.unwrap_err()
+}
+
+#[tokio::test]
+async fn relay_workspace_offline_is_distinct_and_retryable() {
+    let err = relay_error(503, json!({"error":"workspace_offline"}), Some("30")).await;
+    assert!(
+        matches!(err, ApiError::WorkspaceOffline { retry_after_secs: Some(30) }),
+        "got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn relay_plaintext_refusal_403_never_forces_repair() {
+    let err = relay_error(
+        403,
+        json!({"error":"byoc_plaintext_relay_refused","alternatives":["customer_controlled_ingress","sealed_channel"]}),
+        None,
+    )
+    .await;
+    match err {
+        ApiError::RelayRefused { status, code } => {
+            assert_eq!(status, 403);
+            assert_eq!(code, "byoc_plaintext_relay_refused");
+        }
+        other => panic!("expected RelayRefused, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn relay_route_not_relayed_403_never_forces_repair() {
+    let err = relay_error(403, json!({"error":"route_not_relayed"}), None).await;
+    assert!(
+        matches!(&err, ApiError::RelayRefused { status: 403, code } if code == "route_not_relayed"),
+        "got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn relay_app_key_required_401_is_relay_policy_not_repair() {
+    let err = relay_error(401, json!({"error":"app_key_required"}), None).await;
+    assert!(matches!(err, ApiError::RelayRefused { status: 401, .. }), "got {err:?}");
+}
+
+// The VM's own 401 passes through the relay unchanged (D-013 §2) and is
+// the only true re-pair signal.
+#[tokio::test]
+async fn vm_401_through_relay_still_maps_to_unauthorized() {
+    let err = relay_error(
+        401,
+        json!({"error":{"code":"unauthorized","message":"device token revoked"}}),
+        None,
+    )
+    .await;
+    assert!(matches!(err, ApiError::Unauthorized), "got {err:?}");
+}
+
+#[tokio::test]
+async fn relay_body_too_large_413_is_distinct() {
+    let err = relay_error(413, json!({"error":"request_body_too_large"}), None).await;
+    assert!(matches!(err, ApiError::PayloadTooLarge { .. }), "got {err:?}");
+}
+
+#[tokio::test]
+async fn relay_rate_limited_429_honours_retry_after() {
+    let err = relay_error(
+        429,
+        json!({"error":"rate_limited","limit":"requests_per_minute"}),
+        Some("60"),
+    )
+    .await;
+    assert!(
+        matches!(err, ApiError::RateLimited { retry_after_secs: Some(60) }),
+        "got {err:?}"
+    );
+}
+
+// A workspace_offline refusal is not a transport failure: the client must
+// not swap to the fallback URL (it would hide a cloud outage behind a LAN
+// address) and must not clear the pairing.
+#[tokio::test]
+async fn workspace_offline_does_not_trigger_fallback_swap() {
+    let primary = MockServer::start().await;
+    let fallback = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/harnesses"))
+        .respond_with(
+            ResponseTemplate::new(503)
+                .set_body_json(json!({"error":"workspace_offline"}))
+                .insert_header("retry-after", "30"),
+        )
+        .expect(1)
+        .mount(&primary)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/device/harnesses"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"harnesses":[]})))
+        .expect(0)
+        .mount(&fallback)
+        .await;
+    let client = OperatorClient::new_with_fallback(
+        primary.uri(),
+        fallback.uri(),
+        Some(TOKEN.to_string()),
+    );
+    let err = client.list_harnesses().await.unwrap_err();
+    assert!(matches!(err, ApiError::WorkspaceOffline { .. }), "got {err:?}");
+    assert_eq!(client.base_url(), primary.uri());
+}
+
+// D-013 §1: the cloud base URL is opaque and carries the portal relay
+// path prefix (`https://app.papercusp.com/api/workspaces/<id>`). Requests
+// must land at `<prefix>/api/device/<route>`, with a trailing slash on the
+// configured base normalised away.
+#[tokio::test]
+async fn relay_path_prefix_base_url_is_preserved_and_normalised() {
+    let server = MockServer::start().await;
+    let prefix = "/api/workspaces/ws_123abc";
+    Mock::given(method("GET"))
+        .and(path(format!("{prefix}/api/device/harnesses")))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"harnesses":[]})))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let client = OperatorClient::new(format!("{}{prefix}/", server.uri()), Some(TOKEN.to_string()));
+    assert_eq!(client.base_url(), format!("{}{prefix}", server.uri()));
+    assert!(client.list_harnesses().await.unwrap().is_empty());
+    client.set_base_url(format!("{}{prefix}///", server.uri()));
+    assert!(client.list_harnesses().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn pair_through_relay_prefix_needs_no_bearer() {
+    let server = MockServer::start().await;
+    let prefix = "/api/workspaces/ws_123abc";
+    Mock::given(method("POST"))
+        .and(path(format!("{prefix}/api/device/pair")))
+        .respond_with(ResponseTemplate::new(503).set_body_json(json!({"error":"workspace_offline"})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = OperatorClient::new(format!("{}{prefix}", server.uri()), None);
+    let err = client
+        .pair(PairBody {
+            pair_token: "tok".into(),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ApiError::WorkspaceOffline { .. }), "got {err:?}");
+}
+
 // Handler-level flat error envelope on a 5xx.
 #[tokio::test]
 async fn flat_500_maps_to_server_with_detail() {
