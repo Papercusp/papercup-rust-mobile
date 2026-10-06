@@ -181,6 +181,49 @@ cargo watch -x 'test --workspace'
 
 UDL changes require re-running the binding generator (see `tools/build-scripts/`); for iOS this means regenerating + rebuilding the xcframework before the Swift code sees new symbols.
 
+## Release publication gate
+
+`build-android.sh release` refuses to build a candidate unless the standing
+checks have passed on the exact clean commit being released:
+
+```sh
+bash tools/run-android-checks.sh host        # host gate
+bash tools/run-android-checks.sh connected   # API 36 / 16 KB device gate
+bash tools/build-scripts/build-android.sh release
+```
+
+Each check phase captures `HEAD` when it starts (or `dirty` if the tree is not
+clean). After its results verify, the runner calls
+`android-release-provenance.sh checks-pass <host|connected> <start-commit|dirty>`.
+That writes `android/app/build/outputs/papercusp-android-checks/<phase>.json`, but
+only if the tree was clean at both start and end and `HEAD` did not move. A
+failed, partial, dirty or moved-source run writes no pass record.
+
+The release path calls `android-release-provenance.sh checks-gate` before Gradle
+assembles anything. `write` then refuses (`ERROR: publication gate: ...`) unless
+both the host and connected records match the clean `HEAD`, and it embeds them
+in the provenance manifest as `checks`. `verify` re-validates those embedded
+records against the commit, so a manifest with a dropped, rebound or failed
+phase does not verify. Records are local build output: a hosted CI pass does
+not satisfy a local release build, and any new commit (including a git-sync
+sweep) requires both phases to run again. `tools/tests/android-release-provenance-test.sh`
+covers each refusal.
+
+### Automatic CI
+
+`.github/workflows/ci.yml` runs on its cron schedule and on
+`workflow_dispatch`. git-sync commits carry `[skip ci]`, so a source change is
+picked up by the next scheduled run. Its cache key is the exact mobile content
+plus `PAPERCUP_OPERATOR_SHA`, so an unchanged tree reuses revalidated proof and
+a changed tree runs the checks again. The private operator checkout needs the
+`SUBMODULES_PAT` repository secret.
+
+The workflow builds the operator at the pinned `PAPERCUP_OPERATOR_SHA`. A fix
+to the operator side (for example its install or `patch-package` step) only
+reaches CI after it is on the operator's `origin/staging` and the pin is bumped
+to a pushed commit containing it. Dispatch a run with
+`gh workflow run ci.yml -R Papercusp/papercup-rust-mobile`.
+
 ## Known issues
 
 - **Xcode 16.2 destination race**: `xcodebuild` occasionally fails first-try with "iOS 18.2 is not installed" because the SDK and the only-installed 18.3.1 runtime mismatch on the destination resolver. The `make test-ios` wrapper retries 8x. Switching to Xcode 16.3 resolves it.

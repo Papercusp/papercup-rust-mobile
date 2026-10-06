@@ -58,6 +58,12 @@ above.
 `build-android.sh release` must pass all of the following before a candidate is
 considered uploadable:
 
+- **Publication gate:** `tools/run-android-checks.sh host` and
+  `tools/run-android-checks.sh connected` have both passed on the same clean
+  `HEAD`. The release refuses to build without both pass records, and the
+  provenance manifest embeds them as `checks`, so `verify` fails if either is
+  missing, failed or bound to another commit. See "Release publication gate" in
+  `docs/BUILD.md`.
 - All four Rust targets rebuild, and each ABI library exports the expected
   UniFFI checksum symbols.
 - The APK and AAB contain exactly `arm64-v8a`, `armeabi-v7a`, `x86`, and

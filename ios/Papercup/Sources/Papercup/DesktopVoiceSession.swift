@@ -12,7 +12,7 @@
 //   4. chunks play sequentially (AVAudioPlayer) starting on the FIRST one
 //
 // Transport (P-006): probes the voice-session-init `baseUrls` advertise
-// list (mesh → lan → tunnel) in parallel while the user is still talking
+// list (mesh → lan → tunnel → relay) in parallel while the user is still talking
 // and streams the turn over the best reachable path, falling back to the
 // paired `creds.server`. ElevenLabs stays fully supported BESIDE this
 // (D-010) — VoiceManager dispatches on the session-init `mode`.
@@ -54,10 +54,17 @@ final class DesktopVoiceSession: NSObject {
         }
     }
 
-    /// One advertised desktop route: kind is mesh | lan | tunnel.
+    /// One advertised desktop route: kind is mesh | lan | tunnel | relay.
+    /// `relay` (iphone-public-release D-014) is a cloud workspace's portal
+    /// relay URL: HTTPS and reachable from anywhere, so it is probed and used
+    /// like `tunnel`. Kinds this build does not know are KEPT in advertised
+    /// (preference) order, never dropped — the desktop owns the ordering.
     struct Route {
         let kind: String
         let url: String
+
+        /// Active-route label for VoiceSettingsView / Diagnostics.
+        var label: String { kind == "relay" ? "cloud relay" : kind }
     }
 
     /// All callbacks are delivered ON THE MAIN QUEUE.
@@ -182,7 +189,7 @@ final class DesktopVoiceSession: NSObject {
         }
         probeTask = Task.detached(priority: .userInitiated) { [weak self] in
             let best = await Self.probeRoutes(creds: creds, routes: payload.routes)
-            self?.onMain { self?.cb.onActiveRoute(best.map { "\($0.kind) · \($0.url)" }) }
+            self?.onMain { self?.cb.onActiveRoute(best.map { "\($0.label) · \($0.url)" }) }
             return best?.url
         }
         // UITEST injection: bypass the mic entirely (see the block above).
@@ -383,7 +390,7 @@ final class DesktopVoiceSession: NSObject {
 
     // ── transport ────────────────────────────────────────────────────
 
-    /// Probe every advertised route in parallel (mesh → lan → tunnel
+    /// Probe every advertised route in parallel (mesh → lan → tunnel → relay
     /// preference); first reachable by preference order wins.
     private static func probeRoutes(creds: DeviceCredentials, routes: [Route]) async -> Route? {
         guard !routes.isEmpty else { return nil }

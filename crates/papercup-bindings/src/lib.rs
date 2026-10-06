@@ -5,7 +5,12 @@
 // uniffi::include_scaffolding! emits constants whose generated doc
 // comments trip several clippy rules; quiet them at the crate level
 // so our own code can still be -D warnings.
+// large_const_arrays: the scaffolding's UNIFFI_META_CONST_UDL_PAPERCUP
+// metadata buffer is a generated `const` array; newer clippy (1.99 on
+// CI's floating stable) flags it once the UDL grows past the lint's
+// size threshold. We cannot make generated code `static`.
 #![allow(clippy::empty_line_after_doc_comments)]
+#![allow(clippy::large_const_arrays)]
 
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
 use papercup_core::types::{
