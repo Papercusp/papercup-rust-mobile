@@ -1987,7 +1987,7 @@ complete applied checkout/native reproduction and release acceptance remain open
 ### Retained engine-inner GN and Ninja resolution inputs
 
 The private webrtc-depot-tools-fa8fc854-wrappers-provenance.json receipt
-(335748 bytes; SHA-256 f410a91101690f0f486a0782b8bb243ae165630704460da9cee026a4b03004f5)
+(420982 bytes; SHA-256 8732480fb8368ce8edf3d45ab7e8b6ec754051acaab73616eae126b6b2b04c35)
 retains seven selected blobs at the engine's pinned inner depot_tools revision
 `fa8fc854e1766b86f10c9a15902cf3cc23adaac2`, with its complete root listing.
 This is selected source retention, not a complete depot_tools checkout.
@@ -2095,15 +2095,31 @@ VPython declarations name 30 wheel rows across those three wrappers.
 The gsutil source defaults to version `4.68`, permits version override and
 can trust an existing install flag. `gclient.py` reads caller-supplied config
 or a config located from the working directory, and delegates CIPD roots to
-`gclient_scm`. Selected local imports remain unretained.
+`gclient_scm`. Two delegate imports are retained in the extension below.
 These are source declarations; no helper, wheel or gsutil package was executed
 or downloaded. Independent persisted readback verified all seven blobs, the
 root tree, fourteen AST spans, sixteen root import edges (three retained,
-thirteen still missing), one unretained nested import, all thirty declared
+thirteen then unretained), one unretained nested import, all thirty declared
 wheel rows, three launcher bindings, the bootstrap selector and caller.
 Five controls rejected altered or omitted source, changed wheel declarations,
 a changed bootstrap selector and a falsely observed runtime.
 Complete imports/config/runtime/native/candidate/recipient acceptance remains open.
+
+The same receipt now retains the pinned `gclient_scm.py` and `gclient_eval.py`
+blobs, closing those two earlier helper import edges as source data. Fifteen AST
+spans, eight callers, eight local import edges and three CIPD command declarations
+are bound to the saved sources. CIPD package-name expansion, installation and
+version resolution invoke the client selected through PATH; ensure rows use the
+caller-supplied root. The evaluator combines built-in variables and existing-key
+overrides before standardizing dependencies and merging OS-specific branches.
+These declarations leave the actual DEPS/configuration, host platform, client
+and installed packages unobserved. The new sources still import five unretained
+root sources and an unretained nested schema; complete import closure stays open.
+Independent persisted readback verified both blobs, the pinned root tree, all
+fifteen spans, eight callers, eight root import edges, one nested import and
+three command declarations. Five controls rejected altered source bytes, an
+omitted source, a changed command prefix, an omitted caller and a falsely
+observed runtime; current receipt/reference/review bindings also passed.
 
 No upstream script, interpreter, GN, Ninja or package was executed or fetched
 as a binary. Original outer tools, environment, executable/package digests,
