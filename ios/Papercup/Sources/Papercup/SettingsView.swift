@@ -67,7 +67,11 @@ struct SettingsView: View {
             // carried an enrollment URL, the device can join the mesh via
             // Defguard. Reachability otherwise falls back to the public
             // tunnel / LAN, so this is informational.
-            if creds.defguardEnrollmentUrl != nil {
+            if creds.isCloudRelay {
+                // D-018: a kind `relay` route = a cloud (BYOC) workspace
+                // reached through the hosted relay, not a desktop tunnel.
+                infoRow("Connection", value: "Cloud workspace (relay)", isLast: true)
+            } else if creds.defguardEnrollmentUrl != nil {
                 infoRow("Mesh", value: "Defguard enrollment available", isLast: true)
             } else {
                 infoRow("Mesh", value: "public tunnel / LAN", isLast: true)
