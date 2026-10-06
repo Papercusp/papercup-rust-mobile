@@ -2227,6 +2227,22 @@ are checked separately after proof insertion. Four earlier
 root paths and broader source/runtime/native/candidate/recipient/release closure
 remain open.
 
+The receipt additionally retains pinned `detect_host_arch.py`, `utils.py`
+and `upload_metrics.py` (5212 bytes total) as static source data. Their Git
+blobs/root modes, nine AST fragments and 14 import declarations are retained,
+with two collector import bindings and the declared upload-script caller. The
+sources describe architecture selection, configuration-directory creation and
+legacy-file migration, version fallback, and conditional authenticated upload.
+Their original runtime choices, filesystem changes, credentials and network
+activity remain unobserved. The uploader imports retained `metrics_utils.py`
+and unretained `auth.py`; the four earlier root sources remain open. This
+extension preserves prior proof scopes and does not establish mobile telemetry,
+complete source/runtime/native closure, candidate, recipient or release acceptance.
+Independent saved-byte/tree/mode/AST/import/caller/declaration readback and
+all five altered-input controls passed. Removing this extension restores the
+exact prior receipt, reference and review bytes. Final bindings are checked
+separately after retaining this proof.
+
 ### Retained packaged native ELF notes
 
 The private `webrtc-m137.7151.07-elf-toolchain-notes.json` receipt binds the
