@@ -2461,3 +2461,46 @@ Independent saved-byte/tree/per-entry-mode/qualified-AST/import/helper/caller
 and dry-run/upload declaration checks passed with nine rejecting controls.
 Removing the extension restores the exact prior receipt, reference and review.
 Proof input fingerprints remain distinct from final saved-file bindings.
+## Pinned depot_tools C++ lint source preparation
+
+Pinned `cpplint.py` and `cpplint_chromium.py` are retained as static data in
+the existing wrapper provenance receipt. Source declarations include parent
+`CPPLINT.cfg` selection, filters/exclusions and line-length configuration,
+C/C++ line inspection, injected error/extra-check callbacks and Chromium
+pointer-declaration checks. Retained `git_cl.py` sites connect both modules.
+The upstream sources were not imported or executed.
+
+Original lint input files/configuration, interpreter/runtime identities and
+command outcomes remain unobserved. Full checkout/native reproduction, final
+rights/notices, exact signed candidate, recipient retrieval/fresh build and
+release acceptance remain open. Earlier proofs retain their original scopes.
+Independent saved-byte/root-tree/per-entry-mode/qualified-AST/import/caller
+and configuration-declaration checks passed with ten rejecting controls.
+The census distinguishes full Git-blob records from snippets and includes
+literal-text sources. Removing this extension restores exact prior receipt,
+reference and review bytes. Verification inputs remain separate from final
+saved-file fingerprints.
+
+## Pinned depot_tools presubmit source preparation
+
+Pinned `presubmit_canned_checks.py` and `presubmit_support.py` are retained as
+static data in the existing wrapper provenance receipt. Source declarations
+include injected C++ lint interfaces, default/caller lint filters, enclosing
+PRESUBMIT script discovery and root-inheritance selection, working-directory
+changes, project-script compile/exec declarations, upload/commit selection,
+dry-run, prompts and parallel checks. The sources and project scripts were
+neither imported nor executed.
+
+The retained git_cl root-import snapshot is now covered at the root-file
+level. New helper and metadata imports still leave nested/installed/runtime
+closure incomplete. Original project scripts, filesystem/markers/configuration,
+metadata, interpreter/packages and command/network/prompt outcomes remain
+unobserved. Full checkout/native reproduction, final rights/notices, exact
+signed candidate, recipient retrieval/fresh build and release acceptance remain
+open. Earlier proofs retain their original scopes.
+Independent saved-byte/root-tree/per-entry-mode/qualified-AST/import/helper/
+caller and script-selection/injected-interface declaration checks passed with
+thirteen rejecting controls. The census includes literal-text sources, excludes
+snippets, and preserves the missing helper/nested/runtime gaps. Removing only
+this extension restores exact prior receipt, reference and review bytes.
+Verification inputs must remain distinct from final saved-file fingerprints.
