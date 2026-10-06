@@ -300,7 +300,8 @@ cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', '
          'native-no-pairing-trace', 'native-no-progress',
          'native-timeout', 'native-test-fail', 'native-uninstalled',
          'native-preflight-fail', 'native-local-cleanup-fail', 'native-cleanup-fail',
-         'native-unused-token', 'native-wrong-device', 'native-existing-files', 'native-missing-serial']
+         'native-unused-token', 'native-wrong-device', 'native-existing-files', 'native-missing-serial',
+         'native-install-fail', 'native-install-incompatible']
 for case in cases:
     native_mode = case.startswith('native-')
     state = {'workspaces': [{'id': 'original', 'name': 'Original'}], 'current': 'original',
@@ -465,7 +466,17 @@ elif args[:2] == ['logcat', '-d']:
 elif args[:2] == ['reverse', '--list']: pass
 elif args[:2] == ['reverse', '--remove']:
     if case == 'native-local-cleanup-fail': sys.exit(1)
-elif args and args[0] in ['reverse', 'install']: pass
+elif args and args[0] == 'install':
+    if case == 'native-install-fail':
+        print('Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]', file=sys.stderr); sys.exit(1)
+    if case == 'native-install-incompatible' and not Path('incompatible-removed').exists():
+        print('Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: signatures do not match]'); sys.exit(1)
+    print('Success')
+elif args and args[0] == 'uninstall':
+    assert case == 'native-install-incompatible', ('uninstall outside an incompatible install', case)
+    if args[1:] == ['com.papercuspai.operator.mobile']: Path('incompatible-removed').touch()
+    print('Success')
+elif args and args[0] == 'reverse': pass
 elif args == ['shell', 'am', 'force-stop', 'com.papercuspai.operator.mobile']: pass
 elif args[0] == 'shell':
     command = args[1]
@@ -565,12 +576,12 @@ else:
         run = subprocess.run(['bash', selected_runner, 'live', str(evidence), 'native' if native_mode else 'rust'], env=env,
                              capture_output=True, text=True, timeout=STUB_HANG_TIMEOUT_SEC)
         result = json.loads((evidence / 'result.json').read_text())
-        assert (run.returncode == 0) == (case in ('pass', 'native-pass')), (case, run.stdout, run.stderr, result)
+        assert (run.returncode == 0) == (case in ('pass', 'native-pass', 'native-install-incompatible')), (case, run.stdout, run.stderr, result)
         assert state['current'] == 'original'
         assert result['checkKind'] == ('native' if native_mode else 'rust')
         assert len(result['runId']) == 32
-        if case not in ('setup-unavailable', 'setup-no-selection', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
-            assert result['ownedWorkspace']['name'].startswith('android-live-scope-')
+        if case not in ('setup-unavailable', 'setup-no-selection', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial', 'native-install-fail'):
+            assert (result['ownedWorkspace'] or {}).get('name', '').startswith('android-live-scope-'), (case, run.stdout[-800:], run.stderr[-800:], result)
         else:
             assert result['ownedWorkspace'] is None
         assert state['devices'] == [{'device_id': original_device}], state
@@ -579,7 +590,7 @@ else:
         else:
             assert result['cleanupVerified'] == (case not in ('native-local-cleanup-fail', 'native-uninstalled')), (case, result)
             assert state['workspaces'] == [{'id': 'original', 'name': 'Original'}], (case, result, state)
-        if case in ('setup-unavailable', 'setup-no-selection', 'preflight-fail', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
+        if case in ('setup-unavailable', 'setup-no-selection', 'preflight-fail', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial', 'native-install-fail'):
             assert not state['minted'], 'failed fixture preflight still minted credentials'
         if case in ('setup-unavailable', 'setup-no-selection'):
             assert result['setupFailed'] and not result['executionStarted']
@@ -590,8 +601,17 @@ else:
                 assert (native_root / 'private-fixture.json').read_text() == '{"owner":"pre-existing"}'
             else:
                 assert not (native_root / 'private-fixture.json').exists(), 'private pairing input remained'
+        if case == 'native-install-fail':
+            # Native preflight runs after the workspace check, so like the
+            # other native-* preflight refusals it is an unstarted run, not setupFailed.
+            assert not result['executionStarted'] and not result.get('replacedIncompatiblePackage'), result
+            assert any('INSTALL_FAILED_INSUFFICIENT_STORAGE' in error for error in result['errors']), result['errors']
+        if case == 'native-install-incompatible':
+            assert result['replacedIncompatiblePackage'] is True, result
+            assert result['nativeJourney']['journeyCompleted'] is True
         if case == 'native-pass':
             assert result['nativeJourney']['journeyCompleted'] is True
+            assert 'replacedIncompatiblePackage' not in result, result
             assert len(result['artifacts']) == 2
             assert result['ownedDeviceIds'] == [device]
         if case == 'native-test-fail':
