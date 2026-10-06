@@ -215,4 +215,59 @@ final class CloudWorkspaceOfflineUITests: XCTestCase {
         XCTAssertFalse(app.buttons["pairAgainButton"].exists)
         retainScreenshot(app, named: "cloud-workspace-recovered")
     }
+
+    /// D-018: a credential whose stored route list carries a kind `relay`
+    /// entry is a cloud (BYOC) workspace, and Settings says so instead of
+    /// "public tunnel / LAN". The label derives from the persisted pair-time
+    /// `baseUrls`, so no backend round-trip is needed.
+    func testCloudWorkspaceShowsRelayLabelInSettings() throws {
+        let relay = try RelayStub()
+        let port = try relay.start()
+        defer { relay.stop() }
+
+        let routes = #"[{"kind":"relay","url":"http://127.0.0.1:\#(port)"}]"#
+        let creds: [String: String] = [
+            "server": "http://127.0.0.1:\(port)",
+            "deviceToken": "uitest-cloud-device-token",
+            "deviceId": "uitest-cloud-device",
+            "workspaceId": "uitest-cloud-workspace",
+            "baseUrlsJson": routes,
+        ]
+        let credsJson = try XCTUnwrap(String(
+            data: JSONSerialization.data(withJSONObject: creds),
+            encoding: .utf8
+        ))
+
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-com.papercuspai.uitests.wipeCredentials", "YES",
+            "-com.papercuspai.uitests.seedCredentials", credsJson,
+        ]
+        app.launch()
+
+        func element(labelContaining text: String) -> XCUIElement {
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS[c] %@", text))
+                .firstMatch
+        }
+
+        let settingsTab = app.buttons
+            .matching(NSPredicate(format: "label CONTAINS[c] %@", "Settings"))
+            .firstMatch
+        XCTAssertTrue(settingsTab.waitForExistence(timeout: 30),
+                      "seeded credentials should mount the paired shell")
+        settingsTab.tap()
+
+        let label = element(labelContaining: "Cloud workspace (relay)")
+        var swipes = 0
+        while !label.waitForExistence(timeout: 3) && swipes < 4 {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(label.exists,
+                      "Settings should label a relay-routed credential as a cloud workspace")
+        XCTAssertFalse(element(labelContaining: "public tunnel / LAN").exists,
+                       "a cloud workspace must not be described as a desktop tunnel / LAN")
+        retainScreenshot(app, named: "cloud-workspace-relay-label")
+    }
 }
