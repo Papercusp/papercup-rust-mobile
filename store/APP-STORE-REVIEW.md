@@ -2320,3 +2320,24 @@ Independent saved-byte/tree/mode/AST/import/caller/helper and declared
 VPython/credential/environment/cache/worker readback passed, with six rejecting
 controls. Removing this extension restores the exact prior receipt, reference
 and review; proof-input fingerprints are kept distinct from final bindings.
+
+### Pinned depot_tools git cl declarations
+
+The existing private wrapper receipt retains `git_cl.py` (291323 bytes) at
+`fa8fc854e1766b86f10c9a15902cf3cc23adaac2` as static source data. Its declared
+VPython entry point dispatches review commands. Auth migration may configure
+Git credentials; `creds-check` can run a configuration wizard or clear repository
+auth settings. Declared push tracing archives Git configuration and auth debug
+state under depot_tools `traces`. Metrics declarations store option names rather
+than option values; selected known project URLs may also be recorded. These are
+upstream source declarations, with no observed mobile auth or telemetry activity.
+
+Saved imports and selected AST fragments bind the retained helpers and callers.
+Newly exposed root imports, nested/installed dependencies and original tool,
+credential, configuration, environment, filesystem or upload choices remain open.
+This source was not executed. Complete checkout/native reproduction, final
+notices/rights, signed candidate, recipient retrieval/fresh build and release
+acceptance remain open. Independent saved-byte/tree/mode/AST/import/helper/caller,
+auth/trace/metrics/dispatch declaration readback and six rejecting controls passed.
+Removing this extension restores the exact prior receipt, reference and review.
+The verification input digest is separate from the final receipt binding.
