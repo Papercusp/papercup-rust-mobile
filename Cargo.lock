@@ -1094,12 +1094,15 @@ name = "papercup-bindings"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64",
  "papercup-core",
+ "rand_core 0.6.4",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "uniffi",
+ "zeroize",
 ]
 
 [[package]]
