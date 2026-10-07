@@ -1240,11 +1240,20 @@ if [[ "$mode" != host ]]; then
     bash "$0" verify-native-dependencies
     connected_start="$(phase_start)"
     mapfile -t devices < <(adb devices | awk 'NR>1 && $2=="device"{print $1}')
-    [[ ${#devices[@]} == 1 ]] || {
-        echo 'Android native gate requires exactly one connected test device.' >&2
-        exit 1
-    }
-    device="${devices[0]}"
+    if [[ -n "${ANDROID_SERIAL:-}" ]]; then
+        device="$ANDROID_SERIAL"
+        printf '%s\n' "${devices[@]}" | grep -Fxq "$device" || {
+            echo 'The explicitly owned Android test device is not connected.' >&2
+            exit 1
+        }
+    else
+        [[ ${#devices[@]} == 1 ]] || {
+            echo 'Android native gate requires ANDROID_SERIAL or exactly one connected test device.' >&2
+            exit 1
+        }
+        device="${devices[0]}"
+    fi
+    export ANDROID_SERIAL="$device"
     [[ "$(adb -s "$device" shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]
     [[ "$(adb -s "$device" shell getprop ro.build.version.sdk | tr -d '\r')" == 36 ]]
     [[ "$(adb -s "$device" shell getconf PAGE_SIZE | tr -d '\r')" == 16384 ]]
