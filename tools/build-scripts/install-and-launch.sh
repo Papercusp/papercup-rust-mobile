@@ -73,8 +73,17 @@ adb start-server >/dev/null 2>&1 || true
 
 mapfile -t DEVS < <(adb devices | awk 'NR>1 && $2=="device"{print $1}')
 
+# CI owns one emulator. Never install its candidate onto a peer device.
+if [[ -n "${ANDROID_SERIAL:-}" ]]; then
+    printf '%s\n' "${DEVS[@]}" | grep -Fxq "$ANDROID_SERIAL" || {
+        echo "ERROR: explicitly selected device is not connected: $ANDROID_SERIAL" >&2
+        exit 2
+    }
+    DEVS=("$ANDROID_SERIAL")
+fi
+
 # Ensure the emulator is up if no emulator-* device is currently listed.
-if ! printf '%s\n' "${DEVS[@]}" | grep -q '^emulator-'; then
+if [[ -z "${ANDROID_SERIAL:-}" ]] && ! printf '%s\n' "${DEVS[@]}" | grep -q '^emulator-'; then
     if [ -x "$ANDROID_SDK/emulator/emulator" ]; then
         if "$ANDROID_SDK/emulator/emulator" -list-avds | grep -qx "$AVD_NAME"; then
             echo "==> Booting emulator $AVD_NAME (no emulator-* device detected)"
