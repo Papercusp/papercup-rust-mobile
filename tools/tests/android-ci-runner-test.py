@@ -94,9 +94,13 @@ class AndroidCITest(unittest.TestCase):
 
     def test_preflight_failure_clears_previous_admission_and_retains_result(self):
         self.save()
+        admission = self.root / ci.CI_ADMISSION
+        admission.parent.mkdir(parents=True)
+        admission.write_text('previous candidate admission')
         with patch.object(ci, 'source_identity', side_effect=ValueError('missing source prerequisite')):
             self.assertEqual(ci.execute(self.root, self.root, self.root), 1)
         self.assertFalse((self.root / 'success.json').exists())
+        self.assertFalse(admission.exists())
         result = json.loads((self.root / 'latest.json').read_text())
         self.assertEqual(result['status'], 'failed')
         self.assertIn('missing source prerequisite', result['error'])
@@ -111,6 +115,20 @@ class AndroidCITest(unittest.TestCase):
         names = {a['path'] for a in artifacts}
         self.assertIn('artifacts/outputs/apk/debug/app-debug.apk', names)
         self.assertNotIn('private-key', names)
+
+    def test_retention_preserves_current_proof_and_ignores_foreign_directories(self):
+        for number in range(4):
+            path = self.root / 'attempts' / f'2026010{number + 1}T000000Z-00000001'
+            path.mkdir()
+            ci.write_json(path / 'result.json', {'executor': 'local-systemd', 'attempt': str(path)})
+        preserved = self.root / 'attempts/20260101T000000Z-00000001'
+        ci.write_json(self.root / 'success.json', {'attempt': str(preserved)})
+        foreign = self.root / 'attempts/unrelated'
+        foreign.mkdir()
+        ci.prune_attempts(self.root, keep=1)
+        self.assertTrue(preserved.is_dir())
+        self.assertTrue(foreign.is_dir())
+        self.assertFalse((self.root / 'attempts/20260102T000000Z-00000001').exists())
 
 
 if __name__ == '__main__':
