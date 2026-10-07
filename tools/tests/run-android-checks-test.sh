@@ -668,6 +668,33 @@ if GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=self-hosted bash "$runner" prepare-ci 
 fi
 
 mkdir -p "$TMP_ROOT/bin" "$TMP_ROOT/sdk/ndk/26.0.1" "$TMP_ROOT/sdk/ndk/27.0.12077973"
+# Runner space release deletes preinstalled software as root, so it must refuse
+# every machine except the disposable hosted runner before any deletion.
+cat > "$TMP_ROOT/bin/sudo" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$TEST_SUDO_LOG"
+SH
+chmod +x "$TMP_ROOT/bin/sudo"
+for env_pair in 'false github-hosted' 'true self-hosted'; do
+    read -r actions runner_env <<< "$env_pair"
+    if GITHUB_ACTIONS="$actions" RUNNER_ENVIRONMENT="$runner_env" TEST_SUDO_LOG="$TMP_ROOT/sudo-refused" \
+        PATH="$TMP_ROOT/bin:$PATH" bash "$runner" release-runner-space "$TMP_ROOT/space-refused" > "$TMP_ROOT/output" 2>&1; then
+        echo "FAIL: runner space release admitted $env_pair" >&2
+        exit 1
+    fi
+    [[ ! -e "$TMP_ROOT/sudo-refused" ]] || { echo 'FAIL: refused runner space release still deleted' >&2; exit 1; }
+done
+GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted TEST_SUDO_LOG="$TMP_ROOT/sudo-hosted" \
+    PATH="$TMP_ROOT/bin:$PATH" bash "$runner" release-runner-space "$TMP_ROOT/space-attempt"
+[[ "$(grep -c '^release-runner-space \(before\|after\) ' "$TMP_ROOT/space-attempt/storage.txt")" == 2 ]]
+if [[ -s "$TMP_ROOT/sudo-hosted" ]]; then
+    if grep -Ev '^rm -rf --one-file-system /(usr/share/dotnet|usr/local/\.ghcup|opt/ghc|usr/share/swift|opt/hostedtoolcache/(CodeQL|PyPy|go)|usr/local/share/(powershell|boost|chromium)|usr/local/julia[^/]*|opt/(microsoft|google|az))$' "$TMP_ROOT/sudo-hosted"; then
+        echo 'FAIL: runner space release deleted outside the unused-toolchain set' >&2
+        exit 1
+    fi
+fi
+echo 'Android runner space release guards: 3 passed'
+
 cat > "$TMP_ROOT/bin/cargo" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$TEST_CI_COMMAND_LOG"
