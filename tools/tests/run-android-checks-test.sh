@@ -1163,7 +1163,7 @@ cat > "$TMP_ROOT/bin/sdkmanager" <<'SH'
 printf '%s\n' "$*" >> "$TEST_CI_COMMAND_LOG"
 SH
 chmod +x "$TMP_ROOT/bin/cargo" "$TMP_ROOT/bin/sdkmanager"
-GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted ANDROID_HOME="$TMP_ROOT/sdk" \
+GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" \
     TEST_CI_COMMAND_LOG="$TMP_ROOT/ci-commands" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" prepare-ci "$TMP_ROOT/attempt"
 [[ "$(grep -c '^clean --release --target ' "$TMP_ROOT/ci-commands")" == 4 ]]
 for target in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
@@ -1182,7 +1182,7 @@ echo 'Android CI working-set guards: host refusals, four target-only cleans and 
 mkdir -p "$TMP_ROOT/outputs/apk/debug"
 printf '%s' "$good" > "$release"
 printf 'built APK fixture' > "$TMP_ROOT/outputs/apk/debug/app-debug.apk"
-GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted ANDROID_HOME="$TMP_ROOT/sdk" \
+GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" \
     TEST_CI_COMMAND_LOG="$TMP_ROOT/after-host-commands" PATH="$TMP_ROOT/bin:$PATH" \
     bash "$runner" prepare-ci "$TMP_ROOT/after-host-attempt" after-host "$TMP_ROOT"
 grep -Fxq clean "$TMP_ROOT/after-host-commands"
@@ -1193,7 +1193,7 @@ for missing in report apk; do
         printf '%s' "$good" > "$release"
         rm "$TMP_ROOT/outputs/apk/debug/app-debug.apk"
     fi
-    if GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted ANDROID_HOME="$TMP_ROOT/sdk" \
+    if GITHUB_ACTIONS=true RUNNER_ENVIRONMENT=github-hosted ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" \
         TEST_CI_COMMAND_LOG="$TMP_ROOT/refused-cleanup-$missing" PATH="$TMP_ROOT/bin:$PATH" \
         bash "$runner" prepare-ci "$TMP_ROOT/after-host-attempt" after-host "$TMP_ROOT" > "$TMP_ROOT/output" 2>&1; then
         echo "FAIL: after-host cleanup accepted missing $missing" >&2
@@ -1262,15 +1262,15 @@ else
 fi
 SH
 chmod +x "$TMP_ROOT/sdk/emulator/emulator" "$TMP_ROOT/sdk/emulator/qemu/linux-x86_64/qemu-system-x86_64" "$TMP_ROOT/bin/ldd"
-ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/emulator-proof"
+ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/emulator-proof"
 [[ -s "$TMP_ROOT/emulator-proof/emulator-version.txt" ]]
 printf 'hw.ramSize=4096\n' > "$TMP_ROOT/avd-memory.ini"
-ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator \
+ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator \
     "$TMP_ROOT/emulator-memory-pass" 5582 "$TMP_ROOT/avd-memory.ini"
 grep -Fq '"memoryMiB": 4096' "$TMP_ROOT/emulator-memory-pass/emulator-memory.json"
 for memory in 4096M 1536 256 '' -1 0 '4096junk'; do
     printf 'hw.ramSize=%s\n' "$memory" > "$TMP_ROOT/avd-memory.ini"
-    if ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator \
+    if ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator \
         "$TMP_ROOT/emulator-memory-rejected" 5582 "$TMP_ROOT/avd-memory.ini" > "$TMP_ROOT/output" 2>&1; then
         echo "FAIL: invalid or undersized guest RAM accepted: $memory" >&2; exit 1
     fi
@@ -1282,17 +1282,17 @@ for config in missing duplicate; do
     else
         printf 'hw.ramSize=4096\nhw.ramSize=256\n' > "$TMP_ROOT/avd-memory.ini"
     fi
-    if ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator \
+    if ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator \
         "$TMP_ROOT/emulator-memory-rejected" 5582 "$TMP_ROOT/avd-memory.ini" > "$TMP_ROOT/output" 2>&1; then
         echo "FAIL: ambiguous guest RAM accepted: $config" >&2; exit 1
     fi
 done
 echo 'Android guest RAM guards: integer MiB accepted; suffix, undersized, missing and duplicate allocations rejected'
 for port in 5554 5584; do
-    ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/valid-port-$port" "$port"
+    ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/valid-port-$port" "$port"
 done
 for port in 5553 5555 5586 5596 invalid; do
-    if ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/invalid-port-$port" "$port" > "$TMP_ROOT/output" 2>&1; then
+    if ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/invalid-port-$port" "$port" > "$TMP_ROOT/output" 2>&1; then
         echo "FAIL: unsupported emulator discovery port accepted: $port" >&2
         exit 1
     fi
@@ -1447,12 +1447,12 @@ assert not proof['frameworkReady'] and not proof['guestMemory']['sufficient']
 shutil.rmtree(root)
 PY
 echo 'Android runner failure evidence: exact positive-fixture predicate and JSON retained'
-if TEST_EMULATOR_MISSING_LIB=1 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/missing-lib-proof" > "$TMP_ROOT/output" 2>&1; then
+if TEST_EMULATOR_MISSING_LIB=1 ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/missing-lib-proof" > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: missing emulator shared library was accepted' >&2
     exit 1
 fi
 grep -Fq 'libpulse.so.0 => not found' "$TMP_ROOT/missing-lib-proof/emulator-libraries.txt"
-if TEST_EMULATOR_FAIL=1 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/failed-emulator-proof" > "$TMP_ROOT/output" 2>&1; then
+if TEST_EMULATOR_FAIL=1 ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SDK_ROOT="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/failed-emulator-proof" > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: failed emulator executable was accepted' >&2
     exit 1
 fi
@@ -1484,14 +1484,14 @@ C
     ldd "$real_qemu" > "$TMP_ROOT/bare-loader.txt"
     grep -Fq 'libandroid_guard_core.so => not found' "$TMP_ROOT/bare-loader.txt"
     grep -Fq 'libandroid_guard_qt.so => not found' "$TMP_ROOT/bare-loader.txt"
-    LD_LIBRARY_PATH="$extra_lib" ANDROID_HOME="$real_sdk" \
+    LD_LIBRARY_PATH="$extra_lib" ANDROID_HOME="$real_sdk" ANDROID_SDK_ROOT="$real_sdk" \
         bash "$runner" verify-emulator "$TMP_ROOT/real-loader-proof"
     if grep -Fq 'not found' "$TMP_ROOT/real-loader-proof/emulator-libraries.txt"; then
         echo 'FAIL: bundled or inherited emulator library was rejected' >&2
         exit 1
     fi
     rm "$core_lib/libandroid_guard_core.so"
-    if LD_LIBRARY_PATH="$extra_lib" ANDROID_HOME="$real_sdk" \
+    if LD_LIBRARY_PATH="$extra_lib" ANDROID_HOME="$real_sdk" ANDROID_SDK_ROOT="$real_sdk" \
         bash "$runner" verify-emulator "$TMP_ROOT/real-missing-library-proof" > "$TMP_ROOT/output" 2>&1; then
         echo 'FAIL: a genuinely missing ELF dependency was accepted' >&2
         exit 1
