@@ -21,6 +21,18 @@ futures-util = { version = "0.3", default-features = false }
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 url = "2"
 async-trait = "0.1"
+# Hosted/BYOC cloud pairing: a Noise XX initiator wire-compatible with
+# @hyperswarm/secret-stream (Ed25519 DH via noise-curve-ed, BLAKE2b, ChaCha20-Poly1305,
+# then libsodium secretstream for the data channel). Pure Rust so it cross-builds for
+# Android and iOS. WI-10006994 / android-public-release-2026-10-01#D-018.
+curve25519-dalek = { version = "4", default-features = false, features = ["alloc", "zeroize", "precomputed-tables"] }
+sha2 = "0.10"
+blake2 = "0.10"
+hmac = "0.12"
+chacha20poly1305 = "0.10"
+crypto_secretstream = "0.2"
+rand_core = { version = "0.6", features = ["getrandom"] }
+zeroize = "1"
 
 [dev-dependencies]
 wiremock = "0.6"

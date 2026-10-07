@@ -1,0 +1,107 @@
+{
+  "generator": "gen-noise-xx-kat.cjs",
+  "secretStreamVersion": "6.9.1",
+  "protocol": "Noise_XX_Ed25519_ChaChaPoly_BLAKE2b",
+  "namespaces": {
+    "initiator": "a931a0155b5c09e6d28628236af83c4b8a6af9af60986edeede9dc5d63192bf7",
+    "responder": "742c9d833d430af4c48a8705e91631eecf295442bbca18996e597097723b1061"
+  },
+  "vectors": [
+    {
+      "name": "ascending-seeds",
+      "seeds": {
+        "initiatorStatic": "0101010101010101010101010101010101010101010101010101010101010101",
+        "initiatorEphemeral": "0202020202020202020202020202020202020202020202020202020202020202",
+        "responderStatic": "0303030303030303030303030303030303030303030303030303030303030303",
+        "responderEphemeral": "0404040404040404040404040404040404040404040404040404040404040404"
+      },
+      "publicKeys": {
+        "initiatorStatic": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+        "initiatorEphemeral": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+        "responderStatic": "ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1",
+        "responderEphemeral": "ca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c"
+      },
+      "dh": {
+        "initiatorEphemeral_responderEphemeral": "f7c403a306b21ae7db3c810c586a117919dde2cd67e4c56bf7edfd75d41b851f",
+        "initiatorEphemeral_responderStatic": "c6486a6fe639256725cf5aa11bb86028de15e038afedf17c2945bf5c6327f581",
+        "initiatorStatic_responderEphemeral": "4f52c01535abfc358239749eeda45ffd7396104eda46a3f7809589b1b58c81e2"
+      },
+      "handshake": {
+        "msg1": "0000000000000000000000000000000000000000000000000000000000000000",
+        "msg2": "00000000000000000000000000000000000000000000000000000000000000004d9e7de3cc9a6378ec7fc7cfdae288cac5c0f41a9197adb9213804de129ddca06a55cc9062361dd6ea395fe2f6c25fdd2204cd9188549881c1e0dfad769ddbcc",
+        "msg3": "4e7f5acd10d28ef757ccacec8caff9ca4f7f8b305f457914800d56c160e90feed0e601ca181e4a2af39f2d3bb8020f7b0554bc91296be4be0ee974372b9c6013",
+        "initiatorTx": "da3ea403820846d555bdbbd22bd530d686fb57ae98daa541a15b5b4f12d02fae",
+        "initiatorRx": "42fa8a7e955cb0bef6c9112e7743f70205a60b4b1d246b728ca36b04ab7ede61",
+        "handshakeHash": "6c66d9f3b7da972c50ec4867d6866862a7386b3c2a0a24dacfb8d33ae0f2610fc0b1ec8c9fc89e93a50038a04149805775f30d4d6a3eb003328e907a3d312d0f",
+        "responderHandshakeHash": "6c66d9f3b7da972c50ec4867d6866862a7386b3c2a0a24dacfb8d33ae0f2610fc0b1ec8c9fc89e93a50038a04149805775f30d4d6a3eb003328e907a3d312d0f",
+        "initiatorStreamId": "0d867f3dc1d7570dacc4a8dab51c6892596239adbce4554704894574b0fbc486",
+        "responderStreamId": "1939bb93030e977cafeccc59c249a7a39debbb71c5864f9b65f246bbb75354eb"
+      },
+      "responderStream": {
+        "header": "ed2028ea2fddca77e6b6dd46a2f4d6d32435713518c2e28b",
+        "messages": [
+          {
+            "plaintext": "7b2274797065223a2273657373696f6e2e7265616479227d0a",
+            "ciphertext": "abfb8fde95ec71073da1a51a81af4663f8393b942d84ad60db4686c9f2df9a7ce2f96c13383c47712072"
+          },
+          {
+            "plaintext": "",
+            "ciphertext": "c998312a7c0c60a8bf54093ef7b0b39a23"
+          },
+          {
+            "plaintext": "7b2274797065223a226465766963652e70616972696e672e6163636570746564222c226e223a327d0a",
+            "ciphertext": "3f24463ebd8affc3fcf875db37c0e2abfe33534b20be351dac48b893403a152b3adef2a1313bda07a6f9ab5dfe55bb64e1b83e45d26b21ec2b9a"
+          }
+        ]
+      }
+    },
+    {
+      "name": "high-seeds",
+      "seeds": {
+        "initiatorStatic": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "initiatorEphemeral": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+        "responderStatic": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+        "responderEphemeral": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+      },
+      "publicKeys": {
+        "initiatorStatic": "bc7cbcb5636375fa1d82434d466724d92377f53b980695dd49d26d0ce12205a5",
+        "initiatorEphemeral": "55154f42065ea5a1bea05463826be2684eb92df92c100027aabaae57ca554207",
+        "responderStatic": "d404bc44565aedbb899150e5b0b3b32b9441bf0cb7884c33130da8dbc27dd2cf",
+        "responderEphemeral": "ed3234b276d4ceda57d59bad14fbaf5a773c0f318c999de3a60d53c5a5b34c05"
+      },
+      "dh": {
+        "initiatorEphemeral_responderEphemeral": "27b20133169bc0d9ff4158955124c8e1bbe3b2c25264ebdb0dab2b315803cb88",
+        "initiatorEphemeral_responderStatic": "37290f31c10cd7c24e885e7ed04d3f10503dfd43d92196029d1f458fe8e24c9a",
+        "initiatorStatic_responderEphemeral": "6399102edb947d34bc7b7862f9c40fdf2369142b5f16af38c654ade90f0fcbb9"
+      },
+      "handshake": {
+        "msg1": "0000000000000000000000000000000000000000000000000000000000000000",
+        "msg2": "00000000000000000000000000000000000000000000000000000000000000005c21acec42e2ebe80e8e847fa8e1a47b884a03e2e14519eef021bb6662693c6f70422b9f24cf78fb8d0ddfd39c6054a75a53746debb63a8bc5fb07c49ed6016b",
+        "msg3": "f470d0285868ddd1a4e5dba63ffe1fe64656fb370545af5343e3c82248e20a1bdb45758d33dc5ae484cc38db81042f3b932b3c84d99ce2563b76828a69c22ba5",
+        "initiatorTx": "9f08d40c1a3f0ab74b9e45065efac9b6f4acf8ca0fc59058c8f8f25d3c4b369f",
+        "initiatorRx": "e240af2f96237fae4e3432e3a0ec0a95d70f730ffb94233572651f6eda1610c3",
+        "handshakeHash": "30793a2b44d96ad64adaef75115381144dbbf56d58f3381ef26ff7b4929f02414aff23cc4292f3159b52c0f260d3f3804595c1d28de58a374fa5c8f48b6f7d50",
+        "responderHandshakeHash": "30793a2b44d96ad64adaef75115381144dbbf56d58f3381ef26ff7b4929f02414aff23cc4292f3159b52c0f260d3f3804595c1d28de58a374fa5c8f48b6f7d50",
+        "initiatorStreamId": "051906587dfb8dc8ac52e5d97e1ac30fd2ae217e95d6727124dfc6e601b951de",
+        "responderStreamId": "9d92bf1910964086239fa227e06274067d450d917de1ae5818204148e68dadd3"
+      },
+      "responderStream": {
+        "header": "9caee1eb7ff46bdc11d0d00c9a1c9cbc1bd47813cbf2698b",
+        "messages": [
+          {
+            "plaintext": "7b2274797065223a2273657373696f6e2e7265616479227d0a",
+            "ciphertext": "416ea780fd18fcce024897d267c64b2acec6f2de9a216c54d5ac3f273a24fbd4ed22f50547e7c8f0fe8b"
+          },
+          {
+            "plaintext": "",
+            "ciphertext": "aeb10395d75bd2781e1d9e1e429a099a69"
+          },
+          {
+            "plaintext": "7b2274797065223a226465766963652e70616972696e672e6163636570746564222c226e223a327d0a",
+            "ciphertext": "4c1e2fd33b7894abcdf29338453be065ed9d3d93dd806516892c96e07701a829ceb1a92e0bfc6cdb129647844bcdda1d273b0d25e360f52b2fc7"
+          }
+        ]
+      }
+    }
+  ]
+}
