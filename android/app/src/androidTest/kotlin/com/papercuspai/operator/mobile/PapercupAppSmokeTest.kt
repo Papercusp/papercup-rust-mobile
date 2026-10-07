@@ -495,6 +495,9 @@ class PapercupAppSmokeTest {
 
         val activity = runBlocking { client.fleetActivity() }
         compose.onNodeWithContentDescription("Fleet").performClick()
+        waitForText("fleet activity ▸")
+        compose.onNodeWithText("fleet activity ▸").performClick()
+        waitForText("Fleet activity")
         waitForText(fleetAvailabilityText(activity))
         expected.put("fleetAvailability", fleetAvailabilityText(activity))
         result.put("fleetStatePassed", true)
