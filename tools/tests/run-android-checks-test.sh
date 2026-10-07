@@ -576,12 +576,17 @@ else:
         run = subprocess.run(['bash', selected_runner, 'live', str(evidence), 'native' if native_mode else 'rust'], env=env,
                              capture_output=True, text=True, timeout=STUB_HANG_TIMEOUT_SEC)
         result = json.loads((evidence / 'result.json').read_text())
-        assert (run.returncode == 0) == (case in ('pass', 'native-pass', 'native-install-incompatible')), (case, run.stdout, run.stderr, result)
+        # The EXIT trap removes the fixture tree. Surface readiness evidence
+        # before cleanup rather than losing the reason behind an early refusal.
+        boot_proof = evidence / 'emulator-preflight/emulator-boot.json'
+        readiness = json.loads(boot_proof.read_text()) if boot_proof.exists() else None
+        diagnostic = (case, run.stdout[-1500:], run.stderr[-1500:], result, readiness)
+        assert (run.returncode == 0) == (case in ('pass', 'native-pass', 'native-install-incompatible')), diagnostic
         assert state['current'] == 'original'
         assert result['checkKind'] == ('native' if native_mode else 'rust')
         assert len(result['runId']) == 32
         if case not in ('setup-unavailable', 'setup-no-selection', 'native-preflight-fail', 'native-existing-files', 'native-missing-serial', 'native-install-fail'):
-            assert (result['ownedWorkspace'] or {}).get('name', '').startswith('android-live-scope-'), (case, run.stdout[-800:], run.stderr[-800:], result)
+            assert (result['ownedWorkspace'] or {}).get('name', '').startswith('android-live-scope-'), diagnostic
         else:
             assert result['ownedWorkspace'] is None
         assert state['devices'] == [{'device_id': original_device}], state
