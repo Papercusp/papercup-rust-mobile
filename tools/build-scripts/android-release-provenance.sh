@@ -1317,14 +1317,14 @@ assert_canonical_artifact() {
 # skipped, dirty-tree or other-commit run leaves no usable record, so failed
 # checks block publication instead of merely being reported.
 CHECKS_DIR_REL="android/app/build/outputs/papercusp-android-checks"
-REQUIRED_CHECK_PHASES=(host connected)
+REQUIRED_CHECK_PHASES=(host connected ci)
 
 checks_record_path() {
     printf '%s/%s/%s.json\n' "$REPO_ROOT" "$CHECKS_DIR_REL" "$1"
 }
 
 valid_check_phase() {
-    [[ "$1" == host || "$1" == connected ]]
+    [[ "$1" == host || "$1" == connected || "$1" == ci ]]
 }
 
 # Usage: checks-pass <phase> <start-commit|dirty>. Called by the check runner
@@ -1333,7 +1333,7 @@ valid_check_phase() {
 # end records nothing.
 record_checks_pass() {
     local phase="$1" start="$2" record commit dirty tmp
-    valid_check_phase "$phase" || die "check phase must be host or connected (got $phase)"
+    valid_check_phase "$phase" || die "check phase must be host, connected or ci (got $phase)"
     record="$(checks_record_path "$phase")"
     rm -f "$record"
     dirty="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=normal)"
@@ -1358,7 +1358,7 @@ const record = {
   sourceCommit: process.env.SOURCE_COMMIT,
   sourceDirty: false,
   passedAt: process.env.PASSED_AT,
-  runner: 'tools/run-android-checks.sh',
+  runner: process.env.PHASE === 'ci' ? 'tools/android-ci.py' : 'tools/run-android-checks.sh',
 };
 fs.writeFileSync(process.argv[2], `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
 NODE
@@ -1390,7 +1390,7 @@ for (const phase of phases) {
   } else {
     const file = path.join(process.env.CHECKS_DIR, `${phase}.json`);
     if (!fs.existsSync(file)) {
-      fail(`no passing Android ${phase} check record for ${process.env.EXPECTED_COMMIT}; run 'bash tools/run-android-checks.sh full' on this clean commit first`);
+      fail(`no passing Android ${phase} check record for ${process.env.EXPECTED_COMMIT}; run 'make check-android-ci' on this clean commit first`);
     }
     try { record = JSON.parse(fs.readFileSync(file, 'utf8')); }
     catch (error) { fail(`cannot parse ${phase} check record: ${error.message}`); }
@@ -1595,7 +1595,7 @@ case "${1:-}" in
         echo "==> Verified Android release provenance for $2"
         ;;
     checks-pass)
-        [[ $# -eq 3 ]] || die "usage: $0 checks-pass <host|connected> <start-commit|dirty>"
+        [[ $# -eq 3 ]] || die "usage: $0 checks-pass <host|connected|ci> <start-commit|dirty>"
         record_checks_pass "$2" "$3"
         ;;
     checks-gate)
