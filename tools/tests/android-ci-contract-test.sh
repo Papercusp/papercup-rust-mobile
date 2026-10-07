@@ -34,6 +34,8 @@ assert '\n            android-ci-attempt/operator\n' not in android and '\n     
 assert 'api-level: 36' in android and 'target: google_apis_ps16k' in android
 assert '-gpu swiftshader ' in android and 'swiftshader_indirect' not in android, 'use the supported software renderer, not the retired indirect mode'
 assert '-feature GLDirectMem,HasSharedSlotsHostMemoryAllocator ' in android, 'new Goldfish mappers require both host DMA readback capabilities'
+runner_space = 'bash tools/run-android-checks.sh release-runner-space android-ci-attempt'
+assert runner_space in android and android.index(runner_space) < android.index('node scripts/npm-install-safe.mjs ci'), 'operator install and AVD need the preinstalled-toolchain headroom (run 37550640887)'
 assert android.count('bash tools/run-android-checks.sh prepare-ci') == 2, 'CI must bound the working set before SDK setup and before native execution'
 image = "'system-images;android-36;google_apis_ps16k;x86_64'"
 assert image in android and android.index(image) < android.index('make check-android-host'), 'system-image precondition must run before the expensive build'
@@ -139,6 +141,7 @@ text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 (out / 'oversized-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', '          disk-size: 8192M\n'))
 (out / 'missing-avd-space.yml').write_text(text.replace('          bash tools/run-android-checks.sh verify-avd-space 6144M\n', ''))
 (out / 'missing-avd-launch-space.yml').write_text(text.replace('          pre-emulator-launch-script: bash tools/run-android-checks.sh verify-avd-space 6144M\n', ''))
+(out / 'missing-runner-space.yml').write_text(text.replace('bash tools/run-android-checks.sh release-runner-space android-ci-attempt', ': omitted'))
 (out / 'missing-after-host-cleanup.yml').write_text(text.replace(' prepare-ci android-ci-attempt after-host', ' prepare-ci'))
 for name, apk in [('app', 'android/app/build/outputs/apk/debug/app-debug.apk'), ('instrumentation', 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk')]:
     (out / f'missing-{name}-apk.yml').write_text(text.replace(f'            {apk}\n', ''))
@@ -150,7 +153,7 @@ PY
             exit 1
         fi
     done
-    echo 'Android CI bootstrap/storage/emulator/paired-provenance mutation controls: 35 rejected'
+    echo 'Android CI bootstrap/storage/emulator/paired-provenance mutation controls: 36 rejected'
 
     # A workflow invoking "host" is insufficient if the owned runner stops
     # executing one of its required phases. Keep each omission reproducible.

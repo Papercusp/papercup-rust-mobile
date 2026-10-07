@@ -172,6 +172,10 @@ jobs:
         if: steps.android-proof.outputs.cache-hit == 'true'
         run: bash tools/run-android-checks.sh verify-isolated-native android-ci-proof/paired "$PAPERCUP_OPERATOR_SHA"
 
+      - name: Release unused preinstalled runner toolchains
+        if: steps.android-proof.outputs.cache-hit != 'true'
+        run: bash tools/run-android-checks.sh release-runner-space android-ci-attempt
+
       - uses: actions/setup-java@v4
         if: steps.android-proof.outputs.cache-hit != 'true'
         with:

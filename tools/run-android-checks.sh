@@ -894,6 +894,29 @@ if [[ "$mode" == verify-emulator ]]; then
     "$ANDROID_HOME/emulator/emulator" -version > "$attempt_dir/emulator-version.txt" 2>&1
     exit
 fi
+if [[ "$mode" == release-runner-space ]]; then
+    # The paired leg adds the operator checkout, its npm install and the host
+    # bundle to a 75 GB runner root that ships 98% full. Run 37550640887 then
+    # left 1.46 GB for an AVD needing 8.8 GB. Only the disposable, owned Actions
+    # runner may delete preinstalled software. Android SDK, JDK, Node, Rust and
+    # Python stay; every path below is a toolchain this job never invokes.
+    [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]] || {
+        echo 'Runner space release requires a GitHub-hosted runner.' >&2
+        exit 2
+    }
+    attempt_dir="${2:-android-ci-attempt}"
+    mkdir -p "$attempt_dir"
+    { echo "release-runner-space before $(date -u +%FT%TZ)"; df -Pk /; } >> "$attempt_dir/storage.txt"
+    for path in /usr/share/dotnet /usr/local/.ghcup /opt/ghc /usr/share/swift \
+        /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/go \
+        /usr/local/share/powershell /usr/local/share/boost /usr/local/share/chromium \
+        /usr/local/julia* /opt/microsoft /opt/google /opt/az; do
+        [[ -e "$path" ]] || continue
+        sudo rm -rf --one-file-system "$path"
+    done
+    { echo "release-runner-space after $(date -u +%FT%TZ)"; df -Pk /; } >> "$attempt_dir/storage.txt"
+    exit
+fi
 if [[ "$mode" == prepare-ci ]]; then
     # Only the disposable, owned Actions runner may prune its toolchain.
     [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]] || {
