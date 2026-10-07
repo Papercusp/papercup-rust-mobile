@@ -120,7 +120,9 @@ def main():
                   'tools/run-android-checks.sh', 'tools/cloud-native-check.py',
                   'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PapercupAppSmokeTest.kt',
                   'android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt',
-                  'android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt')}}
+                  'android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt',
+                  'crates/papercup-core/src/sealed_http.rs',
+                  'crates/papercup-core/tests/fixtures/sealed-http-responder.mjs')}}
     injected = False
     try:
         # Other agents' connected devices are permitted and never selected.
