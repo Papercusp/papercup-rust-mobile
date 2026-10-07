@@ -1,0 +1,20 @@
+Android private operator lifecycle: 9 launch/cleanup/refusal controls passed (native stub only)
+Android paired proof barrier: 54 acceptance/refusal controls passed (evidence fixtures only)
+Android auth fixture: 8 control/refusal cases passed (signer and API fixtures only)
+Android test-results/testDebugUnitTest: 1 executed, zero failed or skipped
+Android test-results/testReleaseUnitTest: 1 executed, zero failed or skipped
+Android outputs/androidTest-results/connected/debug: 1 executed, zero failed or skipped
+Android live fixture guards: 38 passed; Rust/native ownership, executed proof and independent cleanup verified
+Android result guard tests: 10 passed
+Android runner space release guards: 3 passed
+Android CI working-set guards: host refusals, four target-only cleans and pinned NDK preservation passed
+Android test-results/testDebugUnitTest: 1 executed, zero failed or skipped
+Android test-results/testReleaseUnitTest: 1 executed, zero failed or skipped
+Android after-host cleanup guards: executed reports and preserved APK required
+{"avdRoot": "/dev/shm/pcv/tmp.3AbDsgGocv/avd with spaces", "configuredPartitionBytes": 6442450944, "partitionBytes": 6442450944, "availableBytes": 10737418240, "requiredBytes": 8804682957, "sufficient": true}
+Android AVD capacity guards: effective minimum enforced; adequate space accepted; low-space and invalid inputs rejected
+Android native readiness: healthy and API36 fallback accepted; 10 process/service/crash/graphics/userdata controls rejected
+Android emulator preflight guards: working executable accepted; missing library and failed executable rejected
+Android emulator real-loader guards: bundled and inherited libraries accepted; missing dependency rejected
+Android native build budget: out-of-range budgets rejected; build steps and isolated wrapper use the dedicated budget
+RUNNER_GUARDS_EXIT=0 END=2026-10-07T02:21:19Z
