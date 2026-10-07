@@ -4,6 +4,8 @@ package com.papercuspai.operator.mobile
 import android.Manifest
 import android.content.Intent
 import android.os.Build
+import androidx.activity.compose.setContent
+import com.papercuspai.operator.mobile.theme.PapercupTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasAnySibling
@@ -76,6 +78,17 @@ class PapercupAppSmokeTest {
     @After
     fun releaseEnrollmentIntentFixture() {
         if (enrollmentIntentFixture) Intents.release()
+    }
+
+    @Test
+    fun sixFeatureJourneysMatchOwnedOperatorState() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            if (InstrumentationRegistry.getArguments().getString("nativeFeatureFixture") == "true") {
+                verifyOwnedPairedJourney(scenario, featuresOnly = true)
+            } else {
+                compose.onNodeWithText("Paste manually").assertIsDisplayed()
+            }
+        }
     }
 
     @Test
@@ -207,7 +220,7 @@ class PapercupAppSmokeTest {
         }
     }
 
-    private fun verifyOwnedPairedJourney(scenario: ActivityScenario<MainActivity>) {
+    private fun verifyOwnedPairedJourney(scenario: ActivityScenario<MainActivity>, featuresOnly: Boolean = false) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val fixture = JSONObject(File(context.filesDir, "native-pairing-fixture.json").readText())
@@ -275,6 +288,12 @@ class PapercupAppSmokeTest {
             assertTrue("Pairing token must survive recreation", paired.deviceToken == restored.deviceToken)
             waitForPairedShell()
             result.put("activityRecreated", true)
+            if (featuresOnly) {
+                beginStage("six-features")
+                verifyOwnedFeatures(scenario, paired, result)
+                result.put("journeyCompleted", true)
+                return
+            }
             verifyOwnedInbox(paired, result) { beginStage("inbox-initial-$it") }
             result.put("inboxRenderingPassed", true)
 
@@ -452,6 +471,72 @@ class PapercupAppSmokeTest {
             }
             resultFile.writeText(result.toString())
         }
+    }
+
+    private fun verifyOwnedFeatures(scenario: ActivityScenario<MainActivity>, paired: DeviceCredentials, result: JSONObject) {
+        val expected = JSONObject()
+        val client = paired.client()
+        // Read independently through JNI before entering each screen. The
+        // private workspace deliberately has no conversation/plans/candidates.
+        val conversation = runBlocking { client.operatorConversation(50u) }
+        assertTrue("Owned conversation must start empty", conversation.turns.isEmpty())
+        compose.onNodeWithContentDescription("Operator").performClick()
+        waitForText("Ask the operator anything.")
+        compose.onNode(hasSetTextAction()).performTextInput("owned draft ${result.getString("runId")}")
+        expected.put("chatTurns", conversation.turns.size)
+        result.put("chatStatePassed", true)
+
+        val plans = runBlocking { client.plansList(null, false) }
+        compose.onNodeWithContentDescription("Plans").performClick()
+        waitForText("${plans.size} plans")
+        if (plans.isEmpty()) waitForText("No plans.")
+        expected.put("plans", plans.size)
+        result.put("plansStatePassed", true)
+
+        val activity = runBlocking { client.fleetActivity() }
+        compose.onNodeWithContentDescription("Fleet").performClick()
+        waitForText(fleetAvailabilityText(activity))
+        expected.put("fleetAvailability", fleetAvailabilityText(activity))
+        result.put("fleetStatePassed", true)
+
+        val pots = runBlocking { client.listHarnesses() }
+        waitForText("All Pots ▾")
+        compose.onNodeWithText("All Pots ▾").performClick()
+        if (pots.isEmpty()) waitForText("No pots available")
+        else {
+            val pot = pots.first().slug
+            compose.onNodeWithText(pot).performClick()
+            waitForText("$pot ▾")
+            compose.onNodeWithText("$pot ▾").performClick()
+        }
+        compose.onNodeWithText("All Pots").performClick()
+        val workspaces = runBlocking { client.listWorkspaces() }
+        val workspace = workspaces.first { it.id == paired.workspaceId }
+        compose.onNodeWithContentDescription("Settings").performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Workspaces"))
+        compose.onNodeWithText("Workspaces").performClick()
+        waitForText("Workspace selector")
+        compose.onAllNodes(hasText(workspace.name)).fetchSemanticsNodes().also { assertTrue(it.isNotEmpty()) }
+        compose.onNodeWithContentDescription("Back").performClick()
+        expected.put("pots", pots.size).put("workspaceId", workspace.id).put("workspaceName", workspace.name)
+        result.put("workspacePotStatePassed", true)
+
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Diagnostics"))
+        compose.onNodeWithText("Diagnostics").performClick()
+        runBlocking { client.heartbeat() }
+        compose.onNodeWithText("Ping desktop").performClick()
+        waitForText("ONLINE")
+        result.put("diagnosticsStatePassed", true)
+        compose.onNodeWithContentDescription("Back").performClick()
+
+        compose.onNodeWithContentDescription("Inbox").performClick()
+        verifyOwnedInbox(paired, result) { result.put("currentStage", "features-attention-$it") }
+        val candidates = runBlocking { client.standingCandidates() }
+        scenario.onActivity { host -> host.setContent { PapercupTheme { StandingApprovalsScreen(paired, {}) } } }
+        waitForText("${candidates.size} pending")
+        if (candidates.isEmpty()) waitForText("No standing-approval candidates.")
+        expected.put("standingCandidates", candidates.size)
+        result.put("attentionApprovalsStatePassed", true).put("featureExpectedState", expected)
     }
 
     private fun waitForPairedShell() {
