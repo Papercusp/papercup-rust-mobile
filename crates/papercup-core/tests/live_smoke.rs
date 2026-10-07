@@ -19,11 +19,195 @@
 // auth, runtime-config (voice WS discovery), rest-query (polling sync),
 // list/feeds, both error envelopes, and 403→Unauthorized.
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use futures_util::FutureExt;
 use papercup_core::client::{ApiError, OperatorClient};
+use papercup_core::noise_stream::Ed25519KeyPair;
 use papercup_core::types::PairBody;
+use rand_core::{OsRng, RngCore};
+use serde::Deserialize;
 use std::future::Future;
 use std::panic::{resume_unwind, AssertUnwindSafe};
+use zeroize::Zeroizing;
+
+// The focused cloud preflight consumes the same private QR fields as the
+// native app. No token, server response body, or private key is printed.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SealedQr {
+    server: String,
+    pair_token: String,
+    workspace_id: String,
+    noise_key: String,
+}
+
+fn sealed_qr(text: &str) -> Result<(SealedQr, [u8; 32]), &'static str> {
+    let qr: SealedQr = serde_json::from_str(text).map_err(|_| "invalid sealed QR")?;
+    let url = url::Url::parse(&qr.server).map_err(|_| "invalid sealed QR server")?;
+    if url.scheme() != "https"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || qr.pair_token.trim().is_empty()
+        || qr.workspace_id.trim().is_empty()
+    {
+        return Err("invalid sealed QR fields");
+    }
+    let bytes = STANDARD
+        .decode(&qr.noise_key)
+        .map_err(|_| "invalid machine key")?;
+    let key: [u8; 32] = bytes.try_into().map_err(|_| "invalid machine key")?;
+    if STANDARD.encode(key) != qr.noise_key
+        || Ed25519KeyPair::from_seed(&[1; 32])
+            .diffie_hellman(&key)
+            .is_err()
+    {
+        return Err("invalid machine key");
+    }
+    Ok((qr, key))
+}
+
+fn qr_fixture() -> serde_json::Value {
+    serde_json::json!({
+        "server": "https://example.test/api/workspaces/cloud-scope",
+        "pairToken": "private-test-canary",
+        "workspaceId": "cloud-scope",
+        "noiseKey": STANDARD.encode(Ed25519KeyPair::from_seed(&[2; 32]).public_key()),
+    })
+}
+
+#[test]
+fn sealed_preflight_keeps_cloud_prefix_and_requires_machine_pin() {
+    let fixture = qr_fixture();
+    let (qr, _) = sealed_qr(&fixture.to_string()).unwrap();
+    assert_eq!(qr.server, "https://example.test/api/workspaces/cloud-scope");
+    let mut missing = fixture;
+    missing.as_object_mut().unwrap().remove("noiseKey");
+    assert!(sealed_qr(&missing.to_string()).is_err());
+}
+
+#[test]
+fn sealed_preflight_rejects_unpinned_or_invalid_key() {
+    for key in [
+        "",
+        "not-base64",
+        &STANDARD.encode([0; 32]),
+        &STANDARD.encode([1; 31]),
+    ] {
+        let mut fixture = qr_fixture();
+        fixture["noiseKey"] = key.into();
+        assert!(sealed_qr(&fixture.to_string()).is_err());
+    }
+}
+
+#[test]
+fn sealed_preflight_rejects_plaintext_and_credential_bearing_urls() {
+    for server in [
+        "http://example.test",
+        "https://user:secret@example.test",
+        "https://example.test?token=secret",
+        "https://example.test#secret",
+    ] {
+        let mut fixture = qr_fixture();
+        fixture["server"] = server.into();
+        assert!(sealed_qr(&fixture.to_string()).is_err());
+    }
+}
+
+#[test]
+fn sealed_preflight_errors_do_not_echo_private_payload() {
+    for field in ["pairToken", "workspaceId"] {
+        let mut fixture = qr_fixture();
+        fixture[field] = "".into();
+        let error = sealed_qr(&fixture.to_string()).err().unwrap();
+        assert!(!error.contains("private-test-canary"));
+        assert!(!error.contains("example.test"));
+    }
+    assert_eq!(
+        sealed_qr("private-test-canary").err(),
+        Some("invalid sealed QR")
+    );
+}
+
+fn require_live<T>(result: Result<T, ApiError>, stage: &str) -> T {
+    result.unwrap_or_else(|error| {
+        let class = match error {
+            ApiError::Server { status, .. } => format!("Server:{status}"),
+            ApiError::Unauthorized => "Unauthorized".into(),
+            _ => "TransportOrDecode".into(),
+        };
+        panic!("sealed preflight {stage} failed ({class})")
+    })
+}
+
+#[test]
+fn sealed_preflight_server_error_only_reports_stage_and_status() {
+    let panic = std::panic::catch_unwind(|| {
+        require_live::<()>(
+            Err(ApiError::Server {
+                status: 503,
+                detail: "private-response-canary".into(),
+            }),
+            "attention",
+        );
+    })
+    .expect_err("503 must fail the preflight");
+    let message = panic.downcast_ref::<String>().unwrap();
+    assert_eq!(message, "sealed preflight attention failed (Server:503)");
+    assert!(!message.contains("private-response-canary"));
+}
+
+// Run ONLY this live test with a freshly minted QR stored outside the tree:
+// PAPERCUP_LIVE_QR_FILE=/private/qr.json cargo test -p papercup-core \
+//   --test live_smoke live_sealed_attention_preflight -- --ignored --nocapture
+// This is host/client proof; it does not assert native credential-store/UI proof.
+#[tokio::test]
+#[ignore = "needs a fresh private public-cloud QR file and adopted customer runtime"]
+async fn live_sealed_attention_preflight() {
+    let file = std::env::var("PAPERCUP_LIVE_QR_FILE").expect("set PAPERCUP_LIVE_QR_FILE");
+    let text = Zeroizing::new(std::fs::read_to_string(file).expect("read private QR file"));
+    let (qr, machine_key) = sealed_qr(&text).expect("validate sealed QR");
+    let mut seed = Zeroizing::new([0u8; 32]);
+    OsRng.fill_bytes(&mut *seed);
+    let public_key = Ed25519KeyPair::from_seed(&seed).public_key();
+    let anon = OperatorClient::new(qr.server.clone(), None);
+    require_live(
+        anon.configure_sealed_transport(&seed, &machine_key),
+        "configure",
+    );
+    let pair = require_live(
+        anon.pair_with_noise(
+            PairBody {
+                pair_token: qr.pair_token,
+            },
+            &public_key,
+        )
+        .await,
+        "pair",
+    );
+    let client = OperatorClient::new(qr.server.clone(), Some(pair.device_token.clone()));
+    require_live(
+        client.configure_sealed_transport(&seed, &machine_key),
+        "configure authenticated",
+    );
+    with_pair_cleanup(&client, &pair.device_id, async {
+        assert_eq!(pair.workspace_id, qr.workspace_id, "QR workspace scope");
+        let attention = require_live(client.attention().await, "attention");
+        // Fresh connection with the same pin and phone key exercises reconnect.
+        let restored = OperatorClient::new(qr.server, Some(pair.device_token));
+        require_live(
+            restored.configure_sealed_transport(&seed, &machine_key),
+            "configure reconnect",
+        );
+        require_live(restored.attention().await, "reconnected attention");
+        let _ = attention;
+        println!("sealed preflight: paired=true attention=true reconnected=true scope=true");
+    })
+    .await;
+    println!("sealed preflight: revoked=true");
+}
 
 // A failed contract assertion must not leave its private live pairing behind.
 // Catch the test body's panic only long enough to revoke, then retain the
@@ -36,12 +220,12 @@ async fn with_pair_cleanup(
     let outcome = AssertUnwindSafe(checks).catch_unwind().await;
     let cleanup = client.revoke_device(device_id).await;
     if let Err(original_panic) = outcome {
-        if let Err(error) = cleanup {
-            eprintln!("smoke pairing cleanup failed for {device_id}: {error}");
+        if cleanup.is_err() {
+            eprintln!("smoke pairing cleanup failed; original contract failure retained");
         }
         resume_unwind(original_panic);
     }
-    cleanup.expect("revoke smoke pairing");
+    require_live(cleanup, "revoke smoke pairing");
 }
 
 // These guards run in the ordinary workspace suite; only the actual live
