@@ -177,6 +177,17 @@ notices, licensing clearance and actual recipient retrieval remain open.
 
 The same source verifier can prepare Rust notice metadata without compiling:
 
+The October 7 follow-up for `Cargo.lock` SHA-256
+`d5cb74f5ddf6635aabc507cc4886bb6be00751f284c61ecaa3290c8255cd9d0d`
+uses clean source commit `3a61ba575e2f996c0280fb917586f3d901a77d08`.
+The maintained delivered-source verifier rechecked all 266 registry packages,
+12,658 vendor files and 179 notice texts, including revision-pinned supplements.
+The registry population, package checksums and generated notice bundle are
+unchanged; the collector file pointers remain intact. `RUST-SOURCES.json`
+records the new archive fingerprints and completed verification receipt.
+This is local source/notice preparation, not native, signed-candidate,
+distribution-clearance or recipient-delivery evidence.
+
 ```sh
 tools/build-scripts/android-release-provenance.sh source-notices
 ```
