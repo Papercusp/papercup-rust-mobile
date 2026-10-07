@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "kind": "operational-test-evidence",
+  "framework": "operational",
+  "workItem": "WI-10006994",
+  "sourceRoot": ".",
+  "sourceRootResolution": "Relative to the papercup-rust-mobile repository; exact local runtime root remains in the private native receipt.",
+  "sourceCommit": "de09010cec0cd3f84a2bff4624d73019e44190d0",
+  "sourceDirty": true,
+  "sourceFingerprints": {
+    "tools/run-android-checks.sh": "9306266ae918b2b51e0029dc83c5a211eddee0ffae9a4db7f5ae5bee7002b449",
+    "crates/papercup-bindings/src/lib.rs": "a3811f80653555359badc5a43d6710fd1ba86a45dc34bfe707ac7dc9b44afdcd",
+    "android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt": "3a2e69126a02b46f9d32b95ee73fc461e4a688c823407ccdb34ab1c0f9a84b60",
+    "android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt": "c23a92f88b83636569421648be8f13a565cdc4b995635281127762f1be2c60bc",
+    "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/SealedTransportInteropTest.kt": "79903c5b2bbf524a365d60184b740329bac200e0e773183f301ec9e992bf142b",
+    "crates/papercup-core/tests/fixtures/sealed-http-responder.mjs": "cc103ab1523fd2cc75da5c5976b874575dc9efcf8ee272305fa238efe838ff11"
+  },
+  "command": "ANDROID_SERIAL=emulator-5584 bash tools/run-android-checks.sh sealed-native /tmp/android-noise-ts-native-fixed-57 $PAPERCUSP_INTEGRATION_ROOT",
+  "exitCode": 0,
+  "scope": "JNI Noise/HTTP/SSE and encrypted restore against real TS responder; VM fetch is injected, no live host or portal acceptance",
+  "nativeInterop": {
+    "serial": "emulator-5584",
+    "scope": "JNI Noise/HTTP/SSE and encrypted restore against real TS responder; VM fetch is injected, no live host or portal acceptance",
+    "exitCode": 0,
+    "cleanupVerified": true,
+    "sourceCommit": "de09010cec0cd3f84a2bff4624d73019e44190d0",
+    "sourceDirty": true,
+    "sourceFingerprints": {
+      "tools/run-android-checks.sh": "9306266ae918b2b51e0029dc83c5a211eddee0ffae9a4db7f5ae5bee7002b449",
+      "crates/papercup-bindings/src/lib.rs": "a3811f80653555359badc5a43d6710fd1ba86a45dc34bfe707ac7dc9b44afdcd",
+      "android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt": "3a2e69126a02b46f9d32b95ee73fc461e4a688c823407ccdb34ab1c0f9a84b60",
+      "android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt": "c23a92f88b83636569421648be8f13a565cdc4b995635281127762f1be2c60bc",
+      "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/SealedTransportInteropTest.kt": "79903c5b2bbf524a365d60184b740329bac200e0e773183f301ec9e992bf142b",
+      "crates/papercup-core/tests/fixtures/sealed-http-responder.mjs": "cc103ab1523fd2cc75da5c5976b874575dc9efcf8ee272305fa238efe838ff11"
+    },
+    "tests": [
+      "restoredNativeClientStreamsUtf8AndChunksLargeSealedUpload",
+      "qrPairEncryptedRestoreAndReconnectKeepIdentityAndBearerSealed"
+    ],
+    "apkSha256": "ed4534a59ba8eba1b240b2f219ad60a57596ce86628d7d4b44fcf76e5edb0708",
+    "junitCases": [
+      {
+        "classname": "com.papercuspai.operator.mobile.SealedTransportInteropTest",
+        "name": "restoredNativeClientStreamsUtf8AndChunksLargeSealedUpload",
+        "seconds": "0.422",
+        "result": "pass"
+      },
+      {
+        "classname": "com.papercuspai.operator.mobile.SealedTransportInteropTest",
+        "name": "qrPairEncryptedRestoreAndReconnectKeepIdentityAndBearerSealed",
+        "seconds": "0.306",
+        "result": "pass"
+      }
+    ]
+  },
+  "priorNativeCredentials": {
+    "command": "ANDROID_SERIAL=emulator-5584 android/gradlew -p android :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.SealedCredentialsTest --console=plain",
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "log": "/tmp/android-noise-native-57.log",
+    "scope": "Actual JNI helpers, Android Keystore persistence and sealed refusal with no plaintext retry; prior focused run, separate APK execution."
+  },
+  "hostChecks": {
+    "debugPassed": 42,
+    "releasePassed": 42,
+    "failed": 0,
+    "skipped": 0,
+    "log": "/tmp/android-noise-host-57.log"
+  },
+  "runnerGuards": {
+    "ciMutationControlsRejected": [
+      38,
+      21,
+      3
+    ],
+    "bootControlsRejected": 17,
+    "launcherCasesPassed": 5
+  },
+  "swiftBindings": {
+    "command": "make bindings-swift",
+    "result": "generated additive methods and FFI checksums on Linux; no macOS/iOS build claim",
+    "sha256": {
+      "ios/PapercupCore/papercup.swift": "63af378bf8fcf4a3e3595ca908c0c36e65b65dbac5a7f6ceba933bfff3c6ca99",
+      "ios/PapercupCore/papercupFFI.h": "141228a59cebaf19ee61172cad63382b2e1586bbc474b493ef61cc6d4af8d1e2"
+    }
+  },
+  "bootPreflight": {
+    "serial": "emulator-5584",
+    "bootCompleted": true,
+    "checks": 1,
+    "property": "1",
+    "adbError": "",
+    "transportEvidence": "boot-transports.txt",
+    "frameworkReady": true,
+    "frameworkSamples": [
+      {
+        "surfaceflinger": "756",
+        "system_server": "895",
+        "settings": "0"
+      },
+      {
+        "surfaceflinger": "756",
+        "system_server": "895",
+        "settings": "0"
+      },
+      {
+        "surfaceflinger": "756",
+        "system_server": "895",
+        "settings": "0"
+      }
+    ],
+    "frameworkErrors": [],
+    "guestMemory": {
+      "totalKiB": 4008624,
+      "availableKiB": 2068368,
+      "requiredTotalKiB": 3670016,
+      "requiredAvailableKiB": 1572864,
+      "sufficient": true
+    },
+    "graphics": {
+      "sdkVersion": "36.1",
+      "dmaReadbackRequired": true,
+      "requiredExtensions": [
+        "ANDROID_EMU_read_color_buffer_dma",
+        "ANDROID_EMU_direct_mem",
+        "ANDROID_EMU_has_shared_slots_host_memory_allocator"
+      ],
+      "missingExtensions": []
+    },
+    "guestStorage": {
+      "availableBytes": 4926705664,
+      "requiredBytes": 536870912,
+      "sufficient": true
+    }
+  },
+  "testLogsSha256": {
+    "/tmp/android-noise-host-57.log": "8ff1950fe3945de31c9ed5e849f0a0fcb45da626090b475c642eaeec0600521d",
+    "/tmp/android-noise-native-57.log": "aa6f967c2834dc203acc75a01efb39b1ccb439a0d69533b42f3ad17195aba338",
+    "/tmp/android-noise-ts-native-fixed-57/gradle.log": "9451dfad1749f0f07ee456b0e42830827490df96324507596931b7374c5416ee",
+    "/tmp/android-noise-ci-contract-fixed-57.log": "e4119b39f46ef9315fb5b508b3b4b16d2ecfc81e4f097cea7f4c1dc166ad2364",
+    "/tmp/android-noise-boot-contract-57.log": "1b1ab6b7f88ce3a2076336584805a05516a5bac1e10bfbe83720bc608a81398f",
+    "/tmp/android-noise-launcher-contract-57.log": "b8c668418c2f92ce2b936e31272fd28ae04074377042d51cac78e788d936df71",
+    "/tmp/android-noise-swift-57.log": "1a91d7462783cbfde5457316ef6716d1902bf134ec52c471aaf23bdf07de85bb"
+  },
+  "testSources": {
+    "tools/tests/android-ci-contract-test.sh": "f192ec0d30b842efc8921424871c3211dfedbced7cc0639ee4e9136a001aa62e",
+    "tools/tests/run-android-checks-test.sh": "074281eb8b29c76876c92cf3e22d0d44fa64d0a4ef3273629bd75e39769bd712",
+    "tools/tests/install-and-launch-lifecycle-test.sh": "d9865cfa867c998018f6f1b43991974bd436ae0c944b42babbac7c294b98d1d8",
+    "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/SealedCredentialsTest.kt": "adf0e4c73b09d9a377fee0c897a8a0104fba77274b16f43954b3be9bf08ccc7b",
+    "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/SealedTransportInteropTest.kt": "79903c5b2bbf524a365d60184b740329bac200e0e773183f301ec9e992bf142b"
+  },
+  "notExercised": [
+    "Live hosted portal/hyperswarm relay acceptance",
+    "Live BYOC VM routing acceptance",
+    "iPhone shell credential integration and native iOS build",
+    "Signed release, distribution and shipment"
+  ]
+}
