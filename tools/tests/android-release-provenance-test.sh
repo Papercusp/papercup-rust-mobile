@@ -82,6 +82,7 @@ record_passes() {
     head="$(git -C "$TMP" rev-parse HEAD)"
     run_helper checks-pass host "$head" >/dev/null
     run_helper checks-pass connected "$head" >/dev/null
+    run_helper checks-pass ci "$head" >/dev/null
 }
 
 # Publication gate: without passing check records for this exact commit, no
@@ -111,6 +112,19 @@ run_helper checks-pass connected "$HEAD_SHA" >/dev/null 2>&1
 rm -f "$TMP/uncommitted.txt"
 [[ ! -f "$CHECKS_DIR/connected.json" ]] || fail 'a check run that ended dirty recorded a publishable pass'
 run_helper checks-pass connected "$HEAD_SHA" >/dev/null
+expect_gate_refusal 'release write passed without independent paired CI admission' no-ci-admission \
+    run_helper write 0.0.17 "$APK" "$AAB"
+run_helper checks-pass ci "$HEAD_SHA" >/dev/null
+python3 - "$CHECKS_DIR/ci.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+record = json.load(open(path))
+record['result'] = 'fail'
+json.dump(record, open(path, 'w'))
+PY
+expect_gate_refusal 'release write accepted failed independent CI admission' failed-ci-admission \
+    run_helper write 0.0.17 "$APK" "$AAB"
+run_helper checks-pass ci "$HEAD_SHA" >/dev/null
 python3 - "$CHECKS_DIR/connected.json" <<'PY'
 import json, sys
 path = sys.argv[1]
