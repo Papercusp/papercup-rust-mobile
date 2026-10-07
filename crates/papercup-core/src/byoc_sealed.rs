@@ -100,7 +100,9 @@ pub fn decode_packet(value: &str) -> Result<Vec<u8>> {
     if value.is_empty() {
         return Err(ByocSealedError::PacketEncoding);
     }
-    let bytes = STANDARD.decode(value).map_err(|_| ByocSealedError::PacketEncoding)?;
+    let bytes = STANDARD
+        .decode(value)
+        .map_err(|_| ByocSealedError::PacketEncoding)?;
     if bytes.is_empty() || STANDARD.encode(&bytes) != value {
         return Err(ByocSealedError::PacketEncoding);
     }
@@ -137,13 +139,24 @@ impl ByocSealedChannel {
     /// Begin the handshake. The initiator always pins the responder's key
     /// (the TS channel allows `verifyRemotePublicKey` only on the responder).
     /// Returns the channel and the first packet to relay.
-    pub fn start(local: Ed25519KeyPair, expected_remote: [u8; 32]) -> Result<(Self, ByocSealedPacket)> {
+    pub fn start(
+        local: Ed25519KeyPair,
+        expected_remote: [u8; 32],
+    ) -> Result<(Self, ByocSealedPacket)> {
         let (stream, first) = SecretStreamInitiator::start(local, Some(expected_remote))?;
-        Ok((Self::from_stream(stream), ByocSealedPacket::for_chunk(&first, None)))
+        Ok((
+            Self::from_stream(stream),
+            ByocSealedPacket::for_chunk(&first, None),
+        ))
     }
 
     fn from_stream(stream: SecretStreamInitiator) -> Self {
-        Self { stream, line: Vec::new(), line_type: None, closed: false }
+        Self {
+            stream,
+            line: Vec::new(),
+            line_type: None,
+            closed: false,
+        }
     }
 
     /// Handshake done and the responder's stream header received.
@@ -183,7 +196,11 @@ impl ByocSealedChannel {
         let bytes = decode_packet(&packet.packet)?;
         let progress = self.stream.receive(&bytes)?;
         let mut out = SealedProgress {
-            outbound: progress.outbound.iter().map(|c| ByocSealedPacket::for_chunk(c, None)).collect(),
+            outbound: progress
+                .outbound
+                .iter()
+                .map(|c| ByocSealedPacket::for_chunk(c, None))
+                .collect(),
             frames: Vec::new(),
         };
         let label = packet.content_type.as_deref();
@@ -195,15 +212,17 @@ impl ByocSealedChannel {
             self.line_type = label.map(str::to_owned);
             while let Some(pos) = self.line.iter().position(|b| *b == b'\n') {
                 let raw: Vec<u8> = self.line.drain(..=pos).collect();
-                let parsed: Value =
-                    serde_json::from_slice(&raw[..raw.len() - 1]).map_err(|_| ByocSealedError::InvalidJson)?;
+                let parsed: Value = serde_json::from_slice(&raw[..raw.len() - 1])
+                    .map_err(|_| ByocSealedError::InvalidJson)?;
                 // A null label is handshake-only: application content relabelled to
                 // null would skip relay policy, so it is a mismatch too.
                 let Value::Object(frame) = parsed else {
                     return Err(ByocSealedError::ContentTypeMismatch);
                 };
                 match (frame_type(&frame), label) {
-                    (Some(decrypted), Some(relayed)) if decrypted == relayed => out.frames.push(frame),
+                    (Some(decrypted), Some(relayed)) if decrypted == relayed => {
+                        out.frames.push(frame)
+                    }
                     _ => return Err(ByocSealedError::ContentTypeMismatch),
                 }
             }
@@ -216,14 +235,19 @@ impl ByocSealedChannel {
         if self.closed {
             return Err(ByocSealedError::Closed);
         }
-        let content_type = frame_type(frame).ok_or(ByocSealedError::MissingFrameType)?.to_owned();
+        let content_type = frame_type(frame)
+            .ok_or(ByocSealedError::MissingFrameType)?
+            .to_owned();
         if !self.stream.is_open() {
             return Err(ByocSealedError::NotOpen);
         }
         let mut line = serde_json::to_vec(frame).map_err(|_| ByocSealedError::InvalidJson)?;
         line.push(b'\n');
         match self.stream.encrypt(&line) {
-            Ok(chunk) => Ok(vec![ByocSealedPacket::for_chunk(&chunk, Some(content_type))]),
+            Ok(chunk) => Ok(vec![ByocSealedPacket::for_chunk(
+                &chunk,
+                Some(content_type),
+            )]),
             Err(e) => {
                 self.close();
                 Err(e.into())
@@ -254,7 +278,8 @@ mod tests {
         assert_eq!(decode_packet("AAE"), Err(ByocSealedError::PacketEncoding)); // unpadded
         assert_eq!(decode_packet("AAE="), Ok(vec![0, 1]));
         assert_eq!(decode_packet("AAF="), Err(ByocSealedError::PacketEncoding)); // non-canonical trailing bits
-        assert_eq!(decode_packet("AA-_"), Err(ByocSealedError::PacketEncoding)); // url-safe alphabet
+        assert_eq!(decode_packet("AA-_"), Err(ByocSealedError::PacketEncoding));
+        // url-safe alphabet
     }
 
     #[test]
@@ -273,7 +298,11 @@ mod tests {
 
     #[test]
     fn start_emits_a_null_labelled_handshake_packet() {
-        let (ch, first) = ByocSealedChannel::start(Ed25519KeyPair::generate(), Ed25519KeyPair::generate().public_key()).unwrap();
+        let (ch, first) = ByocSealedChannel::start(
+            Ed25519KeyPair::generate(),
+            Ed25519KeyPair::generate().public_key(),
+        )
+        .unwrap();
         assert!(first.is_ours());
         assert_eq!(first.content_type, None);
         assert!(!decode_packet(&first.packet).unwrap().is_empty());
@@ -282,16 +311,36 @@ mod tests {
 
     #[test]
     fn send_before_open_and_untyped_frames_are_refused() {
-        let (mut ch, _) = ByocSealedChannel::start(Ed25519KeyPair::generate(), Ed25519KeyPair::generate().public_key()).unwrap();
-        assert_eq!(ch.send(&obj(json!({ "x": 1 }))), Err(ByocSealedError::MissingFrameType));
-        assert_eq!(ch.send(&obj(json!({ "type": "" }))), Err(ByocSealedError::MissingFrameType));
-        assert_eq!(ch.send(&obj(json!({ "type": "ping" }))), Err(ByocSealedError::NotOpen));
-        assert!(!ch.is_closed(), "a refused send before open must not poison the channel");
+        let (mut ch, _) = ByocSealedChannel::start(
+            Ed25519KeyPair::generate(),
+            Ed25519KeyPair::generate().public_key(),
+        )
+        .unwrap();
+        assert_eq!(
+            ch.send(&obj(json!({ "x": 1 }))),
+            Err(ByocSealedError::MissingFrameType)
+        );
+        assert_eq!(
+            ch.send(&obj(json!({ "type": "" }))),
+            Err(ByocSealedError::MissingFrameType)
+        );
+        assert_eq!(
+            ch.send(&obj(json!({ "type": "ping" }))),
+            Err(ByocSealedError::NotOpen)
+        );
+        assert!(
+            !ch.is_closed(),
+            "a refused send before open must not poison the channel"
+        );
     }
 
     #[test]
     fn foreign_packets_are_ignored_and_bad_packets_close_the_channel() {
-        let (mut ch, _) = ByocSealedChannel::start(Ed25519KeyPair::generate(), Ed25519KeyPair::generate().public_key()).unwrap();
+        let (mut ch, _) = ByocSealedChannel::start(
+            Ed25519KeyPair::generate(),
+            Ed25519KeyPair::generate().public_key(),
+        )
+        .unwrap();
         let mut foreign = ByocSealedPacket::for_chunk(&[1], None);
         foreign.protocol = "other".into();
         assert_eq!(ch.receive(&foreign), Ok(SealedProgress::default()));
@@ -299,8 +348,14 @@ mod tests {
 
         let mut empty_label = ByocSealedPacket::for_chunk(&[1], None);
         empty_label.content_type = Some(String::new());
-        assert_eq!(ch.receive(&empty_label), Err(ByocSealedError::InvalidContentType));
+        assert_eq!(
+            ch.receive(&empty_label),
+            Err(ByocSealedError::InvalidContentType)
+        );
         assert!(ch.is_closed());
-        assert_eq!(ch.receive(&ByocSealedPacket::for_chunk(&[1], None)), Err(ByocSealedError::Closed));
+        assert_eq!(
+            ch.receive(&ByocSealedPacket::for_chunk(&[1], None)),
+            Err(ByocSealedError::Closed)
+        );
     }
 }
