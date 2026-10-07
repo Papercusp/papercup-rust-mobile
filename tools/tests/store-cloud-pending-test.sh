@@ -21,6 +21,8 @@ FILES=(
     store/PRIVACY-POLICY.md
     store/APP-STORE-PRIVACY.md
     store/APP-STORE-REVIEW.md
+    store/DATA-SAFETY.md
+    store/PLAY-STORE-REVIEW.md
 )
 
 check() {
@@ -62,6 +64,19 @@ for relative in sys.argv[2:]:
         errors.append(f"missing {relative}")
         continue
     lines = path.read_text(encoding="utf-8").splitlines()
+    if relative == "store/DATA-SAFETY.md":
+        text = "\n".join(lines)
+        if "### Cloud workspace rows — pending P-015, do not submit yet" not in text:
+            errors.append(f"{relative}: Android cloud submission boundary is missing")
+        if "| Cloud workspace connections are **pending**, not shipped on Android |" not in text:
+            errors.append(f"{relative}: Android cloud connection row is not pending")
+        if "contained no Noise implementation" in text:
+            errors.append(f"{relative}: obsolete source-absence claim; inspect current implementation instead")
+        continue
+    if relative == "store/PLAY-STORE-REVIEW.md":
+        if "- Cloud workspace pairing is **pending** on Android (P-015)." not in "\n".join(lines):
+            errors.append(f"{relative}: Android reviewer cloud boundary is missing")
+        continue
     headings = [i for i, line in enumerate(lines) if PENDING_HEADING.match(line)]
     if len(headings) != 1:
         errors.append(f"{relative}: expected one '## Pending: cloud workspace' "
@@ -143,4 +158,18 @@ fixture
 sed -i 's/Pending — not yet available\./Now available./' "$tmp/root/store/APP-STORE-REVIEW.md"
 expect_reject "pending marker removed from the review packet" "$tmp/root"
 
-echo "store cloud pending: PASS (4 rejecting controls)"
+fixture
+sed -i 's/Cloud workspace rows — pending P-015, do not submit yet/Cloud workspace rows — available/' \
+    "$tmp/root/store/DATA-SAFETY.md"
+expect_reject "Android Data Safety cloud rows promoted before acceptance" "$tmp/root"
+
+fixture
+sed -i 's/pairing is \*\*pending\*\* on Android (P-015)/pairing is available on Android/' \
+    "$tmp/root/store/PLAY-STORE-REVIEW.md"
+expect_reject "Android Play reviewer cloud copy promoted before acceptance" "$tmp/root"
+
+fixture
+printf '\nCurrent sources contained no Noise implementation.\n' >> "$tmp/root/store/DATA-SAFETY.md"
+expect_reject "obsolete Android Noise source-absence claim" "$tmp/root"
+
+echo "store cloud pending: PASS (7 rejecting controls)"
