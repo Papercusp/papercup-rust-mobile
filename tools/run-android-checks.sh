@@ -873,6 +873,26 @@ if [[ "$mode" == verify-emulator ]]; then
         }
     fi
     mkdir -p "$attempt_dir"
+    if [[ -n "${4:-}" ]]; then
+        # hw.ramSize is an integer in MiB, unlike disk-size's suffixed units.
+        # A local 1536M value silently became 256 MiB and the API 36.1 guest
+        # panicked before adbd started. Validate before waiting for transport.
+        python3 - "$4" "$attempt_dir" <<'PY'
+import json, re, sys
+from pathlib import Path
+config, out = Path(sys.argv[1]), Path(sys.argv[2])
+values = [line.split('=', 1)[1].strip() for line in config.read_text().splitlines()
+          if '=' in line and line.split('=', 1)[0].strip() == 'hw.ramSize']
+valid = len(values) == 1 and re.fullmatch(r'[1-9][0-9]*', values[0]) is not None
+memory = int(values[0]) if valid else None
+proof = {'config': str(config), 'configuredValues': values,
+         'memoryMiB': memory, 'requiredMiB': 1536,
+         'sufficient': valid and memory >= 1536}
+(out / 'emulator-memory.json').write_text(json.dumps(proof, indent=2) + '\n')
+if not proof['sufficient']:
+    raise SystemExit('Owned API 36 AVD requires hw.ramSize as an integer of at least 1536 MiB')
+PY
+    fi
     qemu="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
     [[ -x "$qemu" && -x "$ANDROID_HOME/emulator/emulator" ]] || {
         echo 'Android emulator executable is missing.' >&2

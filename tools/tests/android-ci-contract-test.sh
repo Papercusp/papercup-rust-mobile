@@ -34,6 +34,7 @@ assert '\n            android-ci-attempt/operator\n' not in android and '\n     
 assert 'api-level: 36' in android and 'target: google_apis_ps16k' in android
 assert '-gpu swiftshader ' in android and 'swiftshader_indirect' not in android, 'use the supported software renderer, not the retired indirect mode'
 assert '-feature GLDirectMem,HasSharedSlotsHostMemoryAllocator ' in android, 'new Goldfish mappers require both host DMA readback capabilities'
+assert '-memory 1536 ' in android, 'native guest RAM must be explicit integer MiB, independent of suffixed AVD config'
 runner_space = 'bash tools/run-android-checks.sh release-runner-space android-ci-attempt'
 assert runner_space in android and android.index(runner_space) < android.index('node scripts/npm-install-safe.mjs ci'), 'operator install and AVD need the preinstalled-toolchain headroom (run 37550640887)'
 assert android.count('bash tools/run-android-checks.sh prepare-ci') == 2, 'CI must bound the working set before SDK setup and before native execution'
@@ -149,6 +150,7 @@ text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 (out / 'late-image.yml').write_text(text.replace(" 'system-images;android-36;google_apis_ps16k;x86_64'", ''))
 (out / 'missing-emulator-libs.yml').write_text(text.replace('libpulse0', 'disabled-libpulse'))
 (out / 'missing-emulator-preflight.yml').write_text(text.replace('          bash tools/run-android-checks.sh verify-emulator\n', ''))
+(out / 'missing-emulator-memory.yml').write_text(text.replace('-memory 1536 ', ''))
 (out / 'default-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', ''))
 (out / 'undersized-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', '          disk-size: 2048M\n'))
 (out / 'oversized-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', '          disk-size: 8192M\n'))
@@ -160,13 +162,15 @@ for name, apk in [('app', 'android/app/build/outputs/apk/debug/app-debug.apk'), 
     (out / f'missing-{name}-apk.yml').write_text(text.replace(f'            {apk}\n', ''))
     (out / f'missing-cached-{name}-apk.yml').write_text(text.replace(f'          cp {apk} android-ci-proof/apks/\n', ''))
 PY
+    workflow_controls=0
     for fixture in "$TMP_ROOT"/*.yml; do
         if bash "$0" "$fixture" > "$TMP_ROOT/output" 2>&1; then
             echo "FAIL: CI regression accepted: $fixture" >&2
             exit 1
         fi
+        workflow_controls=$((workflow_controls + 1))
     done
-    echo 'Android CI bootstrap/storage/emulator/paired-provenance mutation controls: 36 rejected'
+    printf 'Android CI bootstrap/storage/emulator/paired-provenance mutation controls: %s rejected\n' "$workflow_controls"
 
     # A workflow invoking "host" is insufficient if the owned runner stops
     # executing one of its required phases. Keep each omission reproducible.

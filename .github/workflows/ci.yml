@@ -271,7 +271,7 @@ jobs:
           # Match its effective demand and reclaim host intermediates first.
           disk-size: 6144M
           pre-emulator-launch-script: bash tools/run-android-checks.sh verify-avd-space 6144M
-          emulator-options: -no-window -no-snapshot -gpu swiftshader -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -noaudio -no-boot-anim
+          emulator-options: -no-window -no-snapshot -gpu swiftshader -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -memory 1536 -noaudio -no-boot-anim
           emulator-port: 5554
           script: >-
             bash tools/run-android-checks.sh connected &&

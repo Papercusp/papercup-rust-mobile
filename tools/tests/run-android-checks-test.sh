@@ -810,6 +810,30 @@ SH
 chmod +x "$TMP_ROOT/sdk/emulator/emulator" "$TMP_ROOT/sdk/emulator/qemu/linux-x86_64/qemu-system-x86_64" "$TMP_ROOT/bin/ldd"
 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/emulator-proof"
 [[ -s "$TMP_ROOT/emulator-proof/emulator-version.txt" ]]
+printf 'hw.ramSize=1536\n' > "$TMP_ROOT/avd-memory.ini"
+ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator \
+    "$TMP_ROOT/emulator-memory-pass" 5582 "$TMP_ROOT/avd-memory.ini"
+grep -Fq '"memoryMiB": 1536' "$TMP_ROOT/emulator-memory-pass/emulator-memory.json"
+for memory in 1536M 256 '' -1 0 '1536junk'; do
+    printf 'hw.ramSize=%s\n' "$memory" > "$TMP_ROOT/avd-memory.ini"
+    if ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator \
+        "$TMP_ROOT/emulator-memory-rejected" 5582 "$TMP_ROOT/avd-memory.ini" > "$TMP_ROOT/output" 2>&1; then
+        echo "FAIL: invalid or undersized guest RAM accepted: $memory" >&2; exit 1
+    fi
+    grep -Fq '"sufficient": false' "$TMP_ROOT/emulator-memory-rejected/emulator-memory.json"
+done
+for config in missing duplicate; do
+    if [[ "$config" == missing ]]; then
+        printf 'hw.cpu.ncore=4\n' > "$TMP_ROOT/avd-memory.ini"
+    else
+        printf 'hw.ramSize=1536\nhw.ramSize=256\n' > "$TMP_ROOT/avd-memory.ini"
+    fi
+    if ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator \
+        "$TMP_ROOT/emulator-memory-rejected" 5582 "$TMP_ROOT/avd-memory.ini" > "$TMP_ROOT/output" 2>&1; then
+        echo "FAIL: ambiguous guest RAM accepted: $config" >&2; exit 1
+    fi
+done
+echo 'Android guest RAM guards: integer MiB accepted; suffix, undersized, missing and duplicate allocations rejected'
 for port in 5554 5584; do
     ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/valid-port-$port" "$port"
 done
