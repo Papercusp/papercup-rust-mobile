@@ -81,6 +81,9 @@ sockets.on('connection', ws => {
     onError: () => ws.close(),
   });
   sealed.opened.catch(() => {});
+  // HostedWorkspaceSessionHost emits readiness inside Noise before any
+  // response. The real phone must accept this channel-level control frame.
+  sealed.opened.then(() => sealed.send({type:'http.ready'})).catch(() => {});
   ws.on('message', bytes => {
     maximumPacketBytes = Math.max(maximumPacketBytes, bytes.length);
     controlPackets.push(bytes.toString());

@@ -42,6 +42,14 @@ run = subprocess.run(['bash', str(dispatch / 'tools/run-android-checks.sh'), 'cl
 assert run.stdout.splitlines() == [str(temp / 'owned-home/Android/Sdk')] * 2
 spec = importlib.util.spec_from_file_location('cloud_runner', root / 'tools/cloud-native-check.py')
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+log = ('I/PapercupPairing(12): stage=request-start\n'
+       'I/PapercupPairing(12): stage=pair-failed class=Decode\n'
+       'I/Other(12): secret=private-token\n'
+       'I/PapercupPairing(12): stage=pair-failed class=Decode private-token\n')
+assert module.pairing_stages(log) == [{'stage': 'request-start'},
+                                    {'stage': 'pair-failed', 'failureClass': 'Decode'}]
+assert 'private-token' not in json.dumps(module.pairing_stages(log))
+print('Cloud failure diagnostics: safe native stages/classes retained; raw private text refused PASS')
 # Fresh Android installs have no files/ directory. Execute the actual shell
 # preparation in an empty sandbox, and refuse replacement of prior input.
 guest = temp / 'fresh-cloud-guest'; guest.mkdir()

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -115,7 +116,17 @@ class PapercupAppSmokeTest {
             compose.onNodeWithText("Paste manually").performClick()
             compose.onNode(hasSetTextAction()).performTextInput(payload.toString())
             compose.onNodeWithText("Pair").performClick()
-            compose.waitUntil(45_000) { store.load() != null }
+            compose.waitUntil(45_000) {
+                // A refused native pair is terminal for this one-use QR. Keep
+                // safe evidence and fail immediately instead of hiding it in
+                // a 45-second credential wait. Never retain payload/token text.
+                if (compose.onAllNodesWithTag("pairing-error").fetchSemanticsNodes().isNotEmpty()) {
+                    proof.put("pairingErrorVisible", true)
+                    stage("pairing-refused")
+                    throw AssertionError("Native pairing displayed an error; inspect redacted pairing stages")
+                }
+                store.load() != null
+            }
             owned = requireNotNull(store.load())
             val paired = owned!!
             proof.put("deviceId", paired.deviceId).put("workspaceId", paired.workspaceId)
@@ -167,6 +178,11 @@ class PapercupAppSmokeTest {
                 proof.put("revokedTokenRejected", true)
             } finally { revoked.close() }
             stage("completed")
+        } catch (failure: Throwable) {
+            proof.put("failedStage", proof.getString("stage"))
+                .put("failureClass", failure.javaClass.simpleName)
+            proofFile.writeText(proof.toString())
+            throw failure
         } finally {
             // Persist the device ref even after a failure so host-side cleanup is accountable.
             (owned ?: store.load())?.let { device ->

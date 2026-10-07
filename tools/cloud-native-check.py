@@ -86,6 +86,20 @@ def inject_pairing_input(adb, app, payload):
         'umask 077; set -C; cat > files/cloud-pairing-input.json'), input=payload, check=True)
 
 
+def pairing_stages(log):
+    # Retain only fixed stage names and a Java class identifier. Raw logcat,
+    # exception details, QR payloads and credentials never enter the proof.
+    stages = []
+    for line in log.splitlines():
+        match = re.search(r'PapercupPairing.*stage=(client-start|client-ready|request-start|response-received|credentials-saved|pair-failed)(?: class=([A-Za-z][A-Za-z0-9_]*))?$', line)
+        if match:
+            row = {'stage': match.group(1)}
+            if match.group(2):
+                row['failureClass'] = match.group(2)
+            stages.append(row)
+    return stages
+
+
 def main():
     out, qr_file = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
     serial = os.environ.get('ANDROID_SERIAL', '')
@@ -144,6 +158,8 @@ def main():
         payload = json.dumps({'runId': run_id, 'pairPayload': qr})
         inject_pairing_input(adb, app, payload)
         injected = True
+        # This explicit owned emulator is the only log buffer we touch.
+        adb('logcat', '-c', check=True)
         run = adb('shell', 'am', 'instrument', '-w', '-r', '-e', 'class',
                   app + '.PapercupAppSmokeTest#launcherActivityStarts', '-e', 'cloudPairing', 'true',
                   app + '.test/androidx.test.runner.AndroidJUnitRunner', timeout=300)
@@ -157,6 +173,8 @@ def main():
         result['exitCode'] = 0
     finally:
         if injected:
+            log = adb('logcat', '-d', '-v', 'brief', '-s', 'PapercupPairing:I', '*:S')
+            result['pairingStages'] = pairing_stages(log.stdout)
             if 'journey' not in result:
                 saved = adb('shell', 'run-as', app, 'cat', 'files/cloud-pairing-result.json')
                 try:

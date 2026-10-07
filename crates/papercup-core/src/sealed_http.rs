@@ -224,7 +224,12 @@ pub(crate) async fn request(
         loop {
             let received = receive(&mut socket, &mut channel).await?;
             for (index, frame) in received.iter().enumerate() {
-                if frame.get("type").and_then(Value::as_str) == Some("hello") {
+                // Readiness belongs to the channel and has no requestId.
+                // HostedWorkspaceSessionHost sends it inside Noise on open.
+                if matches!(
+                    frame.get("type").and_then(Value::as_str),
+                    Some("hello" | "http.ready")
+                ) {
                     continue;
                 }
                 check_id(frame)?;

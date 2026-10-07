@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -225,6 +226,7 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit, onOpenLibraryNotices: () -
             ) {
                 Text(
                     it,
+                    modifier = Modifier.testTag("pairing-error"),
                     color = PapercupColors.Error,
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodySmall,
