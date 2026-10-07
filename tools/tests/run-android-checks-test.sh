@@ -667,6 +667,9 @@ import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 runner, root = sys.argv[1], Path(sys.argv[2])
+# Always reproduce the isolated wrapper's ambient feature selection. The
+# historical fixture must reset this before invoking its maintained runner.
+os.environ['PAPERCUP_ANDROID_NATIVE_SELECTION'] = 'features'
 device = '12345678-1234-1234-1234-123456789abc'
 original_device = '87654321-4321-4321-4321-cba987654321'
 
@@ -781,6 +784,9 @@ sys.exit(101 if case == 'test-fail' else 0)
     cargo.chmod(0o755)
     env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
                PAPERCUP_LIVE_BASE=f'http://127.0.0.1:{server.server_port}',
+               # These controls model the historical journey even when the
+               # isolated feature runner invokes this suite with features set.
+               PAPERCUP_ANDROID_NATIVE_SELECTION='historical',
                PAPERCUP_LIVE_CONVERSE='1', PAPERCUP_LIVE_TIMEOUT_SEC='1', TEST_LIVE_CASE=case)
     selected_runner = runner
     if native_mode:
