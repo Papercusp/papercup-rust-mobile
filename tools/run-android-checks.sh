@@ -207,6 +207,12 @@ required = ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedS
             'revokedDeviceRenderingPassed', 'revokedDeviceFreshPairPassed',
             'revocationMissingPromptBlocked', 'revocationDeniedPromptBlocked',
             'revocationApprovedPromptInvoked', 'revocationBiometricPromptStubbed')
+features = native.get('nativeSelection') == 'features'
+if features:
+    required = ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
+        'activityRecreated', 'enrollmentBrowserStubbed', 'credentialsCleared',
+        'chatStatePassed', 'plansStatePassed', 'attentionApprovalsStatePassed',
+        'fleetStatePassed', 'workspacePotStatePassed', 'diagnosticsStatePassed')
 if (journey.get('runId') != native.get('runId')
         or journey.get('workspaceId') != native.get('ownedWorkspace', {}).get('id')
         or not journey.get('deviceId') in native.get('ownedDeviceIds', [])
@@ -225,24 +231,30 @@ for name in ('app-debug.apk', 'app-debug-androidTest.apk'):
         raise SystemExit('Missing or changed tested APK: ' + name)
 reports = list((out / 'native-results').rglob('TEST-*.xml'))
 cases = [case for report in reports for case in ET.parse(report).getroot().iter('testcase')]
-if (len(cases) != 8 or {c.get('name') for c in cases} !=
-        {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls',
+required_cases = {'launcherActivityStarts', 'privateInboxScopeAcceptsOnlyDocumentedGlobalControls',
          'unauthorizedSendKeepsDraftWithoutInventingAPersistedTurn',
          'forbiddenSendKeepsDraftWithoutInventingAPersistedTurn',
          'rejectedDraftSurvivesSettingsRoundTrip',
          'rejectedDraftSurvivesSameScopeRepairAndActivityRecreation',
          'repairToAnotherWorkspaceDoesNotExposePreviousDraft',
          'repairToAnotherServerDoesNotExposePreviousDraft'}
+if features:
+    required_cases = {'sixFeatureJourneysMatchOwnedOperatorState'}
+if (len(cases) != len(required_cases) or {c.get('name') for c in cases} != required_cases
         or any(c.find(tag) is not None for c in cases for tag in ('failure', 'error', 'skipped'))
         or any(int(suite.get(tag, '0')) for report in reports
                for suite in ET.parse(report).getroot().iter('testsuite')
                for tag in ('failures', 'errors', 'skipped'))):
-    raise SystemExit('Exactly eight successful paired native tests required')
+    raise SystemExit('Exact successful selected native tests required')
 print('Isolated paired native proof: source/counterpart/APK/JUnit/journey/cleanup verified')
 PY
     exit $?
 fi
 if [[ "$mode" == isolated-native ]]; then
+    export PAPERCUP_ANDROID_NATIVE_SELECTION="${4:-historical}"
+    [[ "$PAPERCUP_ANDROID_NATIVE_SELECTION" == historical || "$PAPERCUP_ANDROID_NATIVE_SELECTION" == features ]] || {
+        echo 'Native selection must be historical or features' >&2; exit 2;
+    }
     # Resolve and pin under the same lock used by staging generation GC. An
     # exported variable is not visible in /proc/environ until exec, so retain
     # the shared lock through re-exec; the new process then owns the reference.
@@ -320,7 +332,7 @@ if base != 'http://127.0.0.1:' + os.environ.get('PAPERCUSP_HONO_PORT', ''):
 # Share one private, in-memory signing secret with the owned host and fixture
 # signer. Never read a production secret or persist this test-only credential.
 os.environ['MOBILE_JWT_SECRET'] = secrets.token_urlsafe(48)
-os.environ['PAPERCUP_ANDROID_AUTH_FIXTURE'] = '1'
+os.environ['PAPERCUP_ANDROID_AUTH_FIXTURE'] = '0' if os.environ.get('PAPERCUP_ANDROID_NATIVE_SELECTION') == 'features' else '1'
 operator = Path(os.environ['PAPERCUP_OPERATOR_ROOT'])
 bundle = operator / 'apps/operator/dist-host/hono-host.mjs'
 evidence = Path(os.environ['PAPERCUP_ANDROID_EVIDENCE'])
@@ -484,6 +496,7 @@ fixture_id = None
 token = None
 native_pair_tokens = []
 auth_fixture_enabled = kind == 'native' and os.environ.get('PAPERCUP_ANDROID_AUTH_FIXTURE') == '1'
+feature_fixture_enabled = kind == 'native' and os.environ.get('PAPERCUP_ANDROID_NATIVE_SELECTION') == 'features'
 errors = []
 native_device = None
 native_payload_created = False
@@ -673,6 +686,10 @@ try:
                    '-Pandroid.testInstrumentationRunnerArguments.nativePairingFixture=true']
         if auth_fixture_enabled:
             command.append('-Pandroid.testInstrumentationRunnerArguments.nativeAuthFixture=true')
+        if feature_fixture_enabled:
+            command = [arg for arg in command if not arg.startswith('-Pandroid.testInstrumentationRunnerArguments.class=')]
+            command += ['-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.PapercupAppSmokeTest#sixFeatureJourneysMatchOwnedOperatorState',
+                        '-Pandroid.testInstrumentationRunnerArguments.nativeFeatureFixture=true']
         env['ANDROID_SERIAL'] = native_device
         if not env.get('JAVA_HOME'):
             env['JAVA_HOME'] = subprocess.check_output(
@@ -723,6 +740,8 @@ try:
                                  'rejectedDraftSurvivesSameScopeRepairAndActivityRecreation',
                                  'repairToAnotherWorkspaceDoesNotExposePreviousDraft',
                                  'repairToAnotherServerDoesNotExposePreviousDraft'}
+        if feature_fixture_enabled:
+            required_native_tests = {'sixFeatureJourneysMatchOwnedOperatorState'}
         if (len(cases) != len(required_native_tests)
                 or {case.get('name') for case in cases} != required_native_tests
                 or any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
@@ -731,14 +750,20 @@ try:
                        for tag in ('failures', 'errors', 'skipped'))):
             raise RuntimeError('native journey and scope controls must each execute exactly once without failures or skips')
         proof = json.loads(app_shell('cat files/native-pairing-result.json').stdout)
-        if (proof.get('runId') != attempt or proof.get('workspaceId') != fixture_id
-                or proof.get('currentStage') != 'completed'
-                or not all(proof.get(k) is True for k in
-                    ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
+        required_journey = ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
                      'activityRecreated', 'valueRowLabelsPassed', 'enrollmentBrowserStubbed',
                      'inboxScopedReadPassed', 'inboxRenderingPassed',
                      'inboxUnauthorizedPassed', 'inboxRecoveryPassed',
-                     'navigationPassed', 'credentialsCleared'))):
+                     'navigationPassed', 'credentialsCleared')
+        if feature_fixture_enabled:
+            required_journey = ('journeyCompleted', 'authenticatedRequestPassed', 'returnedToPairedShell',
+                'activityRecreated', 'enrollmentBrowserStubbed', 'credentialsCleared',
+                'chatStatePassed', 'plansStatePassed', 'attentionApprovalsStatePassed',
+                'fleetStatePassed', 'workspacePotStatePassed', 'diagnosticsStatePassed')
+            result['nativeSelection'] = 'features'
+        if (proof.get('runId') != attempt or proof.get('workspaceId') != fixture_id
+                or proof.get('currentStage') != 'completed'
+                or not all(proof.get(k) is True for k in required_journey)):
             raise RuntimeError('native live journey proof is missing, mismatched or incomplete')
         if auth_fixture_enabled and not all(proof.get(k) is True for k in
                 ('expiredJwtControlPassed', 'expiredJwtRejected', 'expiredJwtRenderingPassed',
