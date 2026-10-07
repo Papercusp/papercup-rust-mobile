@@ -19,10 +19,21 @@ trap cleanup EXIT
 runner="$ROOT/tools/run-android-checks.sh"
 if [[ "$suite" == all || "$suite" == cloud ]]; then
 python3 - "$ROOT" "$TMP_ROOT" <<'PY'
-import base64, hashlib, importlib.util, json, sys
+import base64, hashlib, importlib.util, json, os, subprocess, sys
 from pathlib import Path
 from unittest.mock import patch
 root, temp = map(Path, sys.argv[1:])
+# Exercise dispatch before its usual host/connected tail. No SDK environment
+# is supplied; the helper must receive the shared default before any build.
+dispatch = temp / 'cloud-dispatch'; (dispatch / 'tools').mkdir(parents=True)
+(dispatch / 'tools/run-android-checks.sh').write_text((root / 'tools/run-android-checks.sh').read_text())
+(dispatch / 'tools/cloud-native-check.py').write_text(
+    'import os; print(os.environ["ANDROID_HOME"]); print(os.environ["ANDROID_SDK_ROOT"])')
+env = dict(os.environ, HOME=str(temp / 'owned-home'))
+env.pop('ANDROID_HOME', None); env.pop('ANDROID_SDK_ROOT', None)
+run = subprocess.run(['bash', str(dispatch / 'tools/run-android-checks.sh'), 'cloud-native', 'out', 'qr'],
+                     env=env, text=True, capture_output=True, check=True, timeout=15)
+assert run.stdout.splitlines() == [str(temp / 'owned-home/Android/Sdk')] * 2
 spec = importlib.util.spec_from_file_location('cloud_runner', root / 'tools/cloud-native-check.py')
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 base = 'https://cloud.example.com/api/workspaces/ws-owned'

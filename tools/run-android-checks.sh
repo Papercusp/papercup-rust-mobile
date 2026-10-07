@@ -51,6 +51,12 @@ resolve_rust_toolchain() {
     done
 }
 
+# Early native modes use the same maintained SDK environment as host/connected.
+ANDROID_HOME="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
+ANDROID_SDK_ROOT="$ANDROID_HOME"
+export ANDROID_HOME ANDROID_SDK_ROOT
+export PATH="$ANDROID_HOME/platform-tools:$PATH"
+
 mode="${1:-full}"
 if [[ "$mode" == cloud-native ]]; then
     exec python3 tools/cloud-native-check.py "${2:?fresh evidence directory is required}" "${3:?private fresh QR file is required}"
@@ -1170,10 +1176,6 @@ fi
 
 JAVA_HOME="$(tools/build-scripts/resolve-java-home.sh)"
 export JAVA_HOME
-ANDROID_HOME="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
-ANDROID_SDK_ROOT="$ANDROID_HOME"
-export ANDROID_HOME ANDROID_SDK_ROOT
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
 
 # A phase that passes records a publication pass bound to the clean commit it
 # started from (tools/build-scripts/android-release-provenance.sh checks-pass);
