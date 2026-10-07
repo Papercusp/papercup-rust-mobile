@@ -8,7 +8,12 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
-import org.junit.Assume.assumeNotNull
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import java.util.concurrent.TimeUnit
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -73,24 +78,33 @@ class SealedCredentialsTest {
     }
 
     @Test
-    fun sealedPairAndRestoredJwtCrossRealTsResponder() = runBlocking {
-        val arguments = InstrumentationRegistry.getArguments()
-        val base = arguments.getString("sealedFixtureBase")
-        val pin = arguments.getString("sealedFixtureKey")
-        assumeNotNull(base, pin)
-        // Same deterministic test identity as the maintained TS responder.
-        val seed = Base64.getEncoder().encodeToString(ByteArray(32) { 0x31 })
-        val client = OperatorClient(base!!, null)
-        client.configureSealedTransport(seed, pin!!)
-        val outcome = client.pairWithNoise("native-test-token", noisePublicKey(seed))
-        assertEquals("did-sealed", outcome.deviceId)
-        store.save(DeviceCredentials(base, outcome.deviceToken, outcome.deviceId, outcome.workspaceId,
-            noiseSeed = seed, noiseKey = pin))
-        val restored = CredentialStore(InstrumentationRegistry.getInstrumentation().targetContext).load()!!.client()
-        val rows = JSONObject(restored.restQuery("proof", "{}"))
-        assertEquals("Bearer test-jwt", rows.getString("authorization"))
-        assertFalse(rows.getBoolean("plaintextCanaryFound"))
-        restored.close()
-        client.close()
+    fun restoredSealedClientNeverFallsBackToPlaintextWhenSocketCloses() = runBlocking {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                webSocket.close(1008, "test refusal")
+            }
+        }))
+        server.start()
+        try {
+            val base = server.url("/api/workspaces/ws_1").toString()
+            store.save(DeviceCredentials(base, "jwt-canary", "device-test", "ws_1",
+                noiseSeed = generateNoiseSeed(), noiseKey = noisePublicKey(generateNoiseSeed())))
+            val restored = CredentialStore(InstrumentationRegistry.getInstrumentation().targetContext).load()!!.client()
+            try {
+                restored.restQuery("proof", "{}")
+                fail("Closed sealed channel must reject the request")
+            } catch (_: ApiException.Network) {
+                // The peer closed its socket before completing Noise.
+            } finally {
+                restored.close()
+            }
+            val request = server.takeRequest(5, TimeUnit.SECONDS)!!
+            assertEquals("/api/workspaces/ws_1/api/device/sealed", request.path)
+            assertNull(request.getHeader("Authorization"))
+            assertEquals("No plaintext retry is permitted", 1, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
     }
 }
