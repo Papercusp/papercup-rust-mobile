@@ -525,10 +525,12 @@ def prepare_native():
     serials = [line.split()[0] for line in devices.splitlines()[1:]
                if len(line.split()) == 2 and line.split()[1] == 'device']
     requested = os.environ.get('ANDROID_SERIAL')
-    if (len(serials) != 1 or not serials[0].startswith('emulator-')
-            or not requested or requested != serials[0]):
-        raise RuntimeError('native live checks require exactly one explicitly owned emulator')
-    native_device = serials[0]
+    if (not requested or not requested.startswith('emulator-')
+            or serials.count(requested) != 1):
+        raise RuntimeError('native live checks require an online explicitly owned emulator')
+    # Peer transports may share the host ADB server. Every subsequent command
+    # targets this explicit serial; never infer ownership from list order.
+    native_device = requested
     for args, expected in [(('shell', 'getprop', 'sys.boot_completed'), '1'),
                            (('shell', 'getprop', 'ro.build.version.sdk'), '36'),
                            (('shell', 'getconf', 'PAGE_SIZE'), '16384')]:
