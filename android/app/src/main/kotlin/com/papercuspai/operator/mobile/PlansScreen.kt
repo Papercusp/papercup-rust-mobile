@@ -53,17 +53,18 @@ private data class NowBlock(val state: String?, val next: String?)
  * the legacy `status` key, so every item is not misread as `todo`.
  */
 internal fun parsePlanItems(itemsJson: String): List<PlanItem> {
-    return try {
+    return run {
         val arr = JSONArray(itemsJson)
         val out = ArrayList<PlanItem>(arr.length())
         for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            val id = obj.optString("id", "").trim()
-            if (id.isEmpty()) continue
+            val obj = arr.getJSONObject(i)
+            val id = (obj.get("id") as? String)?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: throw org.json.JSONException("Plan item $i requires a non-empty string id")
             val status = listOf("effectiveStatus", "storedStatus", "status")
                 .map { key -> if (obj.isNull(key)) "" else obj.optString(key, "").trim() }
                 .firstOrNull { it.isNotEmpty() }
-                ?: "todo"
+                ?: "unknown"
             out.add(
                 PlanItem(
                     id = id,
@@ -76,8 +77,6 @@ internal fun parsePlanItems(itemsJson: String): List<PlanItem> {
             )
         }
         out
-    } catch (t: Throwable) {
-        emptyList()
     }
 }
 
@@ -178,6 +177,7 @@ private fun PlansListView(
 
     val subtitle = when {
         loading -> "Loading…"
+        error != null -> "Unavailable"
         else -> "${plans.size} plans"
     }
 
@@ -304,6 +304,7 @@ private fun PlanDetailView(
 ) {
     var loading by remember { mutableStateOf(true) }
     var detail by remember { mutableStateOf<PlanDetail?>(null) }
+    var parsedItems by remember { mutableStateOf<List<PlanItem>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
     var busyItem by remember { mutableStateOf<String?>(null) }
@@ -313,7 +314,13 @@ private fun PlanDetailView(
     LaunchedEffect(plan.slug, liveTick, refresh) {
         loading = true
         try {
-            detail = creds.client().planGet(plan.slug, plan.harness)
+            val loaded = creds.client().planGet(plan.slug, plan.harness)
+            parsedItems = try {
+                parsePlanItems(loaded.itemsJson)
+            } catch (invalid: org.json.JSONException) {
+                throw uniffi.papercup.ApiException.Decode("Invalid plan items: ${invalid.message}")
+            }
+            detail = loaded
             error = null
         } catch (t: Throwable) {
             error = HumanError.describe(t, "Loading the plan")
@@ -377,7 +384,7 @@ private fun PlanDetailView(
                         )
                     }
                 }
-                error != null && detail == null -> {
+                error != null -> {
                     PapercupCard(accent = PapercupColors.ErrorSoft) {
                         Text(
                             text = error ?: "Failed to load plan",
@@ -393,7 +400,7 @@ private fun PlanDetailView(
                     if (now != null) {
                         NowCard(now)
                     }
-                    val items = remember(d.itemsJson) { parsePlanItems(d.itemsJson) }
+                    val items = parsedItems
                     if (items.isEmpty()) {
                         PapercupCard {
                             Text(

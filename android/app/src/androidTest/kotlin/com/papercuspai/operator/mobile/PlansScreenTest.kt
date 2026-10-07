@@ -85,6 +85,13 @@ class PlansScreenTest {
     fun validEmptyItemsRenderEmptyState() = verifyItems(JSONArray(), "No items.")
 
     @Test
+    fun malformedItemRowRendersAnErrorInsteadOfPartialState() = verifyItems(
+        JSONArray().put(JSONObject().put("id", "P-001").put("text", "Retained valid item"))
+            .put(JSONObject().put("id", " ")),
+        "response didn't match", "Retained valid item",
+    )
+
+    @Test
     fun effectiveStatusAndUnknownStatusRenderWithoutInventingTodo() = verifyItems(
         JSONArray().put(JSONObject().put("id", "P-001").put("text", "Unknown item"))
             .put(JSONObject().put("id", "P-002").put("text", "Blocked item")
