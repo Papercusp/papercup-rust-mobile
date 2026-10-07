@@ -78,20 +78,25 @@ function handshakeVector(name, seeds) {
   initiator.e = copy(iE)
   responder.e = copy(rE)
 
-  const msg1 = initiator.send()
+  // Snapshot each message as hex at send time: the returned buffers can alias the
+  // ephemeral keys, which noise-handshake zeroes in _clear() once the handshake ends.
+  const msg1 = Buffer.from(initiator.send())
+  const msg1Hex = hex(msg1)
   responder.recv(msg1)
-  const msg2 = responder.send()
+  const msg2 = Buffer.from(responder.send())
+  const msg2Hex = hex(msg2)
   initiator.recv(msg2)
-  const msg3 = initiator.send()
+  const msg3 = Buffer.from(initiator.send())
+  const msg3Hex = hex(msg3)
   responder.recv(msg3)
 
   if (!initiator.complete || !responder.complete) throw new Error('handshake did not complete')
 
   const hash = Buffer.from(initiator.hash)
   record.handshake = {
-    msg1: hex(msg1),
-    msg2: hex(msg2),
-    msg3: hex(msg3),
+    msg1: msg1Hex,
+    msg2: msg2Hex,
+    msg3: msg3Hex,
     initiatorTx: hex(initiator.tx),
     initiatorRx: hex(initiator.rx),
     handshakeHash: hex(hash),
