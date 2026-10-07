@@ -39,6 +39,7 @@
 // response's `defguard_enrollment_url`).
 
 pub mod biometric;
+pub mod byoc_sealed;
 pub mod cache;
 pub mod client;
 pub mod intent;
