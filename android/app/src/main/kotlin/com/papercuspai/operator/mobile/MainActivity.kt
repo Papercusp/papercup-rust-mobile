@@ -427,15 +427,16 @@ private fun AppRoot(
             creds = current,
             monitor = monitor,
             onBack = { route = Route.Settings },
-            onOpenPushTapTest = { route = Route.PushTapTest },
+            onOpenPushTapTest = { if (BuildConfig.DEBUG) route = Route.PushTapTest },
         )
-        Route.PushTapTest -> PushTapTestScreen(
+        Route.PushTapTest -> if (BuildConfig.DEBUG) PushTapTestScreen(
             onBack = { route = Route.Diagnostics },
             onOpenHarnessDetail = { slug -> route = Route.Detail(slug) },
             onOpenRunLog = { slug -> route = Route.RunLog(slug) },
             onOpenOperator = { route = Route.Operator },
             onOpenInbox = { route = Route.Inbox },
         )
+        else LaunchedEffect(Unit) { route = Route.Diagnostics }
         Route.WorkspaceSelector -> WorkspaceSelectorScreen(
             creds = current,
             onBack = { route = Route.Settings },

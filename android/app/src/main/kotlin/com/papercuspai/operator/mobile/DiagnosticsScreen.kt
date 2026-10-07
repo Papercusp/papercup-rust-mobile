@@ -35,6 +35,7 @@ fun DiagnosticsScreen(
     monitor: ConnectionMonitor,
     onBack: () -> Unit,
     onOpenPushTapTest: () -> Unit,
+    developerDiagnosticsEnabled: Boolean = BuildConfig.DEBUG,
 ) {
     val state by monitor.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -151,7 +152,7 @@ fun DiagnosticsScreen(
                 ValueRow(label = "Device", value = "${Build.MANUFACTURER} ${Build.MODEL}", last = true)
             }
 
-            SectionShell(title = "Push") {
+            if (developerDiagnosticsEnabled) SectionShell(title = "Push") {
                 val pushLabel = when {
                     fcmToken != null -> "registered"
                     fcmError != null -> "error: ${fcmError}"
