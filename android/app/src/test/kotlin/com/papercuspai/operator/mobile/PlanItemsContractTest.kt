@@ -56,20 +56,32 @@ class PlanItemsContractTest {
     fun legacyStatusKeyAndNullsStillParse() {
         val items = parsePlanItems(
             """[{"id":"P-010","status":"done"},
-                {"id":"P-011","storedStatus":null,"authority":null},
-                {"id":"  ","storedStatus":"done"},
-                "not-an-object"]""",
+                {"id":"P-011","storedStatus":null,"authority":null}]""",
         )
         assertEquals(listOf("P-010", "P-011"), items.map { it.id })
         assertEquals("done", items[0].status)
         // a JSON null must not render as the literal string "null"
-        assertEquals("todo", items[1].status)
+        assertEquals("unknown", items[1].status)
         assertEquals("system", items[1].authority)
     }
 
     @Test
-    fun malformedPayloadYieldsEmptyListNotCrash() {
-        assertTrue(parsePlanItems("{not json").isEmpty())
-        assertTrue(parsePlanItems("{}").isEmpty())
+    fun malformedPayloadRemainsAnErrorInsteadOfHealthyEmptyItems() {
+        assertThrows(org.json.JSONException::class.java) { parsePlanItems("{not json") }
+        assertThrows(org.json.JSONException::class.java) { parsePlanItems("{}") }
+        assertTrue(parsePlanItems("[]").isEmpty())
+    }
+
+    @Test
+    fun malformedRowsCannotDisappearFromAnOtherwiseValidArray() {
+        for (row in listOf("null", "42", "\"not-an-object\"", "{}",
+                """{"id":"  "}""", """{"id":42}""")) {
+            assertThrows("Invalid row must fail: $row", org.json.JSONException::class.java) {
+                parsePlanItems("[$row]")
+            }
+            assertThrows("Partial data must fail: $row", org.json.JSONException::class.java) {
+                parsePlanItems("""[{"id":"P-001","storedStatus":"done"},$row]""")
+            }
+        }
     }
 }
