@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "sourceCommit": "0f0440469275115e849d97e3d42d71bc05d887ea",
+  "sourceCommit": "3a61ba575e2f996c0280fb917586f3d901a77d08",
   "mode": "notices",
-  "startedAt": "2026-10-07T02:38:05.835981+00:00",
-  "finishedAt": "2026-10-07T02:38:21.668091+00:00",
+  "startedAt": "2026-10-07T14:53:00.374821+00:00",
+  "finishedAt": "2026-10-07T14:53:13.935301+00:00",
   "exitCode": 0,
   "inputs": {
-    "android/app/build/outputs/papercusp-mobile-source.tar.gz": "832772af15b4004ad08fdcea8772d4636cbed3f9ab1cd160e13cd25edf78a700",
-    "android/app/build/outputs/papercusp-rust-dependencies.tar.gz": "5734fb1383db17472d957d3cbfaf98565477cbe21132ae6e3595f89abe5f827b"
+    "android/app/build/outputs/papercusp-mobile-source.tar.gz": "15974eda623e5dc655c44cf1fb6640a4f2dabcd070e4d2cb64062f0b9b156b1b",
+    "android/app/build/outputs/papercusp-rust-dependencies.tar.gz": "54fa4f094d140959eb27a2a5cedf44e5365ec21bb3c50899ca1d6dd92cf06ac5"
   },
-  "cargoLockSha256": "c72f591c4268cf1a8c480f0ebf4032d017b399151c307cffa9f7522a8e6a56f3",
+  "cargoLockSha256": "d5cb74f5ddf6635aabc507cc4886bb6be00751f284c61ecaa3290c8255cd9d0d",
   "verifiedRegistryPackages": 266,
   "verifiedVendorFiles": 12658,
   "packages": [

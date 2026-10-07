@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "operational-test-evidence",
+  "framework": "shell",
+  "workItem": "WI-10007150",
+  "sourceCommit": "3a61ba575e2f996c0280fb917586f3d901a77d08",
+  "cargoLockSha256": "d5cb74f5ddf6635aabc507cc4886bb6be00751f284c61ecaa3290c8255cd9d0d",
+  "command": "bash tools/build-scripts/android-release-provenance.sh source-archive; bash tools/build-scripts/android-release-provenance.sh source-notices; bash tools/tests/android-release-provenance-test.sh; bash tools/tests/android-library-notices-test.sh",
+  "startedAt": "2026-10-07T14:53:00.374821+00:00",
+  "finishedAt": "2026-10-07T14:53:13.935301+00:00",
+  "exitCode": 0,
+  "scope": "Local complete locked-registry source/notice preparation and maintained collector guards. Not native, signed-candidate, distribution-clearance or recipient-delivery evidence.",
+  "verification": {
+    "lockedRegistryPackages": 266,
+    "verifiedVendorFiles": 12658,
+    "uniqueNoticeTexts": 179,
+    "registryAdded": [],
+    "registryRemoved": [],
+    "registryChecksumChanges": [],
+    "packageTextAndSupplementComparison": "Every generated package/text/supplement record equals the prior reviewed collector inventory after excluding collector libraryFile/licenseFile pointers; those pointers are retained unchanged.",
+    "noticeMetadataSha256": "ce907d1bffa21ea5acd8bcab8860b0170c0560e082fc7719f2469255374ca42f",
+    "collectorReceiptSha256": "7e447303351a8aa7a69562d772f105007f97cfbacaf1be46bf4153b06b5351b5",
+    "provenanceGuardExitCode": 0,
+    "collectorGuardExitCode": 0,
+    "releaseCollector": "221 resolved modules plus 266 Rust packages: 487 records; 44 rejecting controls",
+    "debugCollector": "227 resolved modules plus 266 Rust packages: 493 records; 44 rejecting controls",
+    "cacheAndStaleLockGuards": "Isolated cached add/remove transitions and production stale Cargo.lock refusal passed."
+  },
+  "inputArtifacts": {
+    "android/app/build/outputs/papercusp-mobile-source.tar.gz": "15974eda623e5dc655c44cf1fb6640a4f2dabcd070e4d2cb64062f0b9b156b1b",
+    "android/app/build/outputs/papercusp-rust-dependencies.tar.gz": "54fa4f094d140959eb27a2a5cedf44e5365ec21bb3c50899ca1d6dd92cf06ac5"
+  },
+  "testLogs": {
+    "/tmp/android-d5cb-provenance.log": "7284b2ad1aa4364ffaf10d04df8380b2aee98d9415326d8dae61e6f72241e434",
+    "/tmp/android-d5cb-library-notices.log": "8491a00cb297c8487111bd23914e21d5acaaf2c5fbd9bc9e173ed1b95a5dfef8"
+  },
+  "testSources": {
+    "tools/tests/android-release-provenance-test.sh": "aaf999069b78fe935d88415638d9df9af1256f314ec8404109546fcd21714b2d",
+    "tools/tests/android-library-notices-test.sh": "48373ef7df8d8def9459e01b34911565fadeb33c49a23ba05378038db777f06e"
+  },
+  "priorArtifactsRetained": "android/app/build/outputs/p007-prior-rust-notices-d5cb-refresh"
+}
