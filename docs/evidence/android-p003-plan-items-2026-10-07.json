@@ -23,5 +23,22 @@
     "android/app/build/ci-evidence/p003-diagnostics-20261007/combined-unit-results/TEST-com.papercuspai.operator.mobile.PlanItemsContractTest.xml": "be54ace26d6f6834ec940d5ab64a6a26e3f4170c293c3ce299de0df31ccf7916"
   },
   "logs": ["android/app/build/ci-evidence/p003-diagnostics-20261007/plans-tests.log", "android/app/build/ci-evidence/p003-diagnostics-20261007/combined-tests.log"],
-  "limitations": ["Fixtures are not a supported live operator", "No complete journey census", "No signed candidate, physical phone or Play evidence"]
+  "limitations": ["Fixtures are not a supported live operator", "No complete journey census", "No signed candidate, physical phone or Play evidence"],
+  "currentSourceReverification": {
+    "date": "2026-10-07T15:35:00Z",
+    "bug": "EI-25334561632860868",
+    "fix": "Reject malformed array rows and require nonblank string ids instead of silently skipping rows",
+    "sourceSha256": {
+      "android/app/src/main/kotlin/com/papercuspai/operator/mobile/PlansScreen.kt": "90c9b288b3c571406892a15dcc23ff6b19688a153a74511c277122a3c7bc1d12",
+      "android/app/src/test/kotlin/com/papercuspai/operator/mobile/PlanItemsContractTest.kt": "abc62d779a23b90363ea9d986d626e618cf109decad42f35ea41254fb58fce53",
+      "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PlansScreenTest.kt": "cf606c8252fc790a48cc525e8db0dbfaaf88b57b87852fa92c025cfeaf6b28cc"
+    },
+    "unit": {"tests": 6, "beforeFailures": 1, "afterFailures": 0},
+    "native": {"tests": 6, "failures": 0, "errors": 0, "skipped": 0, "classes": ["PlansScreenTest", "DiagnosticsScreenTest"]},
+    "controls": ["Malformed mixed row renders decode error without partial valid-row label", "Valid empty array remains No items", "Invalid top-level shape remains a decode error", "Effective status and unknown status remain honest", "Public and debug diagnostics retain their respective controls"],
+    "retainedResults": "android/app/build/ci-evidence/p003-malformed-rows-20261007/native-results",
+    "retainedUnit": "android/app/build/ci-evidence/p003-malformed-rows-20261007/TEST-com.papercuspai.operator.mobile.PlanItemsContractTest.xml",
+    "log": "android/app/build/ci-evidence/p003-malformed-rows-20261007/native-run.log",
+    "scope": "Fresh owned API36/16KB emulator5580, actual Compose/JNI HTTP fixtures; full six-feature live journey remains open"
+  }
 }
