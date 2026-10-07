@@ -503,7 +503,8 @@ assert args[:2] == ['-s', 'emulator-5556']
 args = args[2:]
 private = Path('private-fixture.json')
 if args == ['shell', 'getprop', 'sys.boot_completed']: print('1')
-elif args == ['shell', 'getprop', 'ro.build.version.sdk_full']: print('36')
+elif args == ['shell', 'getprop', 'ro.build.version.sdk_full']:
+    print('unmeasured' if os.environ.get('TEST_LIVE_BOOT_CASE') == 'sdk-unmeasured' else '36')
 elif args == ['shell', 'getprop', 'ro.build.version.sdk']: print('36')
 elif args == ['shell', 'cat', '/proc/meminfo']:
     print('MemTotal: 4008624 kB\\nMemAvailable: 2831424 kB')
@@ -635,10 +636,13 @@ else:
         boot_proof = evidence / 'emulator-preflight/emulator-boot.json'
         readiness = json.loads(boot_proof.read_text()) if boot_proof.exists() else None
         diagnostic = (case, run.stdout[-1500:], run.stderr[-1500:], result, readiness)
-        if native_mode and case not in ('native-existing-files', 'native-missing-serial'):
+        if case == 'native-preflight-fail':
+            # Its 4-KiB page refusal occurs before the boot-health subprocess.
+            assert readiness is None and result['errors'] == ['native live emulator must be booted API36 with 16KB pages'], diagnostic
+        if native_mode and case not in ('native-preflight-fail', 'native-existing-files', 'native-missing-serial'):
             # A negative journey control must reach its intended predicate.
             # A readiness timeout is a fixture failure, never acceptance proof.
-            assert readiness and readiness['frameworkReady'], diagnostic
+            assert readiness and readiness['frameworkReady'], ('native fixture failed readiness', diagnostic)
             rows = [json.loads(line) for line in (native_root / 'fake-adb-readiness.jsonl').read_text().splitlines()]
             starts = {row['pid']: row for row in rows if row['phase'] == 'start'}
             ends = {row['pid']: row for row in rows if row['phase'] == 'end'}
@@ -728,6 +732,30 @@ print(f'Android live fixture guards: {len(cases) + 2} passed; Rust/native owners
 PY
 fi
 [[ "$suite" != live ]] || exit 0
+# The negative journey case must fail the suite when an unrelated readiness
+# predicate fails. Keep its command ledger inspectable until this guard checks it.
+if [[ "$suite" == all ]]; then
+    if TEST_LIVE_BOOT_CASE=sdk-unmeasured bash "${BASH_SOURCE[0]}" live native-duplicate-journey \
+        > "$TMP_ROOT/live-readiness-refusal.txt" 2>&1; then
+        echo 'FAIL: unrelated readiness failure accepted as a negative journey control' >&2; exit 1
+    fi
+    python3 - "$TMP_ROOT/live-readiness-refusal.txt" "$TMP_ROOT" <<'PY'
+import json, shutil, sys
+from pathlib import Path
+output = Path(sys.argv[1]).read_text()
+assert 'native fixture failed readiness' in output, output
+retained = Path(output.split('retained evidence: ')[-1].strip())
+assert retained.parent == Path(sys.argv[2]).parent and retained.name.startswith('runner-fixtures.')
+boot = json.loads((retained / 'live-evidence-native-duplicate-journey/emulator-preflight/emulator-boot.json').read_text())
+assert boot['frameworkErrors'] == ['Native SDK version is unmeasured'], boot
+rows = [json.loads(line) for line in (retained / 'native-root-native-duplicate-journey/fake-adb-readiness.jsonl').read_text().splitlines()]
+sdk = [row for row in rows if row['args'][-1] == 'ro.build.version.sdk_full']
+assert [row['phase'] for row in sdk] == ['start', 'end'], sdk
+assert sdk[0]['pid'] == sdk[1]['pid'] and sdk[0]['monotonicNs'] <= sdk[1]['monotonicNs']
+shutil.rmtree(retained)
+PY
+    echo 'Android live fixture diagnostic guard: unrelated SDK refusal rejected with retained command evidence'
+fi
 if [[ "$suite" == all ]]; then
 echo 'Android result guard tests: 10 passed'
 
