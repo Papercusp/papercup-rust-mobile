@@ -35,6 +35,7 @@ fun StandingApprovalsScreen(
 ) {
     var candidates by remember { mutableStateOf<List<StandingCandidate>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
     var pending by remember { mutableStateOf<Set<String>>(emptySet()) }
     var hidden by remember { mutableStateOf<Set<String>>(emptySet()) }
     val scope = rememberCoroutineScope()
@@ -42,6 +43,7 @@ fun StandingApprovalsScreen(
     fun key(candidate: StandingCandidate) = "${candidate.capability}::${candidate.targetHarness}"
 
     suspend fun load() {
+        loading = true
         try {
             candidates = creds.client().standingCandidates()
             error = null
@@ -49,6 +51,8 @@ fun StandingApprovalsScreen(
             error = HumanError.describe(e, "Loading approvals")
         } catch (t: Throwable) {
             error = HumanError.describe(t, "Loading approvals")
+        } finally {
+            loading = false
         }
     }
 
@@ -72,7 +76,9 @@ fun StandingApprovalsScreen(
 
     val visible = candidates?.filter { key(it) !in hidden }
     val subtitle = when {
-        visible == null -> stringResource(R.string.loading)
+        loading -> stringResource(R.string.loading)
+        error != null -> "Unavailable"
+        visible == null -> "Unavailable"
         else -> "${visible.size} pending"
     }
 
@@ -119,12 +125,15 @@ fun StandingApprovalsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = PapercupColors.Error,
                         )
+                        TextButton(onClick = { scope.launch { load() } }, enabled = !loading) {
+                            Text("Retry")
+                        }
                     }
                 }
             }
 
             when {
-                visible == null -> item {
+                loading -> item {
                     PapercupCard {
                         Box(
                             modifier = Modifier.fillMaxWidth(),
@@ -134,6 +143,8 @@ fun StandingApprovalsScreen(
                         }
                     }
                 }
+
+                visible == null -> Unit
 
                 visible.isEmpty() -> item {
                     PapercupCard {
