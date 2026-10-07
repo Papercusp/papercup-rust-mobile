@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Load the Apple signing material for the TestFlight workflow into the
-# repository's GitHub Actions secrets (iphone-public-release-2026-08-11#D-017).
+# Load Apple signing material into owner-only native signing JSON.
 #
 # The owner downloads the Apple files into a private folder outside every repo
 # (default ~/.papercusp/secrets/apple, see docs/BUILD.md "TestFlight"):
@@ -12,7 +11,7 @@
 #   notes.txt             identifiers; the only UUID in it is the API Issuer ID
 #
 # `plan` (the default) validates everything and lists the secrets it would set.
-# `apply` also sets them with `gh secret set`, values on stdin only. Neither
+# `apply` writes the verified native JSON outside the repository. Neither
 # prints a secret value. The certificate's key, team and type are checked here,
 # and the profile goes through the same check-profile the CI job runs, so a
 # wrong file fails on this machine instead of on a paid macOS runner.
@@ -23,7 +22,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SIGNING="${PAPERCUP_SIGNING_SCRIPT:-$ROOT/tools/build-scripts/ios-ci-signing.sh}"
 DIR="${PAPERCUP_APPLE_SECRETS_DIR:-$HOME/.papercusp/secrets/apple}"
-REPO="${PAPERCUP_GH_REPO:-Papercusp/papercup-rust-mobile}"
+OUTPUT="${PAPERCUP_IOS_SIGNING_CONFIG:-$HOME/.config/papercusp/ios-signing.json}"
 MODE="${1:-plan}"
 SECRET_NAMES="APPLE_TEAM_ID IOS_DIST_CERT_P12_BASE64 IOS_DIST_CERT_PASSWORD IOS_APPSTORE_PROFILE_BASE64 ASC_API_KEY_ID ASC_API_ISSUER_ID ASC_API_KEY_P8_BASE64"
 
@@ -61,7 +60,12 @@ one_file() {
 
 private_mode() {
     local mode
-    mode="$(stat -c '%a' "$1")"
+    mode="$(python3 - "$1" <<'PY'
+import os
+import sys
+print(format(os.stat(sys.argv[1]).st_mode & 0o777, 'o'))
+PY
+)"
     [ $((8#$mode & 8#077)) -eq 0 ] || die "$1 is readable by group or others (mode $mode); chmod go-rwx it"
 }
 
@@ -151,12 +155,12 @@ private_mode "$pass_file"
 value_of() {
     case "$1" in
         APPLE_TEAM_ID) printf '%s' "$team" ;;
-        IOS_DIST_CERT_P12_BASE64) base64 -w0 < "$p12" ;;
+        IOS_DIST_CERT_P12_BASE64) base64 < "$p12" | tr -d '\n' ;;
         IOS_DIST_CERT_PASSWORD) tr -d '\n' < "$pass_file" ;;
-        IOS_APPSTORE_PROFILE_BASE64) base64 -w0 < "$profile" ;;
+        IOS_APPSTORE_PROFILE_BASE64) base64 < "$profile" | tr -d '\n' ;;
         ASC_API_KEY_ID) printf '%s' "$key_id" ;;
         ASC_API_ISSUER_ID) printf '%s' "$issuer" ;;
-        ASC_API_KEY_P8_BASE64) base64 -w0 < "$p8" ;;
+        ASC_API_KEY_P8_BASE64) base64 < "$p8" | tr -d '\n' ;;
     esac
 }
 source_of() {
@@ -189,22 +193,41 @@ for name in $SECRET_NAMES; do
 done
 
 if [ "$MODE" = plan ]; then
-    echo "PLAN: validated; run 'ios-signing-secrets.sh apply' to set these on $REPO"
+    echo "PLAN: validated; run 'ios-signing-secrets.sh apply' to write owner-only native signing JSON"
     exit 0
 fi
 
-# GitHub stamps the update with its own clock; allow two minutes of skew.
-started="$(date -u -d '-2 minutes' +%Y-%m-%dT%H:%M:%SZ)"
-for name in $SECRET_NAMES; do
-    value_of "$name" | gh secret set "$name" --repo "$REPO" > /dev/null \
-        || die "gh secret set $name --repo $REPO failed"
-done
-# Each secret must be listed with an update time from this run; a name that
-# merely existed before proves nothing.
-listed="$(gh secret list --repo "$REPO")"
-for name in $SECRET_NAMES; do
-    updated="$(printf '%s\n' "$listed" | awk -F '\t' -v n="$name" '$1 == n { print $2 }')"
-    [ -n "$updated" ] || die "$name is not listed on $REPO after setting it"
-    [[ ! "$updated" < "$started" ]] || die "$name on $REPO was last updated $updated, before this run ($started)"
-done
-echo "APPLIED: 7 TestFlight signing secrets set on $REPO"
+# The native runner consumes this private JSON; no external secret publication.
+# Values enter Python through the environment, never argv or printed shell code.
+(
+    for name in $SECRET_NAMES; do
+        export "$name=$(value_of "$name")"
+    done
+    python3 - "$OUTPUT" "$ROOT" <<'PY'
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+path, repo = (Path(value).resolve() for value in sys.argv[1:])
+if path.is_relative_to(repo):
+    raise SystemExit('ERROR: native signing config must be outside the repository')
+if path.exists() and (not path.is_file() or path.stat().st_mode & 0o077):
+    raise SystemExit('ERROR: existing native signing config must be owner-only')
+path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+keys = ('APPLE_TEAM_ID', 'IOS_DIST_CERT_P12_BASE64', 'IOS_DIST_CERT_PASSWORD',
+        'IOS_APPSTORE_PROFILE_BASE64', 'ASC_API_KEY_ID', 'ASC_API_ISSUER_ID', 'ASC_API_KEY_P8_BASE64')
+values = {key: os.environ[key] for key in keys}
+fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.ios-signing-')
+try:
+    with os.fdopen(fd, 'w') as stream:
+        json.dump(values, stream)
+    os.replace(temporary, path)
+    if json.loads(path.read_text()) != values or path.stat().st_mode & 0o077:
+        raise SystemExit('ERROR: native signing config readback failed')
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
+PY
+)
+echo "APPLIED: 7 TestFlight signing inputs written to owner-only native JSON"

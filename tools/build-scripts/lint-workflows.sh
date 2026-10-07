@@ -12,6 +12,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [ "$#" -eq 0 ] && [ -f "$ROOT/tools/ios-ci.py" ] && [ -f "$ROOT/tools/android-ci.py" ]; then
+    shopt -s nullglob
+    native_workflows=("$ROOT"/.github/workflows/*.yml "$ROOT"/.github/workflows/*.yaml)
+    shopt -u nullglob
+    if [ "${#native_workflows[@]}" -eq 0 ]; then
+        echo "OK: Actions retired; native CI behavioral tests run in make check"
+        exit 0
+    fi
+fi
 VERSION=1.7.12
 CACHE="${PAPERCUP_TOOL_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/papercup-mobile}/actionlint-$VERSION"
 
@@ -58,6 +67,10 @@ else
     shopt -u nullglob
 fi
 # An empty file list would lint nothing and still exit 0.
+if [ "${#workflows[@]}" -eq 0 ] && [ -f "$ROOT/tools/ios-ci.py" ] && [ -f "$ROOT/tools/android-ci.py" ]; then
+    echo "OK: Actions workflows are retired; native CI behavioral tests run in make check"
+    exit 0
+fi
 [ "${#workflows[@]}" -gt 0 ] || { echo "ERROR: no workflow files found to lint" >&2; exit 1; }
 
 # actionlint's ShellCheck integration is off (-shellcheck=) so the verdict does

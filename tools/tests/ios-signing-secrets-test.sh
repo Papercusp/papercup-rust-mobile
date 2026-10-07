@@ -105,7 +105,7 @@ make_folder() {
 
 run_secrets() {
     env PATH="$TMP/bin:$PATH" HOME="$TMP/home" PAPERCUP_APPLE_SECRETS_DIR="$F" \
-        PAPERCUP_GH_REPO=Fixture/repo PAPERCUP_SIGNING_SCRIPT="$SIGNING" FAKE_GH_STORE="$STORE" \
+        PAPERCUP_IOS_SIGNING_CONFIG="$TMP/native-signing.json" PAPERCUP_SIGNING_SCRIPT="$SIGNING" FAKE_GH_STORE="$STORE" \
         "$@" > "$TMP/out" 2> "$TMP/err"
 }
 secrets() { run_secrets bash "$SECRETS" "$@"; }
@@ -147,11 +147,20 @@ echo "ok: plan validates, lists 7 secrets, sets nothing and prints no value"
 # ------------------------------------------------------------------- apply
 secrets apply || fail "apply failed on a complete folder"
 grep -q '^APPLIED: 7 ' "$TMP/out" || fail "apply did not report success"
-[ "$(wc -l < "$STORE/set.log")" -eq 7 ] || fail "apply did not set exactly 7 secrets"
-grep -qv -- '--repo Fixture/repo' "$STORE/set.log" && fail "a secret was set without --repo Fixture/repo"
-[ "$(cat "$STORE/APPLE_TEAM_ID")" = "$TEAM" ] || fail "APPLE_TEAM_ID is not the certificate's team"
-[ "$(cat "$STORE/ASC_API_KEY_ID")" = "$KEY_ID" ] || fail "ASC_API_KEY_ID is not the key file's ID"
-[ "$(cat "$STORE/ASC_API_ISSUER_ID")" = "$ISSUER" ] || fail "ASC_API_ISSUER_ID is not the notes UUID"
+[ ! -s "$STORE/set.log" ] || fail 'apply published to GitHub'
+[ "$(stat -c '%a' "$TMP/native-signing.json")" = 600 ] || fail 'native JSON is not owner-only'
+python3 - "$TMP/native-signing.json" "$STORE" <<'PY'
+import json
+import sys
+from pathlib import Path
+values = json.loads(Path(sys.argv[1]).read_text())
+assert len(values) == 7
+for key, value in values.items():
+    (Path(sys.argv[2]) / key).write_text(value)
+PY
+[ "$(cat "$STORE/APPLE_TEAM_ID")" = "$TEAM" ] || fail 'native JSON team differs'
+[ "$(cat "$STORE/ASC_API_KEY_ID")" = "$KEY_ID" ] || fail 'native JSON key ID differs'
+[ "$(cat "$STORE/ASC_API_ISSUER_ID")" = "$ISSUER" ] || fail 'native JSON issuer differs'
 base64 -d < "$STORE/IOS_APPSTORE_PROFILE_BASE64" | cmp -s - "$F/Papercusp_App_Store.mobileprovision" \
     || fail "IOS_APPSTORE_PROFILE_BASE64 is not the profile"
 base64 -d < "$STORE/ASC_API_KEY_P8_BASE64" | cmp -s - "$F/asc/AuthKey_$KEY_ID.p8" \
@@ -168,11 +177,11 @@ grep -q 'dist.p12 (reused)' "$TMP/out" || fail "a second run rebuilt the p12"
 echo "ok: re-running reuses the p12 and its password"
 
 make_folder
-if run_secrets FAKE_GH_UPDATED=2020-01-01T00:00:00Z bash "$SECRETS" apply; then
-    fail "apply accepted secrets GitHub listed as last updated in 2020"
-fi
-grep -q 'before this run' "$TMP/err" || fail "the stale-update refusal does not say so"
-echo "ok: refuses secrets that GitHub did not update during this run"
+chmod 644 "$TMP/native-signing.json"
+if secrets apply; then fail 'apply overwrote a publicly readable native config'; fi
+grep -q 'owner-only' "$TMP/err" || fail 'public config refusal did not name its mode'
+rm "$TMP/native-signing.json"
+echo 'ok: private config readback and refusal guards'
 
 # ---------------------------------------------------------------- refusals
 make_folder; cp "$TMP/src/other.key" "$F/dist.key"
