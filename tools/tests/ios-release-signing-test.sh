@@ -8,7 +8,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SIGNING="${PAPERCUP_TEST_SIGNING_SCRIPT:-$ROOT/tools/build-scripts/ios-ci-signing.sh}"
 RELEASE="${PAPERCUP_TEST_RELEASE_SCRIPT:-$ROOT/tools/build-scripts/release-ios.sh}"
-WORKFLOW="${PAPERCUP_TEST_WORKFLOW:-$ROOT/.github/workflows/testflight.yml}"
+WORKFLOW="${PAPERCUP_TEST_WORKFLOW:-$ROOT/tools/ios-ci.py}"
 PROJECT="${PAPERCUP_TEST_PROJECT_YML:-$ROOT/ios/project.yml}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -228,44 +228,8 @@ app = text.split("\n  Papercup:\n", 1)[1].split("\n  PapercupTests:\n", 1)[0]
 assert line in app, "the profile variable must sit on the Papercup app target"
 PY
 
-# ----------------------------------------------------------- workflow contract
-python3 - "$WORKFLOW" <<'PY' || fail 'TestFlight workflow contract broken'
-import re
-import sys
-
-text = open(sys.argv[1]).read()
-trigger = text.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
-assert "workflow_dispatch:" in trigger, "TestFlight must be dispatchable"
-for automatic in ("push:", "pull_request:", "schedule:"):
-    assert automatic not in trigger, f"every run spends a build number; {automatic} is not allowed"
-assert "\npermissions:\n  contents: read\n" in text, "workflow token must be read-only"
-assert "runs-on: macos-26" in text, "must build with the iOS 26 SDK runner"
-
-gate = text.index("ios-ci-signing.sh require-secrets")
-for expensive in ("dtolnay/rust-toolchain", "npm ci", "ios-ci-signing.sh install", "release-ios.sh export"):
-    assert gate < text.index(expensive), f"missing secrets must fail before {expensive}"
-gate_step = text[text.rindex("- name:", 0, gate):gate]
-secrets = ("APPLE_TEAM_ID", "IOS_DIST_CERT_P12_BASE64", "IOS_DIST_CERT_PASSWORD",
-           "IOS_APPSTORE_PROFILE_BASE64", "ASC_API_KEY_ID", "ASC_API_ISSUER_ID", "ASC_API_KEY_P8_BASE64")
-for name in secrets:
-    assert f"{name}: ${{{{ secrets.{name} }}}}" in gate_step, f"secrets gate does not see {name}"
-
-for line in text.splitlines():
-    if "secrets." in line:
-        assert re.fullmatch(r"\s+([A-Z0-9_]+|ssh-key): \$\{\{ secrets\.[A-Z0-9_]+ \}\}", line), \
-            f"secrets may only enter through step env/inputs, never a run script: {line.strip()}"
-
-cleanup = text.index("ios-ci-signing.sh cleanup")
-cleanup_step = text[text.rindex("- name:", 0, cleanup):cleanup]
-assert "if: always()" in cleanup_step, "signing material must be removed even when the build fails"
-
-upload = text.index("release-ios.sh upload")
-upload_step = text[text.rindex("- name:", 0, upload):upload]
-assert "if: inputs.upload" in upload_step, "upload must be optional"
-
-artifact = text.split("actions/upload-artifact", 1)[1].split("\n      - name:", 1)[0]
-for private in ("signing", "private_keys", ".p8", ".p12", "mobileprovision", "keychain"):
-    assert private not in artifact, f"artifacts must not retain signing material ({private})"
-PY
-
-echo 'OK: TestFlight signing route verified (secrets gate, profile checks, release modes, project and workflow contract)'
+# Native orchestration behavior is exercised by make test-ios-ci. Preserve
+# the signing fixture tests above and reject restoration of the provider route.
+[ -f "$WORKFLOW" ] || fail 'native iPhone delivery entrypoint is missing'
+[ ! -f "$ROOT/.github/workflows/testflight.yml" ] || fail 'TestFlight Actions workflow must remain retired'
+echo 'OK: native TestFlight signing route verified (secrets gate, profile checks, release modes and project)'

@@ -13,7 +13,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TOOLCHAIN_FILE="${RUST_TOOLCHAIN_FILE:-$ROOT/rust-toolchain.toml}"
-CI_FILE="${RUST_CI_WORKFLOW:-$ROOT/.github/workflows/ci.yml}"
+CI_FILE="${RUST_CI_WORKFLOW:-$ROOT/tools/ios-ci.py}"
 
 fail() { echo "rust-toolchain-pin-test: FAIL: $*" >&2; exit 1; }
 
@@ -41,34 +41,17 @@ for t in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64
         || fail "rust-toolchain.toml targets must include \"$t\" (cargo ndk builds it in build-android.sh)"
 done
 
-# 3. CI never installs a toolchain of its own choosing. Any action that takes a
-#    channel/version argument would be a second source of truth.
-if grep -nE 'uses:[[:space:]]*(dtolnay/rust-toolchain|actions-rs/toolchain|actions-rust-lang/setup-rust-toolchain)' "$CI_FILE"; then
-    fail "ci.yml installs Rust through a toolchain action; derive it from rust-toolchain.toml with 'rustup toolchain install' instead"
-fi
-if grep -nE 'rustup[[:space:]]+(default|override|toolchain[[:space:]]+install[[:space:]]+[^&|;#[:space:]])|cargo[[:space:]]+\+[a-z0-9]' "$CI_FILE"; then
-    fail "ci.yml names a Rust toolchain explicitly; the version must come only from rust-toolchain.toml"
-fi
+# The native executor installs the toolchain without a channel argument; rustup
+# resolves the checked-in pin. Effective version equality is also tested at runtime.
+python3 - "$CI_FILE" <<'PY'
+import ast
+import sys
+source = open(sys.argv[1]).read()
+tree = ast.parse(source)
+commands = [node.value for node in ast.walk(tree) if isinstance(node, ast.Constant) and isinstance(node.value, str)]
+assert 'rustup' in commands and 'toolchain' in commands and 'install' in commands
+assert 'stable' not in commands and 'nightly' not in commands, 'native CI must not float the Rust toolchain'
+assert 'Effective Rust version does not match rust-toolchain.toml' in commands
+PY
 
-# 4. Every job that runs cargo installs the pinned toolchain before using it.
-#    Split the workflow into jobs (2-space-indented keys under `jobs:`).
-awk -v ci="$CI_FILE" '
-    /^jobs:/ { injobs = 1; next }
-    injobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
-        if (job != "" && usescargo && !installs) { print job; bad = 1 }
-        job = $1; sub(":", "", job); usescargo = 0; installs = 0; next
-    }
-    injobs && /rustup toolchain install/ { if (!usescargo) installs = 1 }
-    injobs && /(^|[^A-Za-z-])cargo[[:space:]]/ && $0 !~ /^[[:space:]]*#/ { usescargo = 1 }
-    END {
-        if (job != "" && usescargo && !installs) { print job; bad = 1 }
-        exit bad
-    }
-' "$CI_FILE" > /tmp/rust-toolchain-pin-test.$$ || {
-    jobs="$(tr '\n' ' ' < /tmp/rust-toolchain-pin-test.$$)"
-    rm -f /tmp/rust-toolchain-pin-test.$$
-    fail "CI job(s) run cargo before installing the pinned toolchain: $jobs"
-}
-rm -f /tmp/rust-toolchain-pin-test.$$
-
-echo "rust-toolchain-pin-test: OK (pinned $channel; CI derives from rust-toolchain.toml)"
+echo "rust-toolchain-pin-test: OK (pinned $channel; native CI derives from rust-toolchain.toml)"

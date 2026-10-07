@@ -29,7 +29,7 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 required = [
-    ".github/workflows/ci.yml",
+    "tools/ios-ci.py",
     "ios/Papercup/Info.plist",
     "ios/Papercup/Papercup.entitlements",
     "ios/Papercup/Resources/PrivacyInfo.xcprivacy",
@@ -156,71 +156,10 @@ markers = re.compile(r"\b(TODO|TBD|CHANGEME|YOUR_TEAM_ID|DRAFT)\b|<[^\r\n<>]+@[^
 marker = markers.search(all_release_text)
 require(marker is None, f"release materials contain placeholder marker: {marker.group(0) if marker else ''}")
 
-workflow = (root / ".github/workflows/ci.yml").read_text()
-
-def job_body(slug: str) -> str:
-    match = re.search(
-        rf"^  {re.escape(slug)}:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)",
-        workflow,
-        re.MULTILINE | re.DOTALL,
-    )
-    require(match is not None, f"CI workflow missing {slug} job")
-    return match.group("body")
-
-def private_checkout(job: str, repository: str, label: str) -> str:
-    blocks = [
-        block
-        for block in job.split("- uses: actions/checkout@v4")[1:]
-        if f"repository: {repository}" in block
-    ]
-    require(len(blocks) == 1, f"{label} must have exactly one private checkout")
-    block = blocks[0]
-    require("persist-credentials: false" in block,
-            f"{label} private checkout must not persist credentials")
-    return block
-
-token_repository = "${{ vars.TOKEN_KIT_REPOSITORY }}"
-token_key = "${{ secrets.TOKEN_KIT_DEPLOY_KEY }}"
-token_ref = "${{ steps.token-kit-ref.outputs.sha }}"
-source_repository = "${{ vars.PAPERCUP_REPOSITORY }}"
-source_key = "${{ secrets.PAPERCUP_DEPLOY_KEY }}"
-
-ios_job = job_body("ios")
-require("runs-on: macos-26" in ios_job,
-        "iPhone release gate must run on the current macOS 26 image")
-ios_token_checkout = private_checkout(ios_job, token_repository, "iOS token-kit")
-for expected, message in [
-    (f"ref: {token_ref}", "iOS token-kit checkout must use the pinned submodule revision"),
-    (f"ssh-key: {token_key}", "iOS token-kit checkout must use its read-only deploy key"),
-    ("path: libs/token-kit", "iOS token-kit checkout must populate the file dependency"),
-]:
-    require(expected in ios_token_checkout, message)
-require(ios_job.index(f"repository: {token_repository}") < ios_job.index("npm ci"),
-        "iOS token-kit checkout must happen before npm ci")
-
-design_job = job_body("design-tokens")
-design_token_checkout = private_checkout(design_job, token_repository, "design token-kit")
-for expected, message in [
-    (f"ref: {token_ref}", "design token-kit checkout must use the pinned submodule revision"),
-    (f"ssh-key: {token_key}", "design token-kit checkout must use its read-only deploy key"),
-    ("path: libs/token-kit", "design token-kit checkout must populate the file dependency"),
-]:
-    require(expected in design_token_checkout, message)
-source_checkout = private_checkout(design_job, source_repository, "design source")
-require(f"ssh-key: {source_key}" in source_checkout,
-        "design source checkout must use its read-only deploy key")
-require("path: ci/papercup" in source_checkout,
-        "design source checkout must remain inside GITHUB_WORKSPACE")
-require("PAPERCUP_DESIGN_TOKENS_DIR: ${{ github.workspace }}/ci/papercup/design-tokens" in design_job,
-        "design-token drift check must use the in-workspace source checkout")
-require('REQUIRE_PRIMITIVES_SOURCE: "1"' in design_job,
-        "design-token drift check must fail closed when its source is missing")
-require(design_job.index(f"repository: {token_repository}") < design_job.index("npm ci"),
-        "design token-kit checkout must happen before npm ci")
-require(design_job.index(f"repository: {source_repository}") < design_job.index("npm run tokens:check"),
-        "design source checkout must happen before the drift check")
-require(re.search(r"^\s+path:\s+\.\.(?:/|$)", workflow, re.MULTILINE) is None,
-        "CI checkout paths must stay inside GITHUB_WORKSPACE")
+# Runtime SDK and native execution admission are enforced by tools/ios-ci.py.
+workflow_dir = root / '.github/workflows'
+require(not any(workflow_dir.glob('*.yml')) and not any(workflow_dir.glob('*.yaml')),
+        'GitHub Actions workflows must remain retired; use tools/ios-ci.py')
 
 print(f"OK: iOS release contract 1.0.0 ({root})")
 PY

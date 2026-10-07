@@ -11,7 +11,7 @@ TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 files=(
-    .github/workflows/ci.yml
+    tools/ios-ci.py
     ios/Papercup/Info.plist
     ios/Papercup/Papercup.entitlements
     ios/Papercup/Resources/PrivacyInfo.xcprivacy
@@ -76,14 +76,7 @@ printf '\nContact <pending@example.com>\n' >> "$TMP_ROOT/fixture/store/LISTING.m
 expect_failure "placeholder marker"
 
 copy_fixture
-cat >> "$TMP_ROOT/fixture/.github/workflows/ci.yml" <<'YAML_FIXTURE'
-      - name: Harmless heredoc followed by an email and redirection
-        run: |
-          cat <<'SCRIPT'
-          portable content
-          SCRIPT
-          echo 'fixture@local' >> output.txt
-YAML_FIXTURE
+printf '\nHarmless fixture@local followed by > redirection\n' >> "$TMP_ROOT/fixture/store/LISTING.md"
 PAPERCUP_IOS_RELEASE_ROOT="$TMP_ROOT/fixture" "$VERIFY"
 
 copy_fixture
@@ -104,24 +97,12 @@ PY
 expect_failure "alpha channel"
 
 copy_fixture
-python3 - "$TMP_ROOT/fixture/.github/workflows/ci.yml" <<'PY'
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-workflow = path.read_text()
-workflow = workflow.replace(
-    "ssh-key: ${{ secrets.TOKEN_KIT_DEPLOY_KEY }}",
-    "ssh-key: ${{ secrets.BROKEN_DEPLOY_KEY }}",
-    1,
-)
-path.write_text(workflow)
-PY
-expect_failure "iOS token-kit checkout must use its read-only deploy key"
+rm "$TMP_ROOT/fixture/tools/ios-ci.py"
+expect_failure "missing release input: tools/ios-ci.py"
 
 copy_fixture
-sed -i.bak 's#path: ci/papercup#path: ../papercup#' \
-    "$TMP_ROOT/fixture/.github/workflows/ci.yml"
-expect_failure "design source checkout must remain inside GITHUB_WORKSPACE"
+mkdir -p "$TMP_ROOT/fixture/.github/workflows"
+printf 'name: retired provider\n' > "$TMP_ROOT/fixture/.github/workflows/ci.yml"
+expect_failure "workflows must remain retired"
 
-echo "OK: iOS release verifier rejects unsafe transport, placeholders, stale versions, transparent icons, and unsafe CI dependency checkouts"
+echo "OK: native iOS release verifier rejects unsafe transport, placeholders, stale versions, transparent icons, missing execution entrypoint and restored Actions"

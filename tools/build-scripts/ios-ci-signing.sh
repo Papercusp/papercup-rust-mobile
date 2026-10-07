@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Apple signing setup for the TestFlight workflow (.github/workflows/testflight.yml).
+# Apple signing setup for the native tools/ios-ci.py TestFlight route.
 #
-# Secrets arrive as environment variables from GitHub Actions. Signing material
-# is written only under $PAPERCUP_SIGNING_DIR (default $RUNNER_TEMP), never into
+# Secrets arrive as injected environment variables on the native Mac. Signing material
+# is written only under $PAPERCUP_SIGNING_DIR (default $TMPDIR), never into
 # the repository, and `cleanup` removes it together with the temporary keychain.
 #
 # Usage: ios-ci-signing.sh require-secrets | install | cleanup
@@ -12,7 +12,7 @@ set -euo pipefail
 
 REQUIRED_SECRETS="APPLE_TEAM_ID IOS_DIST_CERT_P12_BASE64 IOS_DIST_CERT_PASSWORD IOS_APPSTORE_PROFILE_BASE64 ASC_API_KEY_ID ASC_API_ISSUER_ID ASC_API_KEY_P8_BASE64"
 APP_BUNDLE_ID="${PAPERCUP_APP_BUNDLE_ID:-com.papercuspai.operator.mobile}"
-WORK_DIR="${PAPERCUP_SIGNING_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/papercup-signing}"
+WORK_DIR="${PAPERCUP_SIGNING_DIR:-${TMPDIR:-/tmp}/papercup-signing}"
 KEYCHAIN="$WORK_DIR/papercup-ci.keychain-db"
 WWDR_URL="https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer"
 PROFILE_DIRS=(
@@ -40,7 +40,7 @@ require_secrets() {
         fi
     done
     if [ "$missing" -gt 0 ]; then
-        die "TestFlight signing needs $missing missing repository secret(s); see docs/BUILD.md (TestFlight)"
+        die "TestFlight signing needs $missing missing native signing input(s); see docs/BUILD.md (TestFlight)"
     fi
     if ! [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
         echo "INVALID_SECRET: APPLE_TEAM_ID" >&2
@@ -113,11 +113,23 @@ PY
 }
 
 emit_env() {
-    if [ -n "${GITHUB_ENV:-}" ]; then
-        printf '%s=%s\n' "$1" "$2" >> "$GITHUB_ENV"
-    else
-        printf 'export %s=%q\n' "$1" "$2"
-    fi
+    : "${PAPERCUP_SIGNING_ENV_FILE:?Native signing requires an owner-only temporary JSON environment file}"
+    python3 - "$PAPERCUP_SIGNING_ENV_FILE" "$1" "$2" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+path, name, value = sys.argv[1:]
+target = Path(path)
+values = json.loads(target.read_text()) if target.exists() else {}
+values[name] = value
+old = os.umask(0o077)
+try:
+    target.write_text(json.dumps(values))
+    target.chmod(0o600)
+finally:
+    os.umask(old)
+PY
 }
 
 install_signing() {
@@ -132,7 +144,7 @@ install_signing() {
     IFS=$'\t' read -r profile_name profile_uuid profile_sha1s <<< "$profile_info"
 
     keychain_password="$(openssl rand -hex 24)"
-    echo "::add-mask::$keychain_password"
+    # Native logs have no Actions masking processor; never print this password.
     security create-keychain -p "$keychain_password" "$KEYCHAIN"
     security set-keychain-settings -lut 21600 "$KEYCHAIN"
     security unlock-keychain -p "$keychain_password" "$KEYCHAIN"
