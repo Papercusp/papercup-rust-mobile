@@ -203,6 +203,10 @@ def prune_attempts(state, keep=16):
 def install_launch_agent(root, state):
     if platform.system() != 'Darwin':
         raise ValueError('Native launch agent installation requires macOS')
+    env = os.environ.copy()
+    env['PATH'] = str(Path.home() / '.cargo/bin') + ':/opt/homebrew/bin:/usr/local/bin:' + env.get('PATH', '/usr/bin:/bin:/usr/sbin:/sbin')
+    # Refuse before installing a recurring job that cannot execute on this Mac.
+    toolchain(root, env)
     template = plistlib.loads((root / 'tools/ci/com.papercusp.ios-ci.plist').read_bytes())
     template['ProgramArguments'] = [sys.executable, str(root / 'tools/ios-ci.py'), '--mode', 'check']
     template['WorkingDirectory'] = str(root)

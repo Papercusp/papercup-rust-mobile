@@ -254,6 +254,7 @@ class NativeRunnerTests(unittest.TestCase):
         template = ROOT / 'tools/ci/com.papercusp.ios-ci.plist'
         (self.root / 'tools/ci/com.papercusp.ios-ci.plist').write_bytes(template.read_bytes())
         with patch.object(ci.platform, 'system', return_value='Darwin'), \
+                patch.object(ci, 'toolchain', return_value=self.native), \
                 patch.object(ci.Path, 'home', return_value=self.base), \
                 patch.dict(os.environ, {'DEVELOPER_DIR': '/Xcode26/Contents/Developer'}), \
                 patch.object(ci.subprocess, 'run') as launch:
@@ -265,6 +266,16 @@ class NativeRunnerTests(unittest.TestCase):
         self.assertTrue(installed['RunAtLoad'])
         self.assertEqual(installed['EnvironmentVariables']['DEVELOPER_DIR'], '/Xcode26/Contents/Developer')
         self.assertEqual(launch.call_args_list[-1].args[0][1], 'bootstrap')
+
+    def test_launch_agent_refuses_unsupported_toolchain_before_installing(self):
+        with patch.object(ci.platform, 'system', return_value='Darwin'), \
+                patch.object(ci, 'toolchain', side_effect=ValueError('SDK26+ required')), \
+                patch.object(ci.Path, 'home', return_value=self.base), \
+                patch.object(ci.subprocess, 'run') as launch:
+            with self.assertRaisesRegex(ValueError, 'SDK26'):
+                ci.install_launch_agent(self.root, self.state)
+        self.assertFalse((self.base / 'Library/LaunchAgents/com.papercusp.ios-ci.plist').exists())
+        launch.assert_not_called()
 
     def test_private_inputs_reject_repository_or_public_files(self):
         inside = self.root / 'secret.json'
