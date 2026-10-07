@@ -9,6 +9,16 @@ import uniffi.papercup.ApiException
 import uniffi.papercup.WorkspaceSwitchResult
 
 class WorkspaceSwitchTest {
+    @Test
+    fun identitySurvivesTokenRotationWithoutAppearingInDiagnostics() = runBlocking {
+        val paired = original.copy(noiseSeed = "private-seed-canary", noiseKey = "machine-pin")
+        val switched = paired.switchWorkspace("second", { WorkspaceSwitchResult("new-token", it) }, {})
+        assertEquals(paired.noiseSeed, switched.noiseSeed)
+        assertEquals(paired.noiseKey, switched.noiseKey)
+        assertFalse(switched.toString().contains("private-seed-canary"))
+        assertFalse(switched.toString().contains("new-token"))
+    }
+
     private val original = DeviceCredentials(
         server = "https://operator.example",
         deviceToken = "old-token",

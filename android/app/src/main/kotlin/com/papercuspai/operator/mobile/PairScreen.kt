@@ -48,6 +48,8 @@ import uniffi.papercup.PairException
 import uniffi.papercup.PairOutcome
 import uniffi.papercup.QrPayload
 import uniffi.papercup.parseQrPayload
+import uniffi.papercup.generateNoiseSeed
+import uniffi.papercup.noisePublicKey
 
 /// One-shot pair flow. Either the QR scanner finds a payload, or the user
 /// pastes the JSON manually. We then call `OperatorClient.pair()` with the
@@ -83,9 +85,16 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit, onOpenLibraryNotices: () -
                 // exchange and persistence when pairing cannot finish.
                 Log.i("PapercupPairing", "stage=client-start")
                 val client = OperatorClient(payload.server, null)
+                val noiseSeed = payload.noiseKey?.let {
+                    generateNoiseSeed().also { seed -> client.configureSealedTransport(seed, it) }
+                }
                 Log.i("PapercupPairing", "stage=client-ready")
                 Log.i("PapercupPairing", "stage=request-start")
-                val outcome: PairOutcome = client.pair(payload.pairToken)
+                val outcome: PairOutcome = if (noiseSeed == null) {
+                    client.pair(payload.pairToken)
+                } else {
+                    client.pairWithNoise(payload.pairToken, noisePublicKey(noiseSeed))
+                }
                 Log.i("PapercupPairing", "stage=response-received")
                 outcome.defguardEnrollmentUrl?.takeIf { it.isNotBlank() }?.let { url ->
                     runCatching {
@@ -104,6 +113,8 @@ fun PairScreen(onPaired: (DeviceCredentials) -> Unit, onOpenLibraryNotices: () -
                         workspaceId = outcome.workspaceId,
                         meshUrl = null,
                         defguardEnrollmentUrl = outcome.defguardEnrollmentUrl,
+                        noiseSeed = noiseSeed,
+                        noiseKey = payload.noiseKey,
                     ),
                 )
                 Log.i("PapercupPairing", "stage=credentials-saved")

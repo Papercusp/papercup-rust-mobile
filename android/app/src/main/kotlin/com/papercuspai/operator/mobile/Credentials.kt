@@ -23,17 +23,31 @@ data class DeviceCredentials(
     /// Defguard self-enrollment URL from the pair outcome (D-005). The
     /// device opens this once to join the mesh; display-only afterward.
     val defguardEnrollmentUrl: String? = null,
+    /// Phone identity and QR machine pin, stored with the JWT in encrypted prefs.
+    val noiseSeed: String? = null,
+    val noiseKey: String? = null,
 ) {
+    // Data-class diagnostics must not expose the newly persisted private seed.
+    override fun toString(): String =
+        "DeviceCredentials(deviceId=$deviceId, workspaceId=$workspaceId, sealed=${noiseKey != null})"
+
     /// Build an OperatorClient that prefers the mesh URL (if known) and
     /// auto-falls back to the public `server` URL on transport failure.
     /// Use this everywhere instead of OperatorClient(_, _).
     fun client(): OperatorClient {
         val mesh = meshUrl
-        return if (!mesh.isNullOrBlank() && mesh != server) {
+        val client = if (!mesh.isNullOrBlank() && mesh != server) {
             OperatorClient.newWithFallback(mesh, server, deviceToken)
         } else {
             OperatorClient(server, deviceToken)
         }
+        if (noiseSeed != null || noiseKey != null) {
+            if (noiseSeed == null || noiseKey == null) {
+                throw ApiException.Decode("Incomplete sealed pairing; pair again")
+            }
+            client.configureSealedTransport(noiseSeed, noiseKey)
+        }
+        return client
     }
 
     suspend fun switchWorkspace(
@@ -71,6 +85,10 @@ class CredentialStore(context: Context) {
         val token = prefs.getString(KEY_TOKEN, null) ?: return null
         val deviceId = prefs.getString(KEY_DEVICE_ID, null) ?: return null
         val workspaceId = prefs.getString(KEY_WORKSPACE_ID, null) ?: return null
+        val seed = prefs.getString(KEY_NOISE_SEED, null)
+        val key = prefs.getString(KEY_NOISE_KEY, null)
+        // A partial identity must never restore as an unsealed session.
+        if ((seed == null) != (key == null)) return null
         return DeviceCredentials(
             server = server,
             deviceToken = token,
@@ -78,6 +96,8 @@ class CredentialStore(context: Context) {
             workspaceId = workspaceId,
             meshUrl = prefs.getString(KEY_MESH_URL, null),
             defguardEnrollmentUrl = prefs.getString(KEY_DEFGUARD_URL, null),
+            noiseSeed = seed,
+            noiseKey = key,
         )
     }
 
@@ -89,6 +109,8 @@ class CredentialStore(context: Context) {
             .putString(KEY_WORKSPACE_ID, creds.workspaceId)
             .putString(KEY_MESH_URL, creds.meshUrl)
             .putString(KEY_DEFGUARD_URL, creds.defguardEnrollmentUrl)
+            .putString(KEY_NOISE_SEED, creds.noiseSeed)
+            .putString(KEY_NOISE_KEY, creds.noiseKey)
             .apply()
     }
 
@@ -103,5 +125,7 @@ class CredentialStore(context: Context) {
         const val KEY_WORKSPACE_ID = "workspace_id"
         const val KEY_MESH_URL = "mesh_url"
         const val KEY_DEFGUARD_URL = "defguard_enrollment_url"
+        const val KEY_NOISE_SEED = "noise_seed"
+        const val KEY_NOISE_KEY = "noise_key"
     }
 }

@@ -9,6 +9,12 @@ namespace papercup {
     [Throws=PairError]
     QrPayload parse_qr_payload(string text);
 
+    /// OS-random 32-byte seed, encoded as canonical base64. Persist only in
+    /// the platform credential store; never log or include in pair bodies.
+    string generate_noise_seed();
+    [Throws=ApiError]
+    string noise_public_key(string seed);
+
     /// Build the voice WS URL from the API base URL plus the
     /// runtime-config-discovered port + path (the voice WS listens on
     /// its own port — default :3068 — NOT the API port). Call
@@ -187,6 +193,8 @@ dictionary QrPayload {
     string server;
     string pair_token;
     string workspace_id;
+    /// QR-pinned machine Ed25519 key; null for LAN pairing.
+    string? noise_key;
 };
 
 dictionary PairOutcome {
@@ -429,6 +437,15 @@ dictionary StandingCandidate {
 
 interface OperatorClient {
     constructor(string base_url, string? device_token);
+
+    /// Configure before pairing and after restoring saved credentials.
+    /// All device traffic remains sealed, including route fallback.
+    [Throws=ApiError]
+    void configure_sealed_transport(string seed, string machine_key);
+
+    /// Pair with the public key derived from the configured phone seed.
+    [Throws=PairError, Async]
+    PairOutcome pair_with_noise(string pair_token, string public_key);
 
     /// Phase 6c — preferred mesh URL with auto-fallback to public.
     /// Transport-level errors against `primary` swap to `fallback`

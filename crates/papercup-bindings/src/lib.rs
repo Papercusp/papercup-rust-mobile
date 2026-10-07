@@ -12,6 +12,7 @@
 #![allow(clippy::empty_line_after_doc_comments)]
 #![allow(clippy::large_const_arrays)]
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use papercup_core::client::{ApiError as CoreApiError, OperatorClient as CoreClient};
 use papercup_core::types::{
     AttentionResp as CoreAttentionResp, AttentionSystemAlert as CoreAttentionSystemAlert,
@@ -27,6 +28,8 @@ use papercup_core::voice::{
     voice_ws_url as core_voice_ws_url, VoiceClient as CoreVoice, VoiceError as CoreVoiceError,
     VoiceEvent as CoreVoiceEvent, VoiceStatus as CoreVoiceStatus,
 };
+use rand_core::{OsRng, RngCore};
+use zeroize::Zeroizing;
 
 uniffi::include_scaffolding!("papercup");
 
@@ -133,6 +136,8 @@ fn parse_qr_payload(text: String) -> Result<QrPayload, PairError> {
         pair_token: String,
         #[serde(rename = "workspaceId")]
         workspace_id: String,
+        #[serde(rename = "noiseKey")]
+        noise_key: Option<String>,
     }
     let raw: Raw = serde_json::from_str(text.trim()).map_err(|_| PairError::InvalidQr {
         detail: "JSON parse failed".into(),
@@ -142,11 +147,54 @@ fn parse_qr_payload(text: String) -> Result<QrPayload, PairError> {
             detail: "JSON parse failed".into(),
         });
     }
+    if let Some(key) = &raw.noise_key {
+        let key = decode_noise_key(key).map_err(|_| PairError::InvalidQr {
+            detail: "Invalid machine Noise key".into(),
+        })?;
+        validate_noise_public_key(&key).map_err(|_| PairError::InvalidQr {
+            detail: "Invalid machine Noise key".into(),
+        })?;
+    }
     Ok(QrPayload {
         server: raw.server,
         pair_token: raw.pair_token,
         workspace_id: raw.workspace_id,
+        noise_key: raw.noise_key,
     })
+}
+
+fn decode_noise_key(encoded: &str) -> Result<Zeroizing<[u8; 32]>, ApiError> {
+    let invalid = || ApiError::Decode {
+        detail: "Noise key must be canonical base64 encoding of 32 bytes".into(),
+    };
+    let bytes = Zeroizing::new(STANDARD.decode(encoded).map_err(|_| invalid())?);
+    if bytes.len() != 32 || STANDARD.encode(&*bytes) != encoded {
+        return Err(invalid());
+    }
+    let mut key = Zeroizing::new([0; 32]);
+    key.copy_from_slice(&bytes);
+    Ok(key)
+}
+
+fn validate_noise_public_key(key: &[u8; 32]) -> Result<(), ApiError> {
+    papercup_core::noise_stream::Ed25519KeyPair::from_seed(&[1; 32])
+        .diffie_hellman(key)
+        .map(|_| ())
+        .map_err(|e| ApiError::Decode {
+            detail: e.to_string(),
+        })
+}
+
+fn generate_noise_seed() -> String {
+    let mut seed = Zeroizing::new([0; 32]);
+    OsRng.fill_bytes(&mut seed[..]);
+    STANDARD.encode(&*seed)
+}
+
+fn noise_public_key(seed: String) -> Result<String, ApiError> {
+    let seed = Zeroizing::new(seed);
+    let key = decode_noise_key(&seed)?;
+    Ok(STANDARD.encode(papercup_core::noise_stream::Ed25519KeyPair::from_seed(&key).public_key()))
 }
 
 // ── sync cache (Phase 3) ────────────────────────────────────────────────
@@ -380,6 +428,90 @@ mod boundary_smoke {
         ));
         assert!(parse_qr_payload("not-json".into()).is_err());
     }
+
+    #[test]
+    fn noise_seed_public_key_matches_independent_js_known_answer() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../papercup-core/tests/fixtures/noise_xx_kat.json"
+        ))
+        .unwrap();
+        let hex = vectors["vectors"][0]["publicKeys"]["initiatorStatic"]
+            .as_str()
+            .unwrap();
+        let expected: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect();
+        assert_eq!(
+            noise_public_key(STANDARD.encode([1; 32])).unwrap(),
+            STANDARD.encode(expected)
+        );
+        let first = generate_noise_seed();
+        let second = generate_noise_seed();
+        assert_ne!(first, second);
+        assert_eq!(decode_noise_key(&first).unwrap().len(), 32);
+        assert!(noise_public_key(first).is_ok());
+    }
+
+    #[test]
+    fn qr_preserves_valid_machine_pin_and_rejects_invalid_pin_without_downgrade() {
+        let key = noise_public_key(STANDARD.encode([3; 32])).unwrap();
+        let qr = |key: serde_json::Value| {
+            serde_json::json!({
+                "server": "https://relay.test/api/workspaces/w", "pairToken": "token",
+                "workspaceId": "w", "noiseKey": key,
+            })
+            .to_string()
+        };
+        assert_eq!(
+            parse_qr_payload(qr(serde_json::json!(key)))
+                .unwrap()
+                .noise_key,
+            Some(key)
+        );
+        assert!(parse_qr_payload(qr(serde_json::Value::Null))
+            .unwrap()
+            .noise_key
+            .is_none());
+        for bad in [
+            "".into(),
+            "garbage".into(),
+            STANDARD.encode([0; 32]),
+            STANDARD.encode([3; 31]),
+        ] {
+            assert!(matches!(
+                parse_qr_payload(qr(serde_json::json!(bad))),
+                Err(PairError::InvalidQr { .. })
+            ));
+        }
+        for bad in ["".into(), "garbage".into(), STANDARD.encode([1; 31])] {
+            assert!(noise_public_key(bad).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn pairing_rejects_different_identity_before_network_or_token_redemption() {
+        let client = OperatorClient::new("http://127.0.0.1:1".into(), None);
+        client
+            .configure_sealed_transport(
+                STANDARD.encode([1; 32]),
+                noise_public_key(STANDARD.encode([3; 32])).unwrap(),
+            )
+            .unwrap();
+        assert!(matches!(
+            client
+                .pair_with_noise(
+                    "one-time-token".into(),
+                    noise_public_key(STANDARD.encode([2; 32])).unwrap()
+                )
+                .await,
+            Err(PairError::Decode { .. })
+        ));
+        assert!(matches!(
+            client.configure_sealed_transport(STANDARD.encode([1; 32]), STANDARD.encode([0; 32])),
+            Err(ApiError::Decode { .. })
+        ));
+    }
 }
 
 // ── error mapping ───────────────────────────────────────────────────────
@@ -532,6 +664,7 @@ pub struct QrPayload {
     pub server: String,
     pub pair_token: String,
     pub workspace_id: String,
+    pub noise_key: Option<String>,
 }
 
 pub struct PairOutcome {
@@ -1252,6 +1385,47 @@ impl papercup_core::biometric::BiometricPrompt for PromptShim {
 }
 
 impl OperatorClient {
+    pub fn configure_sealed_transport(
+        &self,
+        seed: String,
+        machine_key: String,
+    ) -> Result<(), ApiError> {
+        let seed = Zeroizing::new(seed);
+        self.inner.configure_sealed_transport(
+            &*decode_noise_key(&seed)?,
+            &*decode_noise_key(&machine_key)?,
+        )?;
+        Ok(())
+    }
+
+    pub async fn pair_with_noise(
+        &self,
+        pair_token: String,
+        public_key: String,
+    ) -> Result<PairOutcome, PairError> {
+        let key = decode_noise_key(&public_key).map_err(|_| PairError::Decode {
+            detail: "Invalid phone Noise public key".into(),
+        })?;
+        validate_noise_public_key(&key).map_err(|_| PairError::Decode {
+            detail: "Invalid phone Noise public key".into(),
+        })?;
+        let core = self.inner.clone();
+        let resp = rt()
+            .spawn(async move { core.pair_with_noise(PairBody { pair_token }, &key).await })
+            .await
+            .map_err(|_| PairError::Network {
+                detail: "tokio join".into(),
+            })??;
+        Ok(PairOutcome {
+            device_token: resp.device_token,
+            device_id: resp.device_id,
+            workspace_id: resp.workspace_id,
+            desktop_host: resp.desktop_host,
+            defguard_enrollment_url: resp.defguard_enrollment_url,
+            base_urls_json: routes_json(&resp.base_urls),
+        })
+    }
+
     pub fn new(base_url: String, device_token: Option<String>) -> Self {
         Self {
             inner: CoreClient::new(base_url, device_token),
