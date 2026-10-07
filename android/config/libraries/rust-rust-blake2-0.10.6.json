@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:blake2:0.10.6",
+  "name": "blake2",
+  "artifactVersion": "0.10.6",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-9c768944eb4a0422ca2efc25ea9fb2fb9e7fbd3fdb04e86b87366339cb7466db",
+    "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+  ]
+}

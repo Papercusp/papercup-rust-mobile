@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:aead:0.5.2",
+  "name": "aead",
+  "artifactVersion": "0.5.2",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-949ab7b3e7140fee216f06fe3a2bd67d68dd511f8ea73c1e01c98cb348e9c8ae",
+    "rust-b1cf9a3333ca78152b859012cd4a804156e5243e9ca20ad1df7327ba5ea7405c"
+  ]
+}

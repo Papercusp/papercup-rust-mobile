@@ -1,0 +1,5 @@
+{
+  "hash": "rust-ad74c036a6afaedc418fed65f171c877c2f74a4c70938a03930aa11c98a20508",
+  "name": "AUTHORS",
+  "content": "# This is the official list of fiat-crypto authors for copyright purposes.\n# This file is distinct from the CONTRIBUTORS files.\n# See the latter for an explanation.\n\n# Names should be added to this file as one of\n#     Organization's name\n#     Individual's name <submission email address>\n#     Individual's name <submission email address> <email2> <emailN>\n# See CONTRIBUTORS for the meaning of multiple email addresses.\n\n# Please keep the list sorted.\n\nAndres Erbsen <andreser@mit.edu>\nGoogle Inc.\nJade Philipoom <jadep@mit.edu> <jade.philipoom@gmail.com>\nMassachusetts Institute of Technology\nZoe Paraskevopoulou <zoe.paraskevopoulou@gmail.com>"
+}

@@ -220,6 +220,31 @@ their own evidence.
 The existing source-provenance helper provides a repeatable exported-source
 compilation check, after the root archive and locked Rust supplement are prepared:
 
+October 7 current-lock refresh (local source/notice preparation only):
+`Cargo.lock` SHA-256
+`c72f591c4268cf1a8c480f0ebf4032d017b399151c307cffa9f7522a8e6a56f3`
+adds 17 registry packages and removes none. Frozen vendoring and the maintained
+`source-notices` verifier checked all 266 packages and 12,658 vendor file digests,
+producing 179 distinct notice texts. The added crypto packages retain their
+packaged license texts, including curve25519-dalek's BSD-3-Clause license and
+fiat-crypto's AUTHORS, COPYRIGHT and three alternative-license texts. Existing
+UniFFI MPL supplements remain pinned to the same packaged VCS revision.
+
+The refreshed `android/config/RUST-SOURCES.json` and existing collector inputs
+carry the complete current inventory, rather than a lock-hash-only override.
+The maintained provenance regression suite passed. The maintained Gradle notice
+suite passed debug/release graph coverage, exact Rust text/reference checks,
+44 rejecting controls per variant, isolated cached add/remove transitions and
+the production stale-lock rejection control. Local logs are
+`android/app/build/outputs/p007-provenance-tests.log` and
+`android/app/build/outputs/p007-notice-tests.log`; the current source/text receipt
+is `android/app/build/outputs/papercusp-rust-notices-result.json`. Prior Rust
+dependency archive/inventory/notice receipts and collector ledger were retained
+under `android/app/build/outputs/p007-prior-rust-notices` before replacement.
+These checks do not establish Android linkage, complete source-header attribution,
+license-choice/distribution clearance, signed-candidate native access or recipient
+delivery. Final source export and acceptance must remain candidate-bound.
+
 ```sh
 tools/build-scripts/android-release-provenance.sh source-verify-build host
 tools/build-scripts/android-release-provenance.sh source-verify-build android

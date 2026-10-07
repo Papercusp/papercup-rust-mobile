@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:rustc_version:0.4.1",
+  "name": "rustc_version",
+  "artifactVersion": "0.4.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "rust-c9a75f18b9ab2927829a208fc6aa2cf4e63b8420887ba29cdb265d6619ae82d5"
+  ]
+}

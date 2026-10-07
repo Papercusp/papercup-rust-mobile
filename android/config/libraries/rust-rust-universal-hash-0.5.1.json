@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:universal-hash:0.5.1",
+  "name": "universal-hash",
+  "artifactVersion": "0.5.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-6b50510a0400c72172355cc5d2ba0f2c5c2eb33149b8f96539dc345fdc484920",
+    "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+  ]
+}

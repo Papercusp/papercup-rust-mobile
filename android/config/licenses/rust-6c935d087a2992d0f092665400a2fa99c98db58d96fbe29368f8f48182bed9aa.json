@@ -1,0 +1,5 @@
+{
+  "hash": "rust-6c935d087a2992d0f092665400a2fa99c98db58d96fbe29368f8f48182bed9aa",
+  "name": "COPYRIGHT",
+  "content": "SPDX-License-Identifier: MIT OR Apache-2.0 OR BSD-1-Clause\n\nFiat Cryptography is licensed under the MIT License <LICENSE-MIT> or\n<http://opensource.org/licenses/MIT>, the Apache License, Version 2.0\n<LICENSE-APACHE> or <http://www.apache.org/licenses/LICENSE-2.0>, or\nthe BSD 1-Clause License <LICENSE-BSD-1> or\n<https://spdx.org/licenses/BSD-1-Clause.html>, at your option.\n"
+}

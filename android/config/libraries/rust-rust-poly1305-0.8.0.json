@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:poly1305:0.8.0",
+  "name": "poly1305",
+  "artifactVersion": "0.8.0",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-6d99fffea918d1f7dfe567029c7bd21d6fcaf310ad28c44e6511a0e1f68c79ea",
+    "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+  ]
+}

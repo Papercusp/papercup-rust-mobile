@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:inout:0.1.4",
+  "name": "inout",
+  "artifactVersion": "0.1.4",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-304b898acad7f02e03d6d8832d682a3b43ee729ab5d3a069af5a36979083b6b4",
+    "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+  ]
+}

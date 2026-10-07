@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "sourceCommit": "8d3e99c8333293ac83387a2b82c1b5a53c139604",
+  "sourceCommit": "0f0440469275115e849d97e3d42d71bc05d887ea",
   "mode": "notices",
-  "startedAt": "2026-10-03T05:50:50.390899+00:00",
-  "finishedAt": "2026-10-03T05:51:08.987916+00:00",
+  "startedAt": "2026-10-07T02:38:05.835981+00:00",
+  "finishedAt": "2026-10-07T02:38:21.668091+00:00",
   "exitCode": 0,
   "inputs": {
-    "android/app/build/outputs/papercusp-mobile-source.tar.gz": "b3dd66fcd5e9640928dd6732b251df798a1e7f4e3f763d44501e65c039e0897a",
-    "android/app/build/outputs/papercusp-rust-dependencies.tar.gz": "c3e3ef5c280b270deb739ba1341443d47cbd3fe3afb7693b14c74df0ee570f8d"
+    "android/app/build/outputs/papercusp-mobile-source.tar.gz": "832772af15b4004ad08fdcea8772d4636cbed3f9ab1cd160e13cd25edf78a700",
+    "android/app/build/outputs/papercusp-rust-dependencies.tar.gz": "5734fb1383db17472d957d3cbfaf98565477cbe21132ae6e3595f89abe5f827b"
   },
-  "cargoLockSha256": "389f43b2d8d5fec43b35c2dc71246e0fd395a598ec9517516b54c8e8c6746c81",
-  "verifiedRegistryPackages": 249,
-  "verifiedVendorFiles": 12321,
+  "cargoLockSha256": "c72f591c4268cf1a8c480f0ebf4032d017b399151c307cffa9f7522a8e6a56f3",
+  "verifiedRegistryPackages": 266,
+  "verifiedVendorFiles": 12658,
   "packages": [
     {
       "name": "adler2",
@@ -40,6 +40,28 @@
         }
       ],
       "libraryFile": "android/config/libraries/rust-rust-adler2-2.0.1.json"
+    },
+    {
+      "name": "aead",
+      "version": "0.5.2",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "d122413f284cf2d62fb1b7db97e02edb8cda96d769b16e443a4f6195e35662b0",
+      "texts": [
+        {
+          "path": "aead-0.5.2/LICENSE-APACHE",
+          "sha256": "b1cf9a3333ca78152b859012cd4a804156e5243e9ca20ad1df7327ba5ea7405c",
+          "licenseId": "rust-b1cf9a3333ca78152b859012cd4a804156e5243e9ca20ad1df7327ba5ea7405c",
+          "licenseFile": "android/config/licenses/rust-b1cf9a3333ca78152b859012cd4a804156e5243e9ca20ad1df7327ba5ea7405c.json"
+        },
+        {
+          "path": "aead-0.5.2/LICENSE-MIT",
+          "sha256": "949ab7b3e7140fee216f06fe3a2bd67d68dd511f8ea73c1e01c98cb348e9c8ae",
+          "licenseId": "rust-949ab7b3e7140fee216f06fe3a2bd67d68dd511f8ea73c1e01c98cb348e9c8ae",
+          "licenseFile": "android/config/licenses/rust-949ab7b3e7140fee216f06fe3a2bd67d68dd511f8ea73c1e01c98cb348e9c8ae.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-aead-0.5.2.json"
     },
     {
       "name": "aho-corasick",
@@ -400,6 +422,28 @@
       "libraryFile": "android/config/libraries/rust-rust-bitflags-2.11.1.json"
     },
     {
+      "name": "blake2",
+      "version": "0.10.6",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "46502ad458c9a52b69d4d4d32775c788b7a1b85e8bc9d482d92250fc0e3f8efe",
+      "texts": [
+        {
+          "path": "blake2-0.10.6/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "blake2-0.10.6/LICENSE-MIT",
+          "sha256": "9c768944eb4a0422ca2efc25ea9fb2fb9e7fbd3fdb04e86b87366339cb7466db",
+          "licenseId": "rust-9c768944eb4a0422ca2efc25ea9fb2fb9e7fbd3fdb04e86b87366339cb7466db",
+          "licenseFile": "android/config/licenses/rust-9c768944eb4a0422ca2efc25ea9fb2fb9e7fbd3fdb04e86b87366339cb7466db.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-blake2-0.10.6.json"
+    },
+    {
       "name": "block-buffer",
       "version": "0.10.4",
       "declaredLicense": "MIT OR Apache-2.0",
@@ -420,6 +464,28 @@
         }
       ],
       "libraryFile": "android/config/libraries/rust-rust-block-buffer-0.10.4.json"
+    },
+    {
+      "name": "block-padding",
+      "version": "0.3.3",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "a8894febbff9f758034a5b8e12d87918f56dfc64a8e1fe757d65e29041538d93",
+      "texts": [
+        {
+          "path": "block-padding-0.3.3/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "block-padding-0.3.3/LICENSE-MIT",
+          "sha256": "d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef",
+          "licenseId": "rust-d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef",
+          "licenseFile": "android/config/licenses/rust-d5c22aa3118d240e877ad41c5d9fa232f9c77d757d4aac0c2f943afc0a95e0ef.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-block-padding-0.3.3.json"
     },
     {
       "name": "bumpalo",
@@ -606,6 +672,72 @@
         }
       ],
       "libraryFile": "android/config/libraries/rust-rust-cfg_aliases-0.2.1.json"
+    },
+    {
+      "name": "chacha20",
+      "version": "0.9.1",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "declaredLicenseFile": null,
+      "packageChecksum": "c3613f74bd2eac03dad61bd53dbe620703d4371614fe0bc3b9f04dd36fe4e818",
+      "texts": [
+        {
+          "path": "chacha20-0.9.1/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "chacha20-0.9.1/LICENSE-MIT",
+          "sha256": "b6f6f01b03ee7e93c0ae96d62ed39527e98a120fb951afc9de456a741ef3f204",
+          "licenseId": "rust-b6f6f01b03ee7e93c0ae96d62ed39527e98a120fb951afc9de456a741ef3f204",
+          "licenseFile": "android/config/licenses/rust-b6f6f01b03ee7e93c0ae96d62ed39527e98a120fb951afc9de456a741ef3f204.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-chacha20-0.9.1.json"
+    },
+    {
+      "name": "chacha20poly1305",
+      "version": "0.10.1",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "declaredLicenseFile": null,
+      "packageChecksum": "10cd79432192d1c0f4e1a0fef9527696cc039165d729fb41b3f4f4f354c2dc35",
+      "texts": [
+        {
+          "path": "chacha20poly1305-0.10.1/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "chacha20poly1305-0.10.1/LICENSE-MIT",
+          "sha256": "3c0dfa33fd2e6976038555b52095699452653b1fcabe113074f14e0848a6b11e",
+          "licenseId": "rust-3c0dfa33fd2e6976038555b52095699452653b1fcabe113074f14e0848a6b11e",
+          "licenseFile": "android/config/licenses/rust-3c0dfa33fd2e6976038555b52095699452653b1fcabe113074f14e0848a6b11e.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-chacha20poly1305-0.10.1.json"
+    },
+    {
+      "name": "cipher",
+      "version": "0.4.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "773f3b9af64447d2ce9850330c473515014aa235e6a783b02db81ff39e4a3dad",
+      "texts": [
+        {
+          "path": "cipher-0.4.4/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "cipher-0.4.4/LICENSE-MIT",
+          "sha256": "5c7bd92d1f096f12203dc1b601e3cb17484fa1b023e30b6b8edcc80e416237ec",
+          "licenseId": "rust-5c7bd92d1f096f12203dc1b601e3cb17484fa1b023e30b6b8edcc80e416237ec",
+          "licenseFile": "android/config/licenses/rust-5c7bd92d1f096f12203dc1b601e3cb17484fa1b023e30b6b8edcc80e416237ec.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-cipher-0.4.4.json"
     },
     {
       "name": "clap",
@@ -806,6 +938,66 @@
       "libraryFile": "android/config/libraries/rust-rust-crypto-common-0.1.7.json"
     },
     {
+      "name": "crypto_secretstream",
+      "version": "0.2.0",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "declaredLicenseFile": null,
+      "packageChecksum": "9a6419214057ad50a13efccb3ad7714b86b848e3a5aa7b6cf5a3ff07edf387eb",
+      "texts": [
+        {
+          "path": "crypto_secretstream-0.2.0/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "crypto_secretstream-0.2.0/LICENSE-MIT",
+          "sha256": "904801faf3f1850328af8e1aa1047b9190cc22ed40df5c87f2d93d17f847ef67",
+          "licenseId": "rust-904801faf3f1850328af8e1aa1047b9190cc22ed40df5c87f2d93d17f847ef67",
+          "licenseFile": "android/config/licenses/rust-904801faf3f1850328af8e1aa1047b9190cc22ed40df5c87f2d93d17f847ef67.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-crypto_secretstream-0.2.0.json"
+    },
+    {
+      "name": "curve25519-dalek",
+      "version": "4.1.3",
+      "declaredLicense": "BSD-3-Clause",
+      "declaredLicenseFile": null,
+      "packageChecksum": "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be",
+      "texts": [
+        {
+          "path": "curve25519-dalek-4.1.3/LICENSE",
+          "sha256": "cca0bd3c4fcdba74145ef9d49c62337e2c9fbf9368288f11d0547f1b0273219f",
+          "licenseId": "rust-cca0bd3c4fcdba74145ef9d49c62337e2c9fbf9368288f11d0547f1b0273219f",
+          "licenseFile": "android/config/licenses/rust-cca0bd3c4fcdba74145ef9d49c62337e2c9fbf9368288f11d0547f1b0273219f.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-curve25519-dalek-4.1.3.json"
+    },
+    {
+      "name": "curve25519-dalek-derive",
+      "version": "0.1.1",
+      "declaredLicense": "MIT/Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3",
+      "texts": [
+        {
+          "path": "curve25519-dalek-derive-0.1.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "licenseId": "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "licenseFile": "android/config/licenses/rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.json"
+        },
+        {
+          "path": "curve25519-dalek-derive-0.1.1/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "licenseId": "rust-23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+          "licenseFile": "android/config/licenses/rust-23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-curve25519-dalek-derive-0.1.1.json"
+    },
+    {
       "name": "data-encoding",
       "version": "2.11.0",
       "declaredLicense": "MIT",
@@ -974,6 +1166,46 @@
         }
       ],
       "libraryFile": "android/config/libraries/rust-rust-fastrand-2.5.0.json"
+    },
+    {
+      "name": "fiat-crypto",
+      "version": "0.2.9",
+      "declaredLicense": "MIT OR Apache-2.0 OR BSD-1-Clause",
+      "declaredLicenseFile": null,
+      "packageChecksum": "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d",
+      "texts": [
+        {
+          "path": "fiat-crypto-0.2.9/AUTHORS",
+          "sha256": "ad74c036a6afaedc418fed65f171c877c2f74a4c70938a03930aa11c98a20508",
+          "licenseId": "rust-ad74c036a6afaedc418fed65f171c877c2f74a4c70938a03930aa11c98a20508",
+          "licenseFile": "android/config/licenses/rust-ad74c036a6afaedc418fed65f171c877c2f74a4c70938a03930aa11c98a20508.json"
+        },
+        {
+          "path": "fiat-crypto-0.2.9/COPYRIGHT",
+          "sha256": "6c935d087a2992d0f092665400a2fa99c98db58d96fbe29368f8f48182bed9aa",
+          "licenseId": "rust-6c935d087a2992d0f092665400a2fa99c98db58d96fbe29368f8f48182bed9aa",
+          "licenseFile": "android/config/licenses/rust-6c935d087a2992d0f092665400a2fa99c98db58d96fbe29368f8f48182bed9aa.json"
+        },
+        {
+          "path": "fiat-crypto-0.2.9/LICENSE-APACHE",
+          "sha256": "9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f",
+          "licenseId": "rust-9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f",
+          "licenseFile": "android/config/licenses/rust-9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f.json"
+        },
+        {
+          "path": "fiat-crypto-0.2.9/LICENSE-BSD-1",
+          "sha256": "0c1240e29b4a2c528bcc3ccc38a98b1dba5e3e6b465da910208935f082e2ced6",
+          "licenseId": "rust-0c1240e29b4a2c528bcc3ccc38a98b1dba5e3e6b465da910208935f082e2ced6",
+          "licenseFile": "android/config/licenses/rust-0c1240e29b4a2c528bcc3ccc38a98b1dba5e3e6b465da910208935f082e2ced6.json"
+        },
+        {
+          "path": "fiat-crypto-0.2.9/LICENSE-MIT",
+          "sha256": "0034712d5e97a4f5b900a160a5c19d582b740d8e0638b4e44fd07e7b492dcd13",
+          "licenseId": "rust-0034712d5e97a4f5b900a160a5c19d582b740d8e0638b4e44fd07e7b492dcd13",
+          "licenseFile": "android/config/licenses/rust-0034712d5e97a4f5b900a160a5c19d582b740d8e0638b4e44fd07e7b492dcd13.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-fiat-crypto-0.2.9.json"
     },
     {
       "name": "find-msvc-tools",
@@ -1464,6 +1696,28 @@
       "libraryFile": "android/config/libraries/rust-rust-hermit-abi-0.5.2.json"
     },
     {
+      "name": "hmac",
+      "version": "0.12.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e",
+      "texts": [
+        {
+          "path": "hmac-0.12.1/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "hmac-0.12.1/LICENSE-MIT",
+          "sha256": "9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba",
+          "licenseId": "rust-9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba",
+          "licenseFile": "android/config/licenses/rust-9e0dfd2dd4173a530e238cb6adb37aa78c34c6bc7444e0e10c1ab5d8881f63ba.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-hmac-0.12.1.json"
+    },
+    {
       "name": "http",
       "version": "1.4.0",
       "declaredLicense": "MIT OR Apache-2.0",
@@ -1798,6 +2052,28 @@
         }
       ],
       "libraryFile": "android/config/libraries/rust-rust-indexmap-2.14.0.json"
+    },
+    {
+      "name": "inout",
+      "version": "0.1.4",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01",
+      "texts": [
+        {
+          "path": "inout-0.1.4/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "inout-0.1.4/LICENSE-MIT",
+          "sha256": "304b898acad7f02e03d6d8832d682a3b43ee729ab5d3a069af5a36979083b6b4",
+          "licenseId": "rust-304b898acad7f02e03d6d8832d682a3b43ee729ab5d3a069af5a36979083b6b4",
+          "licenseFile": "android/config/licenses/rust-304b898acad7f02e03d6d8832d682a3b43ee729ab5d3a069af5a36979083b6b4.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-inout-0.1.4.json"
     },
     {
       "name": "ipnet",
@@ -2170,6 +2446,28 @@
       "libraryFile": "android/config/libraries/rust-rust-once_cell-1.21.4.json"
     },
     {
+      "name": "opaque-debug",
+      "version": "0.3.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381",
+      "texts": [
+        {
+          "path": "opaque-debug-0.3.1/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "opaque-debug-0.3.1/LICENSE-MIT",
+          "sha256": "f59f5a78193597e04fd932ee9af86254d14d08be5c9d0e003ab888feccce2161",
+          "licenseId": "rust-f59f5a78193597e04fd932ee9af86254d14d08be5c9d0e003ab888feccce2161",
+          "licenseFile": "android/config/licenses/rust-f59f5a78193597e04fd932ee9af86254d14d08be5c9d0e003ab888feccce2161.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-opaque-debug-0.3.1.json"
+    },
+    {
       "name": "percent-encoding",
       "version": "2.3.2",
       "declaredLicense": "MIT OR Apache-2.0",
@@ -2234,6 +2532,28 @@
         }
       ],
       "libraryFile": "android/config/libraries/rust-rust-plain-0.2.3.json"
+    },
+    {
+      "name": "poly1305",
+      "version": "0.8.0",
+      "declaredLicense": "Apache-2.0 OR MIT",
+      "declaredLicenseFile": null,
+      "packageChecksum": "8159bd90725d2df49889a078b54f4f79e87f1f8a8444194cdca81d38f5393abf",
+      "texts": [
+        {
+          "path": "poly1305-0.8.0/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "poly1305-0.8.0/LICENSE-MIT",
+          "sha256": "6d99fffea918d1f7dfe567029c7bd21d6fcaf310ad28c44e6511a0e1f68c79ea",
+          "licenseId": "rust-6d99fffea918d1f7dfe567029c7bd21d6fcaf310ad28c44e6511a0e1f68c79ea",
+          "licenseFile": "android/config/licenses/rust-6d99fffea918d1f7dfe567029c7bd21d6fcaf310ad28c44e6511a0e1f68c79ea.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-poly1305-0.8.0.json"
     },
     {
       "name": "potential_utf",
@@ -2730,6 +3050,28 @@
       "libraryFile": "android/config/libraries/rust-rust-rustc-hash-2.1.2.json"
     },
     {
+      "name": "rustc_version",
+      "version": "0.4.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92",
+      "texts": [
+        {
+          "path": "rustc_version-0.4.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "licenseId": "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "licenseFile": "android/config/licenses/rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.json"
+        },
+        {
+          "path": "rustc_version-0.4.1/LICENSE-MIT",
+          "sha256": "c9a75f18b9ab2927829a208fc6aa2cf4e63b8420887ba29cdb265d6619ae82d5",
+          "licenseId": "rust-c9a75f18b9ab2927829a208fc6aa2cf4e63b8420887ba29cdb265d6619ae82d5",
+          "licenseFile": "android/config/licenses/rust-c9a75f18b9ab2927829a208fc6aa2cf4e63b8420887ba29cdb265d6619ae82d5.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-rustc_version-0.4.1.json"
+    },
+    {
       "name": "rustix",
       "version": "1.1.5",
       "declaredLicense": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
@@ -3080,6 +3422,28 @@
         }
       ],
       "libraryFile": "android/config/libraries/rust-rust-sha1-0.10.6.json"
+    },
+    {
+      "name": "sha2",
+      "version": "0.10.9",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283",
+      "texts": [
+        {
+          "path": "sha2-0.10.9/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "sha2-0.10.9/LICENSE-MIT",
+          "sha256": "b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1",
+          "licenseId": "rust-b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1",
+          "licenseFile": "android/config/licenses/rust-b4eb00df6e2a4d22518fcaa6a2b4646f249b3a3c9814509b22bd2091f1392ff1.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-sha2-0.10.9.json"
     },
     {
       "name": "shlex",
@@ -4120,6 +4484,28 @@
         }
       ],
       "libraryFile": "android/config/libraries/rust-rust-uniffi_udl-0.32.2.json"
+    },
+    {
+      "name": "universal-hash",
+      "version": "0.5.1",
+      "declaredLicense": "MIT OR Apache-2.0",
+      "declaredLicenseFile": null,
+      "packageChecksum": "fc1de2c688dc15305988b563c3854064043356019f97a4b46276fe734c4f07ea",
+      "texts": [
+        {
+          "path": "universal-hash-0.5.1/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseId": "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+          "licenseFile": "android/config/licenses/rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5.json"
+        },
+        {
+          "path": "universal-hash-0.5.1/LICENSE-MIT",
+          "sha256": "6b50510a0400c72172355cc5d2ba0f2c5c2eb33149b8f96539dc345fdc484920",
+          "licenseId": "rust-6b50510a0400c72172355cc5d2ba0f2c5c2eb33149b8f96539dc345fdc484920",
+          "licenseFile": "android/config/licenses/rust-6b50510a0400c72172355cc5d2ba0f2c5c2eb33149b8f96539dc345fdc484920.json"
+        }
+      ],
+      "libraryFile": "android/config/libraries/rust-rust-universal-hash-0.5.1.json"
     },
     {
       "name": "untrusted",
@@ -5300,10 +5686,10 @@
       "libraryFile": "android/config/libraries/rust-rust-zmij-1.0.21.json"
     }
   ],
-  "uniqueNoticeTexts": 162,
+  "uniqueNoticeTexts": 179,
   "noticeMetadata": {
     "path": "android/app/build/outputs/papercusp-rust-notices.json",
-    "sha256": "fd917d1d3955a5e4a9c319e582894f601994181f9235f10bf0e0e765c99e68b5"
+    "sha256": "ce907d1bffa21ea5acd8bcab8860b0170c0560e082fc7719f2469255374ca42f"
   },
-  "scope": "Selected filename/declared-file notices and pinned supplements for every locked registry package. Not Android linkage, complete source-header attribution, app delivery, rights clearance or recipient access. Collector configuration only; changes to Cargo.lock require reviewed notice regeneration."
+  "scope": "Selected filename/declared-file notices and pinned supplements for every locked registry package. Not Android linkage, complete source-header attribution, app delivery, rights clearance or recipient access."
 }

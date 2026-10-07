@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:opaque-debug:0.3.1",
+  "name": "opaque-debug",
+  "artifactVersion": "0.3.1",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5",
+    "rust-f59f5a78193597e04fd932ee9af86254d14d08be5c9d0e003ab888feccce2161"
+  ]
+}

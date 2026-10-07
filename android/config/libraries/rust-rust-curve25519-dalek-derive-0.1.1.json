@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:curve25519-dalek-derive:0.1.1",
+  "name": "curve25519-dalek-derive",
+  "artifactVersion": "0.1.1",
+  "description": "Locked Rust source package; declared license: MIT/Apache-2.0. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "rust-a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+  ]
+}

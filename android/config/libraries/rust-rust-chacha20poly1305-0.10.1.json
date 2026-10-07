@@ -1,0 +1,10 @@
+{
+  "uniqueId": "rust:chacha20poly1305:0.10.1",
+  "name": "chacha20poly1305",
+  "artifactVersion": "0.10.1",
+  "description": "Locked Rust source package; declared license: Apache-2.0 OR MIT. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-3c0dfa33fd2e6976038555b52095699452653b1fcabe113074f14e0848a6b11e",
+    "rust-a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+  ]
+}

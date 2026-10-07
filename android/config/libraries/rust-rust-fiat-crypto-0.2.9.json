@@ -1,0 +1,13 @@
+{
+  "uniqueId": "rust:fiat-crypto:0.2.9",
+  "name": "fiat-crypto",
+  "artifactVersion": "0.2.9",
+  "description": "Locked Rust source package; declared license: MIT OR Apache-2.0 OR BSD-1-Clause. This inventory includes host, development and platform dependencies.",
+  "licenses": [
+    "rust-0034712d5e97a4f5b900a160a5c19d582b740d8e0638b4e44fd07e7b492dcd13",
+    "rust-0c1240e29b4a2c528bcc3ccc38a98b1dba5e3e6b465da910208935f082e2ced6",
+    "rust-6c935d087a2992d0f092665400a2fa99c98db58d96fbe29368f8f48182bed9aa",
+    "rust-9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f",
+    "rust-ad74c036a6afaedc418fed65f171c877c2f74a4c70938a03930aa11c98a20508"
+  ]
+}
