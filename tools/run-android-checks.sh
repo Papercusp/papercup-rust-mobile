@@ -122,14 +122,35 @@ PY
     exit $?
 fi
 if [[ "$mode" == isolated-native ]]; then
+    # Resolve and pin under the same lock used by staging generation GC. An
+    # exported variable is not visible in /proc/environ until exec, so retain
+    # the shared lock through re-exec; the new process then owns the reference.
+    exec 9>/tmp/papercup-staging-sync.lock
+    flock -s 9
+    operator_root="$(realpath -e "${2:?isolated-native requires the operator checkout}")"
+    exec env PAPERCUSP_INTEGRATION_ROOT="$operator_root" \
+        bash "$ROOT/tools/run-android-checks.sh" isolated-native-pinned "$operator_root" "${3:-}"
+fi
+if [[ "$mode" == isolated-native-pinned ]]; then
+    operator_root="$(realpath -e "${2:?isolated-native requires the operator checkout}")"
+    [[ "${PAPERCUSP_INTEGRATION_ROOT:-}" == "$operator_root" && -e /proc/$$/fd/9 ]] || {
+        echo 'isolated-native requires an inherited staging lock and process reference' >&2
+        exit 2
+    }
+    # The initial process environment now pins this generation for GC. Do not
+    # hold the global sync lock during fixtures, builds or instrumentation.
+    exec 9>&-
     # Reuse the operator's migrated-PG/profile owner; never reproduce its
     # isolation setup here or connect this journey to the shared operator.
-    operator_root="$(realpath "${2:?isolated-native requires the operator checkout}")"
     [[ -f "$operator_root/scripts/with-test-pg.mjs" &&
        -f "$operator_root/apps/operator/dist-host/hono-host.mjs" ]] || {
         echo 'isolated-native requires a prepared operator checkout and host bundle' >&2
         exit 2
     }
+    node "$operator_root/apps/operator/bin/bundle-host-freshness.mjs" check \
+        --repo-root "$operator_root" --entry "$operator_root/apps/operator/bin/hono-host.ts" \
+        --outfile "$operator_root/apps/operator/dist-host/hono-host.mjs" \
+        --manifest "$operator_root/apps/operator/dist-host/.bundle-fresh.json"
     # Catch fixture contract and high-risk approval regressions before the
     # expensive native leg. These are controls, not native acceptance.
     bash tools/tests/run-android-checks-test.sh

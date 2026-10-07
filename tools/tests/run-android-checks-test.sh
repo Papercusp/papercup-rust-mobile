@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 suite="${1:-all}"
-[[ "$suite" == all || "$suite" == boot || "$suite" == live ]] || { echo 'Expected all, boot or live suite' >&2; exit 2; }
+[[ "$suite" == all || "$suite" == boot || "$suite" == live || "$suite" == generation ]] || { echo 'Expected all, boot, live or generation suite' >&2; exit 2; }
 [[ "$suite" == live || -z "${2:-}" ]] || { echo 'Case selection requires the live suite' >&2; exit 2; }
 mkdir -p "$ROOT/android/app/build/ci-evidence"
 TMP_ROOT="$(mktemp -d "$ROOT/android/app/build/ci-evidence/runner-fixtures.XXXXXX")"
@@ -17,6 +17,97 @@ cleanup() {
 }
 trap cleanup EXIT
 runner="$ROOT/tools/run-android-checks.sh"
+if [[ "$suite" == all || "$suite" == generation ]]; then
+python3 - "$runner" "$TMP_ROOT" <<'PY'
+import fcntl
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+runner, temp = Path(sys.argv[1]), Path(sys.argv[2])
+mobile = temp / 'generation-consumer'
+(mobile / 'tools/tests').mkdir(parents=True)
+bin_dir = mobile / 'bin'; bin_dir.mkdir()
+lock = temp / 'staging-sync.lock'
+fixture_runner = mobile / 'tools/run-android-checks.sh'
+# Execute the maintained shell entry, substituting only its shared lock path.
+fixture_runner.write_text(runner.read_text().replace('/tmp/papercup-staging-sync.lock', str(lock)))
+old = temp / 'old-generation'; new = temp / 'new-generation'
+for root in (old, new):
+    (root / 'scripts').mkdir(parents=True)
+    (root / 'apps/operator/dist-host').mkdir(parents=True)
+    (root / 'scripts/with-test-pg.mjs').write_text('fixture')
+    (root / 'apps/operator/dist-host/hono-host.mjs').write_text('fixture')
+alias = temp / 'generation-current'
+marker = temp / 'generation-fixture-started'
+result = temp / 'generation-consumer-result'
+probe = '''#!/usr/bin/env python3
+import fcntl, os, sys
+from pathlib import Path
+expected = os.environ['EXPECTED_ROOT']
+assert os.environ['PAPERCUSP_INTEGRATION_ROOT'] == expected
+assert ('PAPERCUSP_INTEGRATION_ROOT=' + expected).encode() in Path('/proc/self/environ').read_bytes().split(b'\\0')
+with open(os.environ['FIXTURE_LOCK'], 'a') as handle:
+    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+command = Path(sys.argv[1]).name if len(sys.argv) > 1 else 'fixture'
+if command == 'bundle-host-freshness.mjs':
+    assert '--repo-root' in sys.argv and sys.argv[sys.argv.index('--repo-root') + 1] == expected
+    sys.exit(int(os.environ.get('FRESHNESS_EXIT', '0')))
+elif command == 'with-test-pg.mjs':
+    assert str(Path(sys.argv[1]).parent.parent) == expected
+    Path(os.environ['FIXTURE_RESULT']).write_text(expected)
+else:
+    Path(os.environ['FIXTURE_MARKER']).write_text('started')
+    alias = Path(os.environ['FIXTURE_ALIAS']); alias.unlink()
+    alias.symlink_to(os.environ['NEW_ROOT'])
+'''
+node = bin_dir / 'node'; node.write_text(probe); node.chmod(0o755)
+cargo = bin_dir / 'cargo'; cargo.write_text('#!/bin/sh\nexit 0\n'); cargo.chmod(0o755)
+(mobile / 'tools/tests/run-android-checks-test.sh').write_text('exec "' + str(node) + '"\n')
+base = dict(os.environ, PATH=str(bin_dir) + ':' + os.environ['PATH'], JAVA_HOME='/fixture-java',
+            EXPECTED_ROOT=str(old), FIXTURE_LOCK=str(lock), FIXTURE_MARKER=str(marker),
+            FIXTURE_RESULT=str(result), FIXTURE_ALIAS=str(alias), NEW_ROOT=str(new))
+base.pop('PAPERCUSP_INTEGRATION_ROOT', None)
+for case in ('pass', 'stale', 'missing', 'unpinned'):
+    alias.unlink(missing_ok=True); alias.symlink_to(old)
+    marker.unlink(missing_ok=True); result.unlink(missing_ok=True)
+    env = dict(base, FRESHNESS_EXIT='19' if case == 'stale' else '0')
+    mode = 'isolated-native-pinned' if case == 'unpinned' else 'isolated-native'
+    candidate = temp / 'absent-generation' if case == 'missing' else alias
+    run = subprocess.run(['bash', str(fixture_runner), mode, str(candidate)],
+                         env=env, capture_output=True, text=True, timeout=15)
+    if case == 'pass':
+        assert run.returncode == 0, run.stderr
+        assert marker.exists() and result.read_text() == str(old)
+        assert alias.resolve() == new, 'fixture must retarget alias while old generation stays pinned'
+    else:
+        assert run.returncode != 0, case + ': invalid candidate accepted'
+        assert not marker.exists() and not result.exists(), case + ': expensive work began before refusal'
+    with lock.open('a') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+alias.unlink(); alias.symlink_to(old)
+marker.unlink(missing_ok=True); result.unlink(missing_ok=True)
+with lock.open('a') as handle:
+    fcntl.flock(handle, fcntl.LOCK_EX)
+    process = subprocess.Popen(['bash', str(fixture_runner), 'isolated-native', str(alias)],
+        env=dict(base, EXPECTED_ROOT=str(new)), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        try:
+            stdout, stderr = process.communicate(timeout=0.2)
+            raise AssertionError(('consumer did not wait for staging publication lock', stdout, stderr))
+        except subprocess.TimeoutExpired:
+            pass
+        assert not marker.exists() and not result.exists()
+        alias.unlink(); alias.symlink_to(new)
+    finally:
+        fcntl.flock(handle, fcntl.LOCK_UN)
+        stdout, stderr = process.communicate(timeout=15)
+    assert process.returncode == 0 and result.read_text() == str(new), (stdout, stderr)
+print('Android operator generation consumer: locked selection, process pin, early lock release, immutable alias, stale/missing/unpinned refusal passed')
+PY
+fi
+[[ "$suite" != generation ]] || exit 0
 if [[ "$suite" == all ]]; then
 python3 - "$ROOT/android/app/build.gradle.kts" "$TMP_ROOT" <<'PY'
 import sys
