@@ -9,7 +9,10 @@ python3 - "$CI_FILE" "$ROOT" <<'PY'
 import re, sys
 from pathlib import Path
 text, root = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
-workflow = (root / '.github/workflows/ci.yml').read_text()
+workflow_path = root / '.github/workflows/ci.yml'
+# iPhone migration retires the final workflow too. The omission guards still
+# reject restored Android jobs, while an intentionally absent file is valid.
+workflow = workflow_path.read_text() if workflow_path.exists() else ''
 for job in ('android', 'rust', 'uniffi-bindings', 'design-tokens'):
     assert not re.search(r'^  ' + job + r':', workflow, re.M), 'Android/shared job remains on Actions: ' + job
 assert '  schedule:' not in workflow, 'Android Actions schedule remains'

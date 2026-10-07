@@ -248,34 +248,53 @@ verification; a failed or interrupted replacement run removes that admission.
 Signed-candidate, physical-phone and Play acceptance
 remain separate release requirements.
 
-The remaining `ci.yml` and `testflight.yml` workflows are iPhone-only. Android's
-shared Rust, Kotlin bindings and design-token checks execute on the local route.
+### Native iPhone checks and TestFlight delivery
 
-### TestFlight (signed iPhone builds)
-
-`.github/workflows/testflight.yml` builds a signed App Store IPA on the macOS 26
-runner and uploads it to App Store Connect, where it appears in TestFlight. It is
-dispatch only, because every run uses up a build number:
+GitHub Actions is disabled and the mobile workflow files are retired. Shared Rust,
+UniFFI and design-token checks remain in the independent Android executor. iPhone
+execution uses `tools/ios-ci.py` on a native Mac with Xcode26+, iPhoneOS SDK26+,
+Python3.9+, Node22+, xcodegen and an available iOS26 iPhone simulator. On Intel,
+install the universal simulator runtime. Select a side-by-side Xcode with
+`DEVELOPER_DIR`; the runner does not change another build's global Xcode selection.
 
 ```sh
-gh workflow run testflight.yml -R Papercusp/papercup-rust-mobile            # build number = run number
-gh workflow run testflight.yml -R Papercusp/papercup-rust-mobile \
-  -f build_number=42 -f upload=false                                         # signed export only
+python3 tools/ios-ci.py --preflight
+make check-ios-ci
+python3 tools/ios-ci.py --force
+make test-ios-ci test-ios-release test-ios-signing test-rust-toolchain-pin
 ```
 
-Its first step, `ios-ci-signing.sh require-secrets`, runs before any toolchain
-setup. It prints `MISSING_SECRET: <name>` for every absent repository secret and
-rejects a malformed team ID or non-base64 file:
+The runner reuses the Android source/submodule fingerprint and bounded phase logger,
+then runs existing unit/result guards, exactly three backend-free UI tests, screenshot
+export and archive validation. An exclusive native executor lock prevents overlap.
+Run logs, XCTest bundles, summaries, screenshots, archive and SHA256 inventory are
+retained in `~/.local/state/papercusp/ios-ci/attempts/`; `latest.json` is the verdict.
+`--preflight` does not establish a passing test result. Failed execution revokes prior
+success; changed source prevents candidate admission or upload. An unchanged source,
+toolchain and hash-verified proof may be reused for the current UTC day. Paired UI
+requires `--paired-ui --pair-payload-file /private/fresh-payload.json` and is never
+cached. The payload must be owner-only, outside the repository and sanitized for
+screenshots. Device/TestFlight acceptance and App Store review remain separate.
 
-| Repository secret | Contents |
-|---|---|
-| `APPLE_TEAM_ID` | 10-character Apple Developer team ID |
-| `IOS_DIST_CERT_P12_BASE64` | base64 of the Apple Distribution certificate + private key (`.p12`) |
-| `IOS_DIST_CERT_PASSWORD` | password of that `.p12` |
-| `IOS_APPSTORE_PROFILE_BASE64` | base64 of the App Store provisioning profile for `com.papercuspai.operator.mobile` (Push Notifications enabled) |
-| `ASC_API_KEY_ID` | App Store Connect API key ID |
-| `ASC_API_ISSUER_ID` | App Store Connect issuer ID |
-| `ASC_API_KEY_P8_BASE64` | base64 of that key's `AuthKey_<id>.p8` |
+Signed exports are explicit and require a clean source and a new positive build number:
+
+```sh
+bash tools/build-scripts/ios-signing-secrets.sh plan
+bash tools/build-scripts/ios-signing-secrets.sh apply
+python3 tools/ios-ci.py --mode signed --build-number 42 \
+  --secrets-file ~/.config/papercusp/ios-signing.json
+# Add --upload --confirm-upload only when App Store Connect upload is authorized.
+```
+
+`ios-signing-secrets.sh apply` writes an atomically verified mode600 JSON outside
+all source trees instead of publishing GitHub repository secrets. Copy that private
+JSON to the Mac by an authenticated transfer if provisioning from Linux. Set
+`PAPERCUP_IOS_SIGNING_CONFIG` to choose its path. It contains the existing seven
+signing inputs (`APPLE_TEAM_ID`, distribution P12/password, App Store profile,
+`ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`, and `ASC_API_KEY_P8_BASE64`). The native
+executor gates missing material before building, reserves build numbers, installs
+a temporary keychain/profile/API key outside retained evidence, validates the signed
+archive, optionally uploads, and cleans signing material even after a failed build.
 
 Only three things need the owner's Apple login: Apple Developer Program
 membership, the App Store Connect app record for
@@ -299,7 +318,7 @@ token.
 `ios-ci-signing.sh install` then refuses a profile that names another team or
 app, lists devices, allows debugging, lacks production push, has expired, or
 does not contain the imported certificate. It imports the identity into a
-temporary keychain under `$RUNNER_TEMP`, and `cleanup` (an `always()` step)
+temporary keychain outside retained evidence, and native executor cleanup
 deletes it. `release-ios.sh` signs manually in this mode
 (`PAPERCUP_SIGNING_STYLE=manual`). The profile reaches only the app target, via
 `PAPERCUP_APP_PROVISIONING_PROFILE` in `ios/project.yml`. Local
