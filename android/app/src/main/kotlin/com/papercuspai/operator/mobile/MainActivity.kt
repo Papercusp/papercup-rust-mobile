@@ -955,16 +955,24 @@ private fun shellToastTone(level: String): ShellToastTone =
  * filter (and is the same slug+scope two-axis model as desktop/PUI).
  */
 @Composable
-private fun PotSwitcherBar(
+internal fun PotSwitcherBar(
     creds: DeviceCredentials,
     selectedPot: String?,
     onPotChange: (String?) -> Unit,
 ) {
-    var harnesses by remember { mutableStateOf<List<Harness>>(emptyList()) }
-    var expanded by remember { mutableStateOf(false) }
+    var state by remember(creds) { mutableStateOf<ScreenState>(ScreenState.Loading) }
+    var retry by remember(creds) { mutableStateOf(0) }
+    var expanded by remember(creds) { mutableStateOf(false) }
 
-    LaunchedEffect(creds.deviceToken) {
-        harnesses = try { creds.client().listHarnesses() } catch (_: Throwable) { emptyList() }
+    LaunchedEffect(creds, retry) {
+        state = ScreenState.Loading
+        state = try {
+            ScreenState.Ready(creds.client().listHarnesses())
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            ScreenState.Failed(HumanError.describe(failure, "Loading pots"))
+        }
     }
 
     Surface(
@@ -988,21 +996,43 @@ private fun PotSwitcherBar(
             )
             Box {
                 PapercupStatusChip(
-                    text = (selectedPot ?: "All Pots") + " ▾",
+                    text = when (state) {
+                        ScreenState.Loading -> "Loading pots… ▾"
+                        is ScreenState.Failed -> "Pots unavailable ▾"
+                        is ScreenState.Ready -> (selectedPot ?: "All Pots") + " ▾"
+                    },
                     containerColor = PapercupColors.AccentSoft,
                     contentColor = PapercupColors.AccentStrong,
                     onClick = { expanded = true },
                 )
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text("All Pots") },
-                        onClick = { onPotChange(null); expanded = false },
-                    )
-                    harnesses.forEach { h ->
-                        DropdownMenuItem(
-                            text = { Text(h.slug) },
-                            onClick = { onPotChange(h.slug); expanded = false },
+                    when (val current = state) {
+                        ScreenState.Loading -> DropdownMenuItem(
+                            text = { Text("Loading pots…") }, onClick = {}, enabled = false,
                         )
+                        is ScreenState.Failed -> {
+                            DropdownMenuItem(
+                                text = { Text(current.message) }, onClick = {}, enabled = false,
+                            )
+                            DropdownMenuItem(text = { Text("Retry") }, onClick = { retry++ })
+                        }
+                        is ScreenState.Ready -> {
+                            DropdownMenuItem(
+                                text = { Text("All Pots") },
+                                onClick = { onPotChange(null); expanded = false },
+                            )
+                            if (current.harnesses.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No pots available") }, onClick = {}, enabled = false,
+                                )
+                            }
+                            current.harnesses.forEach { h ->
+                                DropdownMenuItem(
+                                    text = { Text(h.slug) },
+                                    onClick = { onPotChange(h.slug); expanded = false },
+                                )
+                            }
+                        }
                     }
                 }
             }
