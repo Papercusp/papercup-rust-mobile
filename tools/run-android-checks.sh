@@ -891,7 +891,9 @@ if proof['bootCompleted']:
         proof['frameworkErrors'].append(str(error))
 (out / 'emulator-boot.json').write_text(json.dumps(proof, indent=2) + '\n')
 if not proof['bootCompleted'] or not proof['frameworkReady']:
-    raise SystemExit('Owned emulator is not healthy; see emulator-boot.json and framework-crash.log')
+    errors = proof['frameworkErrors'] or [proof['adbError'] or 'boot completion property is not 1']
+    raise SystemExit('Owned emulator is not healthy: ' + '; '.join(errors)
+                     + '; evidence: ' + str(out / 'emulator-boot.json'))
 PY
     exit
 fi

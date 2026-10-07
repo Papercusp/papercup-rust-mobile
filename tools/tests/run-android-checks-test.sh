@@ -2,9 +2,21 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TMP_ROOT="$(mktemp -d)"
-trap 'rm -rf "$TMP_ROOT"' EXIT
+suite="${1:-all}"
+[[ "$suite" == all || "$suite" == boot ]] || { echo 'Expected all or boot suite' >&2; exit 2; }
+mkdir -p "$ROOT/android/app/build/ci-evidence"
+TMP_ROOT="$(mktemp -d "$ROOT/android/app/build/ci-evidence/runner-fixtures.XXXXXX")"
+cleanup() {
+    status=$?
+    if (( status == 0 )); then
+        rm -rf "$TMP_ROOT"
+    else
+        printf 'Android runner fixture failure (exit %s); retained evidence: %s\n' "$status" "$TMP_ROOT" >&2
+    fi
+}
+trap cleanup EXIT
 runner="$ROOT/tools/run-android-checks.sh"
+if [[ "$suite" == all ]]; then
 python3 - "$ROOT/android/app/build.gradle.kts" "$TMP_ROOT" <<'PY'
 import sys
 from pathlib import Path
@@ -864,6 +876,7 @@ for port in 5553 5555 5586 5596 invalid; do
         exit 1
     fi
 done
+fi
 mkdir -p "$TMP_ROOT/boot-bin"
 cat > "$TMP_ROOT/boot-bin/adb" <<'SH'
 #!/usr/bin/env bash
@@ -952,14 +965,59 @@ assert good['guestStorage']['availableBytes'] == good['guestStorage']['requiredB
 fallback = json.loads((root / 'boot-sdk-fallback/emulator-boot.json').read_text())
 assert fallback['frameworkReady'] and not fallback['graphics']['dmaReadbackRequired']
 for case in ['missing', 'restart', 'settings', 'crash', 'graphics-missing', 'graphics-partial',
-             'storage-full', 'storage-small', 'storage-unknown', 'storage-read-fail']:
+             'storage-full', 'storage-small', 'storage-unknown', 'storage-read-fail',
+             'memory-read-fail', 'memory-malformed', 'memory-missing', 'memory-duplicate',
+             'memory-small', 'memory-low-available', 'memory-low-total']:
     proof = json.loads((root / f'boot-{case}/emulator-boot.json').read_text())
     assert proof['bootCompleted'] and not proof['frameworkReady'] and proof['frameworkErrors']
+    # A refusal alone can hide a fixture timeout before its intended predicate.
+    expected = {
+        'missing': "('shell', 'pidof', 'surfaceflinger'): exit 1:",
+        'restart': 'Native framework restarted',
+        'settings': "('shell', 'settings', 'get', 'global', 'airplane_mode_on'): exit 224:",
+        'crash': 'Native framework crash detected',
+        'graphics-missing': 'Native graphics lacks DMA readback',
+        'graphics-partial': 'Native graphics lacks DMA readback',
+        'storage-full': 'Insufficient native userdata space',
+        'storage-small': 'Insufficient native userdata space',
+        'storage-unknown': 'Native userdata free space is unmeasured',
+        'storage-read-fail': "('shell', 'df', '-k', '/data'): exit 224:",
+        'memory-read-fail': "('shell', 'cat', '/proc/meminfo'): exit 224:",
+        'memory-malformed': 'Native guest memory is unmeasured: MemTotal',
+        'memory-missing': 'Native guest memory is unmeasured: MemAvailable',
+        'memory-duplicate': 'Native guest memory is unmeasured: MemTotal',
+        'memory-small': 'Insufficient native guest memory',
+        'memory-low-available': 'Insufficient native guest memory',
+        'memory-low-total': 'Insufficient native guest memory',
+    }[case]
+    assert len(proof['frameworkErrors']) == 1 and expected in proof['frameworkErrors'][0], \
+        (case, expected, proof['frameworkErrors'])
 bad = json.loads((root / 'boot-fail/emulator-boot.json').read_text())
 assert bad['bootCompleted'] is False and 'device not found' in bad['adbError']
 assert (root / 'boot-fail/boot-transports.txt').is_file()
 PY
 echo 'Android native readiness: healthy, memory boundary and API36 fallback accepted; 17 process/service/crash/graphics/userdata/memory controls rejected'
+[[ "$suite" != boot ]] || exit 0
+# Prove the failed-positive path leaves inspectable evidence and prints its
+# actual predicate; the nested boot suite stops at its first memory refusal.
+if TEST_BOOT_CASE=memory-small bash "${BASH_SOURCE[0]}" boot > "$TMP_ROOT/retention-output" 2>&1; then
+    echo 'FAIL: deliberately unhealthy positive boot fixture passed' >&2; exit 1
+fi
+python3 - "$TMP_ROOT/retention-output" "$TMP_ROOT" <<'PY'
+import json, shutil, sys
+from pathlib import Path
+output = Path(sys.argv[1]).read_text()
+assert 'Owned emulator is not healthy: Insufficient native guest memory' in output, output
+retained = [line.partition('retained evidence: ')[2] for line in output.splitlines()
+            if 'retained evidence: ' in line]
+assert len(retained) == 1, output
+root = Path(retained[0])
+assert root.parent == Path(sys.argv[2]).parent and root.name.startswith('runner-fixtures.')
+proof = json.loads((root / 'boot-pass/emulator-boot.json').read_text())
+assert not proof['frameworkReady'] and not proof['guestMemory']['sufficient']
+shutil.rmtree(root)
+PY
+echo 'Android runner failure evidence: exact positive-fixture predicate and JSON retained'
 if TEST_EMULATOR_MISSING_LIB=1 ANDROID_HOME="$TMP_ROOT/sdk" PATH="$TMP_ROOT/bin:$PATH" bash "$runner" verify-emulator "$TMP_ROOT/missing-lib-proof" > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: missing emulator shared library was accepted' >&2
     exit 1
