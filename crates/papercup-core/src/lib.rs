@@ -42,6 +42,7 @@ pub mod biometric;
 pub mod cache;
 pub mod client;
 pub mod intent;
+pub mod noise_stream;
 pub mod types;
 pub mod voice;
 

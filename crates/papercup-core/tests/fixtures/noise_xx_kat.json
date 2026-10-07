@@ -27,8 +27,8 @@
         "initiatorStatic_responderEphemeral": "4f52c01535abfc358239749eeda45ffd7396104eda46a3f7809589b1b58c81e2"
       },
       "handshake": {
-        "msg1": "0000000000000000000000000000000000000000000000000000000000000000",
-        "msg2": "00000000000000000000000000000000000000000000000000000000000000004d9e7de3cc9a6378ec7fc7cfdae288cac5c0f41a9197adb9213804de129ddca06a55cc9062361dd6ea395fe2f6c25fdd2204cd9188549881c1e0dfad769ddbcc",
+        "msg1": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+        "msg2": "ca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c4d9e7de3cc9a6378ec7fc7cfdae288cac5c0f41a9197adb9213804de129ddca06a55cc9062361dd6ea395fe2f6c25fdd2204cd9188549881c1e0dfad769ddbcc",
         "msg3": "4e7f5acd10d28ef757ccacec8caff9ca4f7f8b305f457914800d56c160e90feed0e601ca181e4a2af39f2d3bb8020f7b0554bc91296be4be0ee974372b9c6013",
         "initiatorTx": "da3ea403820846d555bdbbd22bd530d686fb57ae98daa541a15b5b4f12d02fae",
         "initiatorRx": "42fa8a7e955cb0bef6c9112e7743f70205a60b4b1d246b728ca36b04ab7ede61",
@@ -38,19 +38,19 @@
         "responderStreamId": "1939bb93030e977cafeccc59c249a7a39debbb71c5864f9b65f246bbb75354eb"
       },
       "responderStream": {
-        "header": "ed2028ea2fddca77e6b6dd46a2f4d6d32435713518c2e28b",
+        "header": "ced0598341f082b0920bb49e2789394b56b5db6e9e524f36",
         "messages": [
           {
             "plaintext": "7b2274797065223a2273657373696f6e2e7265616479227d0a",
-            "ciphertext": "abfb8fde95ec71073da1a51a81af4663f8393b942d84ad60db4686c9f2df9a7ce2f96c13383c47712072"
+            "ciphertext": "fec884607239663f2a405d4115634eb14e742e5cab86b8684df41b7ba1cc8dd5f6137c55d165d6ef6bc2"
           },
           {
             "plaintext": "",
-            "ciphertext": "c998312a7c0c60a8bf54093ef7b0b39a23"
+            "ciphertext": "7bd79292fbd3db8da313de075a2d0926f3"
           },
           {
             "plaintext": "7b2274797065223a226465766963652e70616972696e672e6163636570746564222c226e223a327d0a",
-            "ciphertext": "3f24463ebd8affc3fcf875db37c0e2abfe33534b20be351dac48b893403a152b3adef2a1313bda07a6f9ab5dfe55bb64e1b83e45d26b21ec2b9a"
+            "ciphertext": "0c660a04c5af19db56c8bf73de2ba381396448220a4aadfade67d7c8cdba2df8f52f2de7dda8203fc5a7ab7833354de10de67307b108499f881a"
           }
         ]
       }
@@ -75,8 +75,8 @@
         "initiatorStatic_responderEphemeral": "6399102edb947d34bc7b7862f9c40fdf2369142b5f16af38c654ade90f0fcbb9"
       },
       "handshake": {
-        "msg1": "0000000000000000000000000000000000000000000000000000000000000000",
-        "msg2": "00000000000000000000000000000000000000000000000000000000000000005c21acec42e2ebe80e8e847fa8e1a47b884a03e2e14519eef021bb6662693c6f70422b9f24cf78fb8d0ddfd39c6054a75a53746debb63a8bc5fb07c49ed6016b",
+        "msg1": "55154f42065ea5a1bea05463826be2684eb92df92c100027aabaae57ca554207",
+        "msg2": "ed3234b276d4ceda57d59bad14fbaf5a773c0f318c999de3a60d53c5a5b34c055c21acec42e2ebe80e8e847fa8e1a47b884a03e2e14519eef021bb6662693c6f70422b9f24cf78fb8d0ddfd39c6054a75a53746debb63a8bc5fb07c49ed6016b",
         "msg3": "f470d0285868ddd1a4e5dba63ffe1fe64656fb370545af5343e3c82248e20a1bdb45758d33dc5ae484cc38db81042f3b932b3c84d99ce2563b76828a69c22ba5",
         "initiatorTx": "9f08d40c1a3f0ab74b9e45065efac9b6f4acf8ca0fc59058c8f8f25d3c4b369f",
         "initiatorRx": "e240af2f96237fae4e3432e3a0ec0a95d70f730ffb94233572651f6eda1610c3",
@@ -86,19 +86,19 @@
         "responderStreamId": "9d92bf1910964086239fa227e06274067d450d917de1ae5818204148e68dadd3"
       },
       "responderStream": {
-        "header": "9caee1eb7ff46bdc11d0d00c9a1c9cbc1bd47813cbf2698b",
+        "header": "872cc6309e3f6a8668f426e4fb256af5da60fa43b043c207",
         "messages": [
           {
             "plaintext": "7b2274797065223a2273657373696f6e2e7265616479227d0a",
-            "ciphertext": "416ea780fd18fcce024897d267c64b2acec6f2de9a216c54d5ac3f273a24fbd4ed22f50547e7c8f0fe8b"
+            "ciphertext": "c29b7ec583753c30b0982566b3f03029afa577e6395e85ad6884acc49e3c0f8512fe59bde4b33827dcc8"
           },
           {
             "plaintext": "",
-            "ciphertext": "aeb10395d75bd2781e1d9e1e429a099a69"
+            "ciphertext": "6070419e07595792ba6812aed80fca8daf"
           },
           {
             "plaintext": "7b2274797065223a226465766963652e70616972696e672e6163636570746564222c226e223a327d0a",
-            "ciphertext": "4c1e2fd33b7894abcdf29338453be065ed9d3d93dd806516892c96e07701a829ceb1a92e0bfc6cdb129647844bcdda1d273b0d25e360f52b2fc7"
+            "ciphertext": "fbcd90828612eb7e3f3ec246d16d6b67a63624b7c2976ed3edd45905233cdbc0b33c5c6d8dd60ae65a5be7803ffcb45879eaf71215eeaf991405"
           }
         ]
       }
