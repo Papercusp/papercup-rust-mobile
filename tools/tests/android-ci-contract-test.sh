@@ -98,11 +98,16 @@ for phase in [
     'bash "$0" verify-native-dependencies',
     'bash tools/build-scripts/install-and-launch.sh',
     'bash "$0" verify-emulator-boot "$device"',
-    ':app:connectedDebugAndroidTest --rerun-tasks',
+    'ANDROID_SERIAL="$device" bash "$0" sealed-native',
     'verify_results android/app/build connected',
 ]:
     assert phase in connected, f'Android native runner omits required phase: {phase}'
 print('Android CI required host/native phase contract: passed')
+sealed = text.split('if [[ "$mode" == sealed-native ]]; then', 1)[1].split('\nfi\n', 1)[0]
+assert "':app:connectedDebugAndroidTest'" in sealed
+assert "command.append('--rerun-tasks')" in sealed, 'full native gate must rerun rather than trust old reports'
+assert 'SealedTransportInteropTest' in sealed and "len(cases) != 2" in sealed, 'real JNI interop must execute both cases'
+assert "'reverse', '--remove'" in sealed and 'child.terminate()' in sealed, 'owned interop fixture must clean up'
 assert "'verify-native-dependencies'], check=True" in text, 'paired native must reject stale Espresso before build'
 PY
 
@@ -200,7 +205,7 @@ phases = [
     'bash "$0" verify-native-dependencies',
     'bash tools/build-scripts/install-and-launch.sh',
     'bash "$0" verify-emulator-boot "$device"',
-    ':app:connectedDebugAndroidTest --rerun-tasks',
+    'ANDROID_SERIAL="$device" bash "$0" sealed-native',
     'verify_results android/app/build connected',
     'set -euo pipefail',
 ]

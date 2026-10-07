@@ -52,6 +52,97 @@ resolve_rust_toolchain() {
 }
 
 mode="${1:-full}"
+if [[ "$mode" == sealed-native ]]; then
+    export PAPERCUP_SEALED_NATIVE_OUT="${2:?fresh evidence directory is required}"
+    export PAPERCUP_SEALED_OPERATOR_ROOT="${3:-${PAPERCUP_PAPERCUSP_ROOT:-$ROOT/../papercusp}}"
+    export PAPERCUP_SEALED_NATIVE_SELECTION="${4:-interop}"
+    JAVA_HOME="$(bash tools/build-scripts/resolve-java-home.sh)"
+    export JAVA_HOME
+    python3 - <<'PY'
+import base64, hashlib, json, os, select, shutil, subprocess
+from pathlib import Path
+from urllib.parse import urlparse
+
+serial = os.environ.get('ANDROID_SERIAL', '')
+if not serial.startswith('emulator-') or not serial[9:].isdigit():
+    raise SystemExit('sealed-native requires an explicitly owned emulator in ANDROID_SERIAL')
+operator = Path(os.environ['PAPERCUP_SEALED_OPERATOR_ROOT']).resolve()
+for dependency in ('tsx', 'ws', '@hyperswarm/secret-stream'):
+    if not (operator / 'node_modules' / dependency / 'package.json').is_file():
+        raise SystemExit('Mandatory real TS interop dependency missing: ' + dependency)
+out = Path(os.environ['PAPERCUP_SEALED_NATIVE_OUT']).resolve()
+out.mkdir(parents=True, exist_ok=False)
+subprocess.run(['bash', 'tools/run-android-checks.sh', 'verify-emulator-boot', serial,
+                str(out / 'preflight'), '1'], check=True)
+fixture = Path('crates/papercup-core/tests/fixtures/sealed-http-responder.mjs').resolve()
+child = None
+reverse = None
+result = {'serial': serial, 'scope': 'JNI Noise/HTTP/SSE and encrypted restore against real TS responder; VM fetch is injected, no live host or portal acceptance',
+          'exitCode': 1, 'cleanupVerified': False, 'sourceCommit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+          'sourceDirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], text=True)),
+          'sourceFingerprints': {path: hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in (
+              'tools/run-android-checks.sh', 'crates/papercup-bindings/src/lib.rs',
+              'android/app/src/main/kotlin/com/papercuspai/operator/mobile/Credentials.kt',
+              'android/app/src/main/kotlin/com/papercuspai/operator/mobile/PairScreen.kt',
+              'android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/SealedTransportInteropTest.kt', str(fixture))}}
+try:
+    with (out / 'responder.log').open('w') as log:
+        child = subprocess.Popen(['node', '--import', 'tsx', str(fixture), str(operator), 'normal'],
+                                 cwd=operator, stdout=subprocess.PIPE, stderr=log, text=True)
+        if not select.select([child.stdout], [], [], 20)[0]:
+            raise RuntimeError('TS responder readiness timed out')
+        ready = json.loads(child.stdout.readline())
+        (out / 'responder-ready.json').write_text(json.dumps(ready, indent=2) + '\n')
+        url = urlparse(ready['base'])
+        if url.hostname != '127.0.0.1' or not url.port:
+            raise RuntimeError('TS responder must bind owned loopback')
+        mapping = 'tcp:' + str(url.port)
+        existing = subprocess.check_output(['adb', '-s', serial, 'reverse', '--list'], text=True)
+        if any(mapping in row.split() for row in existing.splitlines()):
+            raise RuntimeError('Refusing to replace a pre-existing emulator reverse mapping')
+        subprocess.run(['adb', '-s', serial, 'reverse', mapping, mapping], check=True)
+        reverse = mapping
+        command = ['android/gradlew', '-p', 'android', ':app:connectedDebugAndroidTest', '--console=plain',
+                   '-Pandroid.testInstrumentationRunnerArguments.sealedBase=' + ready['base'],
+                   '-Pandroid.testInstrumentationRunnerArguments.sealedPin=' + base64.b64encode(bytes(ready['publicKey'])).decode()]
+        selection = os.environ['PAPERCUP_SEALED_NATIVE_SELECTION']
+        if selection == 'interop':
+            command.append('-Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.SealedTransportInteropTest')
+        elif selection == 'all':
+            command.append('--rerun-tasks')
+        else:
+            raise RuntimeError('sealed-native selection must be interop or all')
+        reports = Path('android/app/build/outputs/androidTest-results/connected/debug')
+        if reports.exists():
+            shutil.rmtree(reports)
+        with (out / 'gradle.log').open('w') as native_log:
+            run = subprocess.run(command, stdout=native_log, stderr=subprocess.STDOUT, timeout=600)
+        if reports.exists():
+            shutil.copytree(reports, out / 'junit')
+        if run.returncode:
+            raise RuntimeError('Native sealed interop failed; see ' + str(out / 'gradle.log'))
+        subprocess.run(['bash', 'tools/run-android-checks.sh', 'verify-results', 'android/app/build', 'connected'], check=True)
+        import xml.etree.ElementTree as ET
+        cases = [case for report in (out / 'junit').rglob('TEST-*.xml') for case in ET.parse(report).iter('testcase')
+                 if case.get('classname') == 'com.papercuspai.operator.mobile.SealedTransportInteropTest']
+        if len(cases) != 2:
+            raise RuntimeError('Both maintained native sealed interop cases must execute')
+        result.update(exitCode=0, tests=[case.get('name') for case in cases])
+        result['apkSha256'] = hashlib.sha256(Path('android/app/build/outputs/apk/debug/app-debug.apk').read_bytes()).hexdigest()
+finally:
+    if reverse:
+        subprocess.run(['adb', '-s', serial, 'reverse', '--remove', reverse], check=True)
+    if child:
+        child.terminate()
+        try:
+            child.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            child.kill(); child.wait(timeout=10)
+    result['cleanupVerified'] = True
+    (out / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
+PY
+    exit
+fi
 if [[ "$mode" == verify-rust-toolchain ]]; then
     resolve_rust_toolchain
     exit
@@ -1128,7 +1219,10 @@ if [[ "$mode" != host ]]; then
     adb -s "$device" shell pm path android | grep -q '^package:'
     bash tools/build-scripts/install-and-launch.sh
     rm -rf android/app/build/outputs/androidTest-results/connected/debug
-    ANDROID_SERIAL="$device" android/gradlew -p android :app:connectedDebugAndroidTest --rerun-tasks
+    sealed_operator="${PAPERCUP_PAPERCUSP_ROOT:-$ROOT/../papercusp}"
+    [[ ! -d "$ROOT/android-ci-attempt/operator/node_modules/tsx" ]] || sealed_operator="$ROOT/android-ci-attempt/operator"
+    ANDROID_SERIAL="$device" bash "$0" sealed-native \
+        "android/app/build/ci-evidence/sealed-native-$(date -u +%Y%m%dT%H%M%SZ)" "$sealed_operator" all
     verify_results android/app/build connected
     tools/build-scripts/android-release-provenance.sh checks-pass connected "$connected_start"
 fi
