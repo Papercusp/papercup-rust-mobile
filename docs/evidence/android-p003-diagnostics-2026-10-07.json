@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "workItem": "WI-10004770",
+  "decision": "android-public-release-2026-10-01#D-016",
+  "scope": "Focused local-debug Compose rendering; not whole P003 journey or signed-candidate acceptance",
+  "runtime": {"serial": "emulator-5580", "avd": "android-p003-m4-20261007-5580", "api": 36, "pageSize": 16384, "frameworkReady": true},
+  "command": "ANDROID_SERIAL=emulator-5580 android/gradlew -p android :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.DiagnosticsScreenTest --offline",
+  "result": {"tests": 2, "failures": 0, "errors": 0, "skipped": 0},
+  "cases": ["publicDiagnosticsKeepConnectionStatusWithoutDeveloperPushControls", "debugDiagnosticsRetainWorkingPushTestControl"],
+  "source": {
+    "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/DiagnosticsScreenTest.kt": "c80a67b59ac7d97dca154a9ec419ed9cd473d1427d4454fd1b5e3f26335ab501",
+    "android/app/src/main/kotlin/com/papercuspai/operator/mobile/DiagnosticsScreen.kt": "7006400bc69a6e1d57712786ecfcdda84efd293a8605ca9c2f63e38b180af751",
+    "android/app/src/main/kotlin/com/papercuspai/operator/mobile/MainActivity.kt": "211154950f04a26c05c878530b867cabd1e26e87a4a2781bfa5f2d5a5758f08f"
+  },
+  "apkSha256": "ed4534a59ba8eba1b240b2f219ad60a57596ce86628d7d4b44fcf76e5edb0708",
+  "testApkSha256": "6c8afc94da9dd54a7ecaa176b8ba0f6918400e18e601078523d019865e611c04",
+  "junitSha256": "f522d07026e51907d07f7750a16d0c432e360c941a77d93fadd88db5a1a96a98",
+  "evidenceDirectory": "android/app/build/ci-evidence/p003-diagnostics-20261007",
+  "junitPath": "android/app/build/outputs/androidTest-results/connected/debug/TEST-android-p003-m4-20261007-5580(AVD) - 16-_app-.xml",
+  "testFixtureRepair": "Reused createEmptyComposeRule with ActivityScenario<MainActivity>; original createComposeRule required an undeclared ComponentActivity and both cases failed before rendering.",
+  "limitations": ["No complete live-operator screen census", "No signed candidate", "No physical device or Play installation"]
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "workItem": "WI-10004770",
+  "bug": "EI-25333858494910562",
+  "scope": "Local-debug Compose/JNI HTTP fixture and unit parser contribution; full live-operator P003 acceptance remains open",
+  "runtime": "Owned emulator-5580 API36, 16KB pages; framework health passed",
+  "rootCause": "parsePlanItems swallowed JSON errors into emptyList; missing status defaulted to todo; PlanDetailView rendered the resulting empty state as healthy",
+  "fix": "Parse during load and route invalid shape through typed Decode error; show unknown for missing status; error takes precedence over retained detail; list load failure subtitle shows Unavailable",
+  "sourceSha256": {
+    "android/app/src/main/kotlin/com/papercuspai/operator/mobile/PlansScreen.kt": "39c5fd453c292520f0516293051c70de3fcbff7d01f3da101de1ffdf62d25ac4",
+    "android/app/src/test/kotlin/com/papercuspai/operator/mobile/PlanItemsContractTest.kt": "43f239c7d63e3f3b4893ca41cb96b904dd55052b1f1ddca4a7c6df17751b8997",
+    "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PlansScreenTest.kt": "e75313bd6d1644bbd6d50626ddf9c998acffae7b9dc84333c561ea7cc30a5812"
+  },
+  "verification": {
+    "focusedUnit": {"tests": 5, "failures": 0, "errors": 0, "skipped": 0},
+    "focusedNative": {"tests": 3, "failures": 0, "errors": 0, "skipped": 0},
+    "combinedNative": {"tests": 5, "failures": 0, "errors": 0, "skipped": 0, "includes": "PlansScreenTest and DiagnosticsScreenTest"},
+    "releaseKotlin": "PASS",
+    "controls": ["Invalid items object renders decode error and no No items label", "Valid empty array renders No items", "Missing status renders unknown", "effectiveStatus blocked overrides storedStatus todo", "Public diagnostics hide developer Push controls", "Debug Push action callback runs exactly once"]
+  },
+  "retainedResults": {
+    "android/app/build/ci-evidence/p003-diagnostics-20261007/combined-native-results/TEST-android-p003-m4-20261007-5580(AVD) - 16-_app-.xml": "af1353246af71d8df8fa63fa047467bd3eb843919cd14390f22e33f9b1eda002",
+    "android/app/build/ci-evidence/p003-diagnostics-20261007/combined-unit-results/TEST-com.papercuspai.operator.mobile.PlanItemsContractTest.xml": "be54ace26d6f6834ec940d5ab64a6a26e3f4170c293c3ce299de0df31ccf7916"
+  },
+  "logs": ["android/app/build/ci-evidence/p003-diagnostics-20261007/plans-tests.log", "android/app/build/ci-evidence/p003-diagnostics-20261007/combined-tests.log"],
+  "limitations": ["Fixtures are not a supported live operator", "No complete journey census", "No signed candidate, physical phone or Play evidence"]
+}
