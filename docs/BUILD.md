@@ -133,17 +133,14 @@ checks that missing and denied biometric callbacks leave the device valid,
 then uses an explicitly recorded test approval callback to exercise actual
 JNI/HTTP revocation and fresh pairing. This does not verify OS biometric UI or
 physical hardware. Prepare the operator dependencies/bundle before invocation; a
-missing bundle or an ambient runtime is refused. Scheduled CI now checks out the
-exact operator commit pinned in `ci.yml`, recursively obtains its private
-submodules with the existing canonical `SUBMODULES_PAT` read credential, and
-uses `npm-install-safe.mjs` plus `bundle-host.sh` and its freshness check. The
-root-only `PAPERCUP_DEPLOY_KEY` cannot supply those private submodules; missing
-`SUBMODULES_PAT` fails before the expensive build. Provision that secret in this
-repository from the authorized credential store, outside source files.
+missing bundle or an ambient runtime is refused. Independent Android CI consumes
+a prepared operator checkout, records its exact commit, and validates the bundle
+freshness before and after execution. Prepare that counterpart with the maintained
+dependency/bundle builders; Android CI does not require GitHub Actions secrets.
 
 The automatic emulator leg runs this paired route. Its cache key includes both
 mobile content and the pinned operator commit; restored proof is revalidated.
-Only successful exact-source, APK, eight-test JUnit, journey and cleanup evidence
+Only successful exact-source, APK, selected-test JUnit, journey and cleanup evidence
 can become a success cache. The artifact retains counterpart provenance and
 paired diagnostics, without uploading the operator checkout or dependency tree.
 The native selection also runs the maintained chat 401/403 Compose/JNI
@@ -171,7 +168,7 @@ operator checkout, record a portable environment-variable reference and explain
 its exact source-commit basis. Retain the original command privately, bind the
 hash of the committed public bytes, and do not claim hosted, release-candidate,
 physical-phone or Play acceptance from a local debug run.
-An actual hosted run still must pass before claiming automatic paired coverage.
+An actual independent executor run must pass before claiming automatic paired coverage.
 This debug integration route preserves the signed-candidate, physical
 phone, external mesh and Play acceptance requirements.
 
@@ -209,20 +206,46 @@ not satisfy a local release build, and any new commit (including a git-sync
 sweep) requires both phases to run again. `tools/tests/android-release-provenance-test.sh`
 covers each refusal.
 
-### Automatic CI
+### Automatic Android CI
 
-`.github/workflows/ci.yml` runs on its cron schedule and on
-`workflow_dispatch`. git-sync commits carry `[skip ci]`, so a source change is
-picked up by the next scheduled run. Its cache key is the exact mobile content
-plus `PAPERCUP_OPERATOR_SHA`, so an unchanged tree reuses revalidated proof and
-a changed tree runs the checks again. The private operator checkout needs the
-`SUBMODULES_PAT` repository secret.
+Android verification runs independently of GitHub Actions. The local user service
+`papercusp-android-ci.service` invokes `python3 tools/android-ci.py`; its timer
+checks every 30 minutes after the preceding invocation finishes, including managed
+`[skip ci]` commits. The executor holds an exclusive lock and owns a fresh API 36 /
+16-KB emulator. `ANDROID_SERIAL` scopes installation and instrumentation to that
+device; other fleet devices are untouched.
 
-The workflow builds the operator at the pinned `PAPERCUP_OPERATOR_SHA`. A fix
-to the operator side (for example its install or `patch-package` step) only
-reaches CI after it is on the operator's `origin/staging` and the pin is bumped
-to a pushed commit containing it. Dispatch a run with
-`gh workflow run ci.yml -R Papercusp/papercup-rust-mobile`.
+The executor reuses `check-android-host`, design-token drift verification,
+`run-android-checks.sh connected`, the canonical isolated operator/JNI feature
+journey, and `verify-isolated-native`. Supply a prepared operator checkout through
+`PAPERCUP_OPERATOR_DIR` in external configuration
+`~/.config/papercusp/android-ci.env`; the default is the sibling canonical
+Papercusp checkout. Its exact commit and bundle freshness must verify before
+expensive checks. The paired journey uses a private migrated operator runtime.
+Toolchain, SDK image, emulator loader, disk and KVM preflight failures retain
+a failed receipt.
+
+Install the maintained units and run them without a GitHub account:
+
+```sh
+systemctl --user link "$PWD/tools/ci/papercusp-android-ci.service" "$PWD/tools/ci/papercusp-android-ci.timer"
+systemctl --user daemon-reload
+systemctl --user enable --now papercusp-android-ci.timer
+systemctl --user start papercusp-android-ci.service
+make check-android-ci
+python3 tools/android-ci.py --force
+```
+
+Results, logs, tested APKs, JUnit, lint and paired-runtime evidence live under
+`~/.local/state/papercusp/android-ci/attempts/`; `latest.json` identifies the current
+verdict. Success reuse requires the exact mobile source, counterpart, current week
+and retained artifact hashes, followed by paired-proof revalidation. Source or
+counterpart changes during execution and failing gates revoke admission. There is
+no upload or publication step. Signed-candidate, physical-phone and Play acceptance
+remain separate release requirements.
+
+The remaining `ci.yml` and `testflight.yml` workflows are iPhone-only. Android's
+shared Rust, Kotlin bindings and design-token checks execute on the local route.
 
 ### TestFlight (signed iPhone builds)
 
@@ -284,7 +307,7 @@ deletes it. `release-ios.sh` signs manually in this mode
 - **Xcode 16.2 destination race**: `xcodebuild` occasionally fails first-try with "iOS 18.2 is not installed" because the SDK and the only-installed 18.3.1 runtime mismatch on the destination resolver. The `make test-ios` wrapper retries 8x. Switching to Xcode 16.3 resolves it.
 - **iOS voice mode requires Xcode 16.3+**. ElevenLabsSDK pulls LiveKit + livekit-uniffi-xcframework + JWTKit transitively. Xcode 16.2's SwiftPM dep-order resolution fails to build these in the right order, surfacing as `no such module 'LiveKitUniFFI'` and then `no such module 'Crypto'`. Same dep-resolution fragility as the destination-resolver race above. Android voice path is unaffected (Maven Central + Gradle handles deps cleanly).
 - **`xcodebuild test -scheme` post-Sentry**: Permanently broken since the Sentry SwiftPM landed — the package resolver loses sim devices in Xcode's cache. Workaround: per-target builds (`xcodebuild -target Papercup`, `-target PapercupTests`, `-target PapercupUITests`).
-- **CI triggers**: Android verification has push/PR coverage and a scheduled route for managed `[skip ci]` commits. Read the actual run event, source SHA, executed tests and retained artifact before claiming automatic coverage; a cached or historical result does not prove a new paired journey.
+- **CI triggers**: The independent Android timer observes managed `[skip ci]` commits. Read `latest.json`, source identities, executed tests and retained artifacts before claiming coverage; revalidated cached proof is not a new journey.
 - **Apple Developer Program**: Required for APNs delivery, NetworkExtension entitlement (mesh), and TestFlight. iOS push + mesh code is wired but inert without enrollment.
 
 ## Hardware verified

@@ -51,9 +51,11 @@ Cloud voice requires explicit, persistent and revocable consent. The iPhone app
 is an operator companion and does not create a hosted account or sell a subscription.
 
 Managed git-sync owns commits and pushes for this independent repository. Do not
-manually commit/push or create a feature worktree. The existing private CI now
-supports admitted macOS 26 native builds; explicit workflow dispatch is the release
-candidate path because managed commit subjects contain `[skip ci]`.
+manually commit/push or create a feature worktree. Android verification runs
+independently of GitHub Actions through the maintained local native CI service
+and timer; see [automatic Android CI](docs/BUILD.md#automatic-android-ci).
+The iPhone-only private CI supports admitted macOS 26 native builds and explicit
+release-candidate dispatch.
 
 A successful simulator test or unsigned archive is preparation. Real hardware,
 production push, signed export, TestFlight processing and approved public App Store
