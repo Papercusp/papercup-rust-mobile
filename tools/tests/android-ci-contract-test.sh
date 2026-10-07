@@ -34,7 +34,7 @@ assert '\n            android-ci-attempt/operator\n' not in android and '\n     
 assert 'api-level: 36' in android and 'target: google_apis_ps16k' in android
 assert '-gpu swiftshader ' in android and 'swiftshader_indirect' not in android, 'use the supported software renderer, not the retired indirect mode'
 assert '-feature GLDirectMem,HasSharedSlotsHostMemoryAllocator ' in android, 'new Goldfish mappers require both host DMA readback capabilities'
-assert '-memory 1536 ' in android, 'native guest RAM must be explicit integer MiB, independent of suffixed AVD config'
+assert '-memory 4096 ' in android, 'native instrumentation working set requires explicit4096MiB, independent of AVD config'
 runner_space = 'bash tools/run-android-checks.sh release-runner-space android-ci-attempt'
 assert runner_space in android and android.index(runner_space) < android.index('node scripts/npm-install-safe.mjs ci'), 'operator install and AVD need the preinstalled-toolchain headroom (run 37550640887)'
 assert android.count('bash tools/run-android-checks.sh prepare-ci') == 2, 'CI must bound the working set before SDK setup and before native execution'
@@ -95,6 +95,7 @@ for phase in [
 ]:
     assert phase in host, f'Android host runner omits required phase: {phase}'
 for phase in [
+    'bash "$0" verify-native-dependencies',
     'bash tools/build-scripts/install-and-launch.sh',
     'bash "$0" verify-emulator-boot "$device"',
     ':app:connectedDebugAndroidTest --rerun-tasks',
@@ -102,6 +103,7 @@ for phase in [
 ]:
     assert phase in connected, f'Android native runner omits required phase: {phase}'
 print('Android CI required host/native phase contract: passed')
+assert "'verify-native-dependencies'], check=True" in text, 'paired native must reject stale Espresso before build'
 PY
 
 python3 - "${3:-$ROOT/Makefile}" <<'PY'
@@ -150,7 +152,8 @@ text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 (out / 'late-image.yml').write_text(text.replace(" 'system-images;android-36;google_apis_ps16k;x86_64'", ''))
 (out / 'missing-emulator-libs.yml').write_text(text.replace('libpulse0', 'disabled-libpulse'))
 (out / 'missing-emulator-preflight.yml').write_text(text.replace('          bash tools/run-android-checks.sh verify-emulator\n', ''))
-(out / 'missing-emulator-memory.yml').write_text(text.replace('-memory 1536 ', ''))
+(out / 'missing-emulator-memory.yml').write_text(text.replace('-memory 4096 ', ''))
+(out / 'undersized-emulator-memory.yml').write_text(text.replace('-memory 4096 ', '-memory 1536 '))
 (out / 'default-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', ''))
 (out / 'undersized-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', '          disk-size: 2048M\n'))
 (out / 'oversized-avd-disk.yml').write_text(text.replace('          disk-size: 6144M\n', '          disk-size: 8192M\n'))
@@ -194,6 +197,7 @@ phases = [
     ':app:lintRelease --rerun-tasks',
     'bash tools/tests/android-privacy-permissions-test.sh',
     'verify_results android/app/build host',
+    'bash "$0" verify-native-dependencies',
     'bash tools/build-scripts/install-and-launch.sh',
     'bash "$0" verify-emulator-boot "$device"',
     ':app:connectedDebugAndroidTest --rerun-tasks',
@@ -210,7 +214,7 @@ PY
             exit 1
         fi
     done
-    echo 'Android CI runner phase mutation controls: 20 rejected'
+    echo 'Android CI runner phase mutation controls: 21 rejected'
 
     python3 - "$ROOT/Makefile" "$TMP_ROOT" <<'PY'
 import sys

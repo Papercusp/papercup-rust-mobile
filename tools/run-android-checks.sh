@@ -36,6 +36,21 @@ PY
 }
 
 mode="${1:-full}"
+if [[ "$mode" == verify-native-dependencies ]]; then
+    # Fail before another expensive API36 run with Espresso's removed reflective
+    # InputManager API. AndroidX 3.7.0 uses the public system service instead.
+    python3 - "${2:-android/app/build.gradle.kts}" <<'PY'
+import re, sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text()
+versions = re.findall(r'androidTestImplementation\("androidx\.test\.espresso:espresso-intents:([^"\n]+)"\)', text)
+if (len(versions) != 1 or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', versions[0])
+        or tuple(map(int, versions[0].split('.'))) < (3, 7, 0)):
+    raise SystemExit('API36 native tests require a stable Espresso intents version >=3.7.0')
+print('API36 Espresso dependency precondition passed: ' + versions[0])
+PY
+    exit
+fi
 if [[ "$mode" == verify-isolated-native ]]; then
     python3 - "${2:?paired evidence directory required}" "${3:?exact operator source SHA required}" <<'PY'
 import hashlib
@@ -346,6 +361,8 @@ def app_shell(command, **kwargs):
 
 def prepare_native():
     global native_device
+    subprocess.run(['bash', str(Path('tools/run-android-checks.sh').resolve()),
+                    'verify-native-dependencies'], check=True, timeout=15)
     if auth_fixture_enabled and (len(os.environ.get('MOBILE_JWT_SECRET', '')) < 32
             or not (Path(os.environ.get('PAPERCUP_OPERATOR_ROOT', '')) /
                     'packages/operator-core/lib/device-jwt.ts').is_file()):
@@ -796,6 +813,26 @@ if proof['bootCompleted']:
             raise RuntimeError(f'{args}: exit {result.returncode}: {result.stdout}{result.stderr}')
         return result.stdout.strip()
     try:
+        memory = adb('shell', 'cat', '/proc/meminfo')
+        (out / 'guest-memory.txt').write_text(memory + '\n')
+        values = {}
+        for name in ('MemTotal', 'MemAvailable'):
+            matches = re.findall(r'^' + name + r':\s+([0-9]+) kB\s*$', memory, re.MULTILINE)
+            if len(matches) != 1:
+                raise RuntimeError('Native guest memory is unmeasured: ' + name)
+            values[name] = int(matches[0])
+        # A 1536-MiB guest booted but LMK killed instrumentation before any test.
+        # Allow kernel reservations in a 4096-MiB guest; also measure current
+        # headroom so a healthy boot flag cannot admit an exhausted guest.
+        proof['guestMemory'] = {'totalKiB': values['MemTotal'],
+                                'availableKiB': values['MemAvailable'],
+                                'requiredTotalKiB': 3584 * 1024,
+                                'requiredAvailableKiB': 1536 * 1024}
+        proof['guestMemory']['sufficient'] = (values['MemTotal'] >= 3584 * 1024
+                                             and values['MemAvailable'] >= 1536 * 1024)
+        if not proof['guestMemory']['sufficient']:
+            raise RuntimeError('Insufficient native guest memory; allocate at least 4096 MiB '
+                               'and provide 1536 MiB available before instrumentation')
         for index in range(3):
             sample = {name: adb('shell', 'pidof', name)
                       for name in ('surfaceflinger', 'system_server')}
@@ -886,11 +923,11 @@ values = [line.split('=', 1)[1].strip() for line in config.read_text().splitline
 valid = len(values) == 1 and re.fullmatch(r'[1-9][0-9]*', values[0]) is not None
 memory = int(values[0]) if valid else None
 proof = {'config': str(config), 'configuredValues': values,
-         'memoryMiB': memory, 'requiredMiB': 1536,
-         'sufficient': valid and memory >= 1536}
+         'memoryMiB': memory, 'requiredMiB': 4096,
+         'sufficient': valid and memory >= 4096}
 (out / 'emulator-memory.json').write_text(json.dumps(proof, indent=2) + '\n')
 if not proof['sufficient']:
-    raise SystemExit('Owned API 36 AVD requires hw.ramSize as an integer of at least 1536 MiB')
+    raise SystemExit('Owned API 36 AVD requires hw.ramSize as an integer of at least 4096 MiB')
 PY
     fi
     qemu="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
@@ -1034,6 +1071,7 @@ if [[ "$mode" != connected ]]; then
 fi
 
 if [[ "$mode" != host ]]; then
+    bash "$0" verify-native-dependencies
     connected_start="$(phase_start)"
     mapfile -t devices < <(adb devices | awk 'NR>1 && $2=="device"{print $1}')
     [[ ${#devices[@]} == 1 ]] || {
