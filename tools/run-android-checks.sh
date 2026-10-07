@@ -52,6 +52,9 @@ resolve_rust_toolchain() {
 }
 
 mode="${1:-full}"
+if [[ "$mode" == cloud-native ]]; then
+    exec python3 tools/cloud-native-check.py "${2:?fresh evidence directory is required}" "${3:?private fresh QR file is required}"
+fi
 if [[ "$mode" == sealed-native ]]; then
     export PAPERCUP_SEALED_NATIVE_OUT="${2:?fresh evidence directory is required}"
     export PAPERCUP_SEALED_OPERATOR_ROOT="${3:-${PAPERCUP_PAPERCUSP_ROOT:-$ROOT/../papercusp}}"

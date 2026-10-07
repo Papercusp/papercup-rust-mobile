@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 suite="${1:-all}"
-[[ "$suite" == all || "$suite" == boot || "$suite" == live || "$suite" == generation || "$suite" == toolchain ]] || { echo 'Expected all, boot, live, generation or toolchain suite' >&2; exit 2; }
+[[ "$suite" == all || "$suite" == boot || "$suite" == live || "$suite" == generation || "$suite" == toolchain || "$suite" == cloud ]] || { echo 'Expected all, boot, live, generation, toolchain or cloud suite' >&2; exit 2; }
 [[ "$suite" == live || -z "${2:-}" ]] || { echo 'Case selection requires the live suite' >&2; exit 2; }
 mkdir -p "$ROOT/android/app/build/ci-evidence"
 TMP_ROOT="$(mktemp -d "$ROOT/android/app/build/ci-evidence/runner-fixtures.XXXXXX")"
@@ -17,6 +17,67 @@ cleanup() {
 }
 trap cleanup EXIT
 runner="$ROOT/tools/run-android-checks.sh"
+if [[ "$suite" == all || "$suite" == cloud ]]; then
+python3 - "$ROOT" "$TMP_ROOT" <<'PY'
+import base64, hashlib, importlib.util, json, sys
+from pathlib import Path
+from unittest.mock import patch
+root, temp = map(Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location('cloud_runner', root / 'tools/cloud-native-check.py')
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+base = 'https://cloud.example.com/api/workspaces/ws-owned'
+qr = {'server': base, 'workspaceId': 'workspace-owned', 'pairToken': 'one-use-private',
+      'noiseKey': base64.b64encode(bytes(range(32))).decode()}
+path = temp / 'qr.json'; path.write_text(json.dumps(qr)); path.chmod(0o600)
+assert module.validate_input(path, 'emulator-5584', base) == qr
+def refused(fn):
+    try: fn()
+    except ValueError: return
+    raise AssertionError('Unsafe cloud candidate accepted')
+for server in ('http://cloud.example.com/api/workspaces/ws-owned',
+               'https://127.0.0.1/api/workspaces/ws-owned',
+               'https://10.1.2.3/api/workspaces/ws-owned',
+               'https://[::1]/api/workspaces/ws-owned',
+               'https://localhost/api/workspaces/ws-owned',
+               'https://cloud.example.com/api/workspaces/ws-owned?token=x',
+               'https://user:password@cloud.example.com/api/workspaces/ws-owned',
+               'https://cloud.example.com/api/device'):
+    path.write_text(json.dumps(dict(qr, server=server)))
+    refused(lambda: module.validate_input(path, 'emulator-5584', server))
+for changes in ({'noiseKey': ''}, {'noiseKey': 'not-base64'}, {'pairToken': ''}, {'workspaceId': ''}):
+    path.write_text(json.dumps(dict(qr, **changes)))
+    refused(lambda: module.validate_input(path, 'emulator-5584', base))
+path.write_text(json.dumps(qr))
+for serial in ('', 'physical-peer', 'emulator-5584;kill'):
+    refused(lambda: module.validate_input(path, serial, base))
+refused(lambda: module.validate_input(path, 'emulator-5584', base + '-another'))
+path.chmod(0o644)
+refused(lambda: module.validate_input(path, 'emulator-5584', base))
+source, captured = temp / 'source.apk', temp / 'captured.apk'
+source.write_bytes(b'current-candidate')
+assert module.capture_apk(source, captured) == hashlib.sha256(b'current-candidate').hexdigest()
+copy = module.shutil.copyfile
+def racing_copy(src, dest):
+    copy(src, dest); Path(src).write_bytes(b'advanced-candidate')
+with patch.object(module.shutil, 'copyfile', racing_copy):
+    refused(lambda: module.capture_apk(source, captured))
+assert not captured.exists()
+fields = ('encryptedRestore', 'reconnectAndScope', 'readOperations', 'navigation',
+          'revoked', 'revokedTokenRejected', 'credentialsCleared')
+proof = dict.fromkeys(fields, True)
+proof.update(runId='owned-run', workspaceId='workspace-owned', stage='completed')
+output = 'OK (1 test)\nINSTRUMENTATION_CODE: -1\n'
+module.verify_proof(proof, 'owned-run', 'workspace-owned', output)
+for field in fields:
+    refused(lambda: module.verify_proof(dict(proof, **{field: False}), 'owned-run', 'workspace-owned', output))
+for changes in ({'runId': 'old-run'}, {'workspaceId': 'peer-workspace'}, {'stage': 'pairing'}):
+    refused(lambda: module.verify_proof(dict(proof, **changes), 'owned-run', 'workspace-owned', output))
+for log in ('OK (0 tests)\nINSTRUMENTATION_CODE: -1', 'OK (1 test)', output + 'FAILURES!!!'):
+    refused(lambda: module.verify_proof(proof, 'owned-run', 'workspace-owned', log))
+print('Cloud native guards: public pinned QR/current APK accepted; 31 unsafe-input/race/incomplete-proof controls refused')
+PY
+fi
+[[ "$suite" != cloud ]] || exit 0
 if [[ "$suite" == all || "$suite" == toolchain ]]; then
 python3 - "$runner" "$TMP_ROOT" <<'PY'
 import os

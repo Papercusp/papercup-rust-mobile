@@ -55,7 +55,8 @@ class PapercupAppSmokeTest {
         // Fail rather than deleting a device's existing pairing. The runner
         // must supply a dedicated fresh emulator for these native journeys.
         assertNull("Native pairing tests require an unpaired fixture", CredentialStore(context).load())
-        if (InstrumentationRegistry.getArguments().getString("nativePairingFixture") == "true") {
+        if (InstrumentationRegistry.getArguments().getString("nativePairingFixture") == "true" ||
+            InstrumentationRegistry.getArguments().getString("cloudPairing") == "true") {
             // The owned native journey verifies our outgoing enrollment
             // intent, while full external browser/mesh enrollment has its own
             // acceptance plane. A fresh Chrome first-run screen is outside
@@ -89,6 +90,104 @@ class PapercupAppSmokeTest {
             if (InstrumentationRegistry.getArguments().getString("nativePairingFixture") == "true") {
                 verifyOwnedPairedJourney(scenario)
             }
+            if (InstrumentationRegistry.getArguments().getString("cloudPairing") == "true") {
+                verifyOwnedCloudJourney(scenario)
+            }
+        }
+    }
+
+    /** The public QR is unmodified; every request uses the production JNI transport. */
+    private fun verifyOwnedCloudJourney(scenario: ActivityScenario<MainActivity>) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val input = JSONObject(File(context.filesDir, "cloud-pairing-input.json").readText())
+        val payload = input.getJSONObject("pairPayload")
+        val store = CredentialStore(context)
+        val proofFile = File(context.filesDir, "cloud-pairing-result.json")
+        val proof = JSONObject().put("runId", input.getString("runId"))
+            .put("scope", "public hosted Android debug JNI/manual QR payload; no camera, BYOC or signed release claim")
+        var owned: DeviceCredentials? = null
+        fun stage(name: String) {
+            proof.put("stage", name)
+            proofFile.writeText(proof.toString())
+        }
+        try {
+            stage("manual-public-qr")
+            compose.onNodeWithText("Paste manually").performClick()
+            compose.onNode(hasSetTextAction()).performTextInput(payload.toString())
+            compose.onNodeWithText("Pair").performClick()
+            compose.waitUntil(45_000) { store.load() != null }
+            owned = requireNotNull(store.load())
+            val paired = owned!!
+            proof.put("deviceId", paired.deviceId).put("workspaceId", paired.workspaceId)
+            stage("encrypted-restore")
+            assertEquals(payload.getString("server"), paired.server)
+            assertEquals(payload.getString("workspaceId"), paired.workspaceId)
+            assertEquals(payload.getString("noiseKey"), paired.noiseKey)
+            assertTrue(!paired.noiseSeed.isNullOrBlank())
+            waitForPairedShell()
+            scenario.recreate()
+            waitForPairedShell()
+            val restored = requireNotNull(CredentialStore(context).load())
+            assertEquals(paired, restored)
+            proof.put("encryptedRestore", true)
+            stage("fresh-client-reconnect-and-scope")
+            repeat(2) {
+                val client = restored.client()
+                try {
+                    runBlocking {
+                        assertTrue(client.listDesktopDevices().any { it.deviceId == paired.deviceId })
+                        assertTrue(client.listWorkspaces().any { it.id == paired.workspaceId })
+                        client.listHarnesses()
+                        client.attention()
+                        client.listRunning()
+                        client.runtimeConfig()
+                        client.operatorConversation(1u)
+                    }
+                } finally { client.close() }
+            }
+            proof.put("reconnectAndScope", true).put("readOperations", true)
+            stage("paired-shell")
+            for (tab in listOf("Inbox", "Operator", "Plans", "Fleet", "Settings")) {
+                compose.onNodeWithContentDescription(tab).assertIsDisplayed()
+            }
+            proof.put("navigation", true)
+            stage("revoke-owned-device")
+            val client = restored.client()
+            try {
+                client.setBiometricPrompt(object : BiometricPrompt {
+                    override fun prompt(reason: String): BiometricResult = BiometricResult.Approved
+                })
+                runBlocking { client.revokeDevice(paired.deviceId) }
+                proof.put("revoked", true)
+            } finally { client.close() }
+            val revoked = restored.client()
+            try {
+                assertTrue(runCatching { runBlocking { revoked.listDesktopDevices() } }
+                    .exceptionOrNull() is ApiException.Unauthorized)
+                proof.put("revokedTokenRejected", true)
+            } finally { revoked.close() }
+            stage("completed")
+        } finally {
+            // Persist the device ref even after a failure so host-side cleanup is accountable.
+            (owned ?: store.load())?.let { device ->
+                proof.put("deviceId", device.deviceId)
+                if (!proof.optBoolean("revoked")) {
+                    val cleanup = device.client()
+                    try {
+                        cleanup.setBiometricPrompt(object : BiometricPrompt {
+                            override fun prompt(reason: String): BiometricResult = BiometricResult.Approved
+                        })
+                        runBlocking { cleanup.revokeDevice(device.deviceId) }
+                        proof.put("revoked", true)
+                    } catch (failure: Throwable) {
+                        proof.put("cleanupFailureClass", failure.javaClass.name)
+                    } finally { cleanup.close() }
+                }
+            }
+            // Retain encrypted recovery credentials if remote cleanup failed.
+            if (proof.optBoolean("revoked")) store.clear()
+            proof.put("credentialsCleared", store.load() == null)
+            proofFile.writeText(proof.toString())
         }
     }
 
