@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "workItem": "WI-10004770",
+  "scope": "Local debug Compose/JNI HTTP pot load failure, retry, selection and measured empty controls; six-feature live, signed candidate and physical phone acceptance remain pending",
+  "serial": "emulator-5580",
+  "rootCause": "PotSwitcherBar caught all listHarnesses failures and returned emptyList, rendering a healthy All Pots menu",
+  "fix": "Reuse ScreenState with loading, failed and ready states; retry failed requests; propagate cancellation; label successful empty results explicitly",
+  "tests": {
+    "framework": "AndroidJUnit4",
+    "class": "com.papercuspai.operator.mobile.PotSwitcherTest",
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "cases": ["failedLoadRetriesAndSelectsPotWithoutReportingHealthyEmpty", "successfulEmptyLoadIsExplicitAfterRetry"]
+  },
+  "compile": {"debugAndroidTest": "pass", "release": "pass"},
+  "evidenceRoot": "android/app/build/ci-evidence/p003-pot-20261007",
+  "readiness": "emulator-final-preflight/emulator-boot.json: bootCompleted and frameworkReady true, memory and storage sufficient",
+  "sourceSha256": {
+    "android/app/src/main/kotlin/com/papercuspai/operator/mobile/MainActivity.kt": "be77625561f08f57d4aaba2e88974a1c2c6fe097288070a0d878acb0c9fbb34c",
+    "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/PotSwitcherTest.kt": "216769eeda07aea5c0f30245b32615b53e99331611bb83dfda8fd7d32c3f4b6b"
+  },
+  "apkSha256": {
+    "debug": "0c66d96ce3a205965e1bd32ef675362d6c17d44c7fd214046a0271725425db2c",
+    "test": "f5896c1b124b873d7b4c4b16e5c45311efa54ef19aebe74dab33c57bbcc20fa3"
+  },
+  "priorAttempt": "Premature instrumentation launch failed offline before executing tests; final run followed successful maintained framework preflight"
+}
