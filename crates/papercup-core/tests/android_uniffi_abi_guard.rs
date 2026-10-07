@@ -172,8 +172,8 @@ fn rejects_a_missing_abi_library() {
 fn android_ci_reachability_rejects_omitted_checks_and_failed_proof_caching() {
     let repo = repo_root();
     let guard = repo.join("tools/tests/android-ci-contract-test.sh");
-    let source =
-        fs::read_to_string(repo.join(".github/workflows/ci.yml")).expect("owned CI exists");
+    let source = fs::read_to_string(repo.join("tools/android-ci.py"))
+        .expect("independent Android executor exists");
     let (root, _, _) = fixture();
     let baseline = Command::new("bash")
         .arg(&guard)
@@ -185,29 +185,36 @@ fn android_ci_reachability_rejects_omitted_checks_and_failed_proof_caching() {
         String::from_utf8_lossy(&baseline.stderr)
     );
     assert!(String::from_utf8_lossy(&baseline.stdout)
-        .contains("Android CI reachability contract: passed"));
+        .contains("Independent Android CI trigger/ownership/admission contract: passed"));
     for (name, original, replacement) in [
-        ("manual-only", "  schedule:", "  disabled_schedule:"),
         (
             "missing-host-gate",
-            "make check-android-host",
-            "make disabled-host-gate",
+            "run_phase('host'",
+            "run_phase('disabled-host'",
         ),
         (
             "missing-native-gate",
-            "bash tools/run-android-checks.sh connected",
-            "bash disabled-native-gate",
+            "run_phase('connected'",
+            "run_phase('disabled-native'",
         ),
-        ("stale-source-cache", "'crates/**'", "'unrelated/**'"),
-        ("failed-proof-cache", "if: success() &&", "if: always() &&"),
+        (
+            "stale-source-cache",
+            "source_identity(root) != identity",
+            "False",
+        ),
+        (
+            "failed-proof-cache",
+            "if result['status'] == 'passed':",
+            "if True:",
+        ),
     ] {
         let mutated = source.replace(original, replacement);
         assert_ne!(mutated, source, "mutation must exercise {name}");
-        let yaml = root.join(format!("{name}.yml"));
-        fs::write(&yaml, mutated).expect("write CI mutation fixture");
+        let script = root.join(format!("{name}.py"));
+        fs::write(&script, mutated).expect("write CI mutation fixture");
         let result = Command::new("bash")
             .arg(&guard)
-            .arg(yaml)
+            .arg(script)
             .output()
             .expect("run mutation guard");
         assert!(!result.status.success(), "CI guard accepted {name}");
