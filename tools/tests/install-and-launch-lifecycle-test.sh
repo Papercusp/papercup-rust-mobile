@@ -105,6 +105,14 @@ grep -Fx -- '--setenv=DISPLAY=:42' "$args" >/dev/null || fail 'visible display w
 grep -Fx -- "$TMP_ROOT/sdk/emulator/emulator" "$args" >/dev/null || fail 'emulator executable missing'
 grep -Fx -- '-avd' "$args" >/dev/null || fail 'AVD flag missing'
 grep -Fx -- 'papercusp-test' "$args" >/dev/null || fail 'AVD name missing'
+python3 - "$args" <<'PY'
+import sys
+from pathlib import Path
+args = Path(sys.argv[1]).read_text().splitlines()
+assert args[args.index('-memory') + 1] == '4096', 'Explicit API36 guest memory is missing'
+features = args[args.index('-feature') + 1].split(',')
+assert 'GLDirectMem' in features and 'HasSharedSlotsHostMemoryAllocator' in features, 'CI graphics fixture flags missing'
+PY
 grep -F 'Emulator service: papercusp-android-emulator-papercusp-test.service' "$TMP_ROOT/output.log" >/dev/null \
     || fail 'durable service identity was not reported'
 grep -F 'Done. Devices:' "$TMP_ROOT/output.log" >/dev/null || fail 'install flow did not complete'
