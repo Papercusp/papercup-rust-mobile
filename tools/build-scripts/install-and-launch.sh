@@ -28,7 +28,7 @@ launch_emulator() {
         # Match the native CI fixture. An AVD's suffixed hw.ramSize can be
         # parsed as 256 MiB; explicit guest memory avoids that boot-loop.
         -memory 4096
-        -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator
+        -feature 'GLDirectMem,HasSharedSlotsHostMemoryAllocator'
     )
 
     # A plain `nohup … & disown` only detaches from the shell. Agent/CI command

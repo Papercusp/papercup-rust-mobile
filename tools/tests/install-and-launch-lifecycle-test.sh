@@ -48,6 +48,9 @@ case "${1:-}" in
     start-server) exit 0 ;;
     devices)
         printf 'List of devices attached\n'
+        if [[ "${PAPERCUP_TEST_PEER_DEVICES:-0}" == 1 ]]; then
+            printf 'emulator-5660\tdevice\npeer-phone\tdevice\n'
+        fi
         [[ -f "$PAPERCUP_TEST_STATE/systemd-run.args" ]] \
             && printf 'emulator-5554\tdevice\n'
         ;;
@@ -58,6 +61,7 @@ case "${1:-}" in
                 exit 0
                 ;;
             *' install '*)
+                printf '%s\n' "$2" >> "$PAPERCUP_TEST_STATE/installed-serials"
                 : > "$PAPERCUP_TEST_STATE/install-attempted"
                 if [[ "${PAPERCUP_TEST_INSTALL_FAIL:-0}" == 1 ]]; then
                     printf 'Failure [INSTALL_FAILED_VERSION_DOWNGRADE]\n' >&2
@@ -163,4 +167,18 @@ fi
 grep -F 'Android boot did not complete' "$TMP_ROOT/boot-timeout.log" >/dev/null \
     || fail 'boot failure did not identify its readiness precondition'
 
-echo 'install-and-launch lifecycle tests: 5 passed'
+rm -f "$TMP_ROOT/state/systemd-run.args" "$TMP_ROOT/state/installed-serials"
+PATH="$TMP_ROOT/bin:$PATH" ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SERIAL=emulator-5660 \
+    PAPERCUP_ANDROID_APK="$TMP_ROOT/app-debug.apk" PAPERCUP_TEST_STATE="$TMP_ROOT/state" \
+    PAPERCUP_TEST_PEER_DEVICES=1 "$SCRIPT" > "$TMP_ROOT/selected-device.log"
+[[ "$(cat "$TMP_ROOT/state/installed-serials")" == emulator-5660 ]] \
+    || fail 'explicit CI device selection installed onto a peer'
+[[ ! -f "$TMP_ROOT/state/systemd-run.args" ]] || fail 'explicit selection booted another emulator'
+rm -f "$TMP_ROOT/state/installed-serials"
+if PATH="$TMP_ROOT/bin:$PATH" ANDROID_HOME="$TMP_ROOT/sdk" ANDROID_SERIAL=missing-device \
+    PAPERCUP_ANDROID_APK="$TMP_ROOT/app-debug.apk" PAPERCUP_TEST_STATE="$TMP_ROOT/state" \
+    PAPERCUP_TEST_PEER_DEVICES=1 "$SCRIPT" > "$TMP_ROOT/missing-device.log" 2>&1; then
+    fail 'absent explicitly selected device was replaced by a peer'
+fi
+[[ ! -f "$TMP_ROOT/state/installed-serials" ]] || fail 'absent selection installed onto a peer'
+echo 'install-and-launch lifecycle tests: 7 passed'
