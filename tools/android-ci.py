@@ -68,6 +68,15 @@ def write_json(path, value):
     temporary.replace(path)
 
 
+def required_tools(env):
+    commands = ('git', 'make', 'node', 'python3', 'cargo', 'rustc', 'rustup',
+                'adb', 'rg', 'readelf', 'nm', 'unzip', 'zip', 'cc', 'curl',
+                'openssl', 'timeout', 'tar', 'gzip', 'sha256sum', 'flock')
+    missing = [command for command in commands if not shutil.which(command, path=env['PATH'])]
+    if missing:
+        raise ValueError('Missing required Android CI tools: ' + ', '.join(missing))
+
+
 def run_phase(name, command, root, env, attempt, phases, timeout=5400):
     log = attempt / (name + '.log')
     print(f'Android CI phase: {name}; log: {log}', flush=True)
@@ -174,7 +183,7 @@ def execute(root, operator, state, force=False, preflight_only=False):
     attempt = state / 'attempts' / stamp
     attempt.mkdir(parents=True)
     result = {'schemaVersion': 1, 'executor': 'local-systemd', 'attempt': str(attempt),
-              'status': 'failed', 'startedAt': stamp, 'phases': [],
+              'status': 'failed', 'startedAt': dt.datetime.now(dt.timezone.utc).isoformat(), 'phases': [],
               'scope': 'Android working-build host/native CI; phone, signing and Play acceptance remain separate'}
     env = os.environ.copy()
     sdk = Path(env.get('ANDROID_HOME', str(Path.home() / 'Android/Sdk')))
@@ -187,6 +196,7 @@ def execute(root, operator, state, force=False, preflight_only=False):
     avd_root = None
     (root / CI_ADMISSION).unlink(missing_ok=True)
     try:
+        required_tools(env)
         identity = source_identity(root)
         result['source'] = identity
         result['operator'] = {'commit': output(['git', 'rev-parse', 'HEAD'], operator),
