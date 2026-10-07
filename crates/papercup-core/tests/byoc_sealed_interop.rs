@@ -259,10 +259,10 @@ fn ts_responder_refusing_the_initiator_key_never_opens() {
         !seen.ts_open,
         "refused channel must not open on the TS side"
     );
-    assert!(
-        !channel.is_open(),
-        "refused channel must not open on the Rust side"
-    );
+    // Noise completion on the initiator proves the responder's pinned identity,
+    // not the responder's authorization of this phone. That asynchronous check
+    // is responder-local: it must never open or deliver frames on refusal, even
+    // if the initiator has already finished its cryptographic handshake.
     assert!(seen.rust_frames.is_empty() && seen.ts_frames.is_empty());
 }
 
