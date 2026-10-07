@@ -111,8 +111,11 @@ jobs:
       # is the first pushed staging commit carrying both halves. 88409fd9
       # adds WI-10006976: the host-bundle restricted-hold gate no longer
       # fails closed on GitHub Actions, where no Papercusp operator exists
-      # (run 37534227373 failed there at 2a0d28b2).
-      PAPERCUP_OPERATOR_SHA: 88409fd94dfcea7aa9fedcfaede5c2d78ea4b31c
+      # (run 37534227373 failed there at 2a0d28b2). 0ddc3a53 adds
+      # WI-10007018: the bundle freshness stamp no longer hashes the
+      # .restricted-gate-meta.$$ dir that bundle-host.sh's EXIT trap deletes
+      # (run 37543418448 failed on output-tree mismatch at 88409fd9).
+      PAPERCUP_OPERATOR_SHA: 0ddc3a533366a97dd25418a294ccd463ba6d9a0f
     concurrency:
       group: android-check-${{ github.ref }}
       cancel-in-progress: false
