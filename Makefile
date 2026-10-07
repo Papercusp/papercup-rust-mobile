@@ -45,8 +45,8 @@ help:
 	@echo "  make clean              — remove all build artifacts"
 
 # Shared local gates; Android automation uses tools/android-ci.py independently
-# of GitHub Actions. iPhone-only workflows retain their own execution route.
-check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-store-cloud-pending test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-ios-unit-runner test-git-hooks test-rust-toolchain-pin test-ios-signing lint-workflows lint-shell
+# of GitHub Actions. iPhone execution uses tools/ios-ci.py on a native Mac.
+check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-store-cloud-pending test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-ios-unit-runner test-git-hooks test-rust-toolchain-pin test-ios-signing test-ios-ci test-ios-release lint-workflows lint-shell
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -198,8 +198,15 @@ verify-ios-release:
 test-ios-release:
 	./tools/tests/verify-ios-release-test.sh
 
+.PHONY: test-ios-ci check-ios-ci
+test-ios-ci:
+	python3 tools/tests/ios-ci-runner-test.py
+
+check-ios-ci:
+	python3 tools/ios-ci.py
+
 # TestFlight signing route: secrets gate, profile checks, release-ios.sh
-# signing modes and the testflight.yml contract (fixtures only, runs on Linux).
+# signing modes and native delivery admission (fixtures only, runs on Linux).
 test-ios-signing:
 	bash tools/tests/ios-release-signing-test.sh
 	bash tools/tests/ios-signing-secrets-test.sh
