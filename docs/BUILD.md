@@ -184,26 +184,25 @@ UDL changes require re-running the binding generator (see `tools/build-scripts/`
 checks have passed on the exact clean commit being released:
 
 ```sh
-bash tools/run-android-checks.sh host        # host gate
-bash tools/run-android-checks.sh connected   # API 36 / 16 KB device gate
+make check-android-ci                      # host, API36/16KB native and paired CI gate
 bash tools/build-scripts/build-android.sh release
 ```
 
 Each check phase captures `HEAD` when it starts (or `dirty` if the tree is not
 clean). After its results verify, the runner calls
-`android-release-provenance.sh checks-pass <host|connected> <start-commit|dirty>`.
+`android-release-provenance.sh checks-pass <host|connected|ci> <start-commit|dirty>`.
 That writes `android/app/build/outputs/papercusp-android-checks/<phase>.json`, but
 only if the tree was clean at both start and end and `HEAD` did not move. A
 failed, partial, dirty or moved-source run writes no pass record.
 
 The release path calls `android-release-provenance.sh checks-gate` before Gradle
 assembles anything. `write` then refuses (`ERROR: publication gate: ...`) unless
-both the host and connected records match the clean `HEAD`, and it embeds them
+the host, connected and independent CI records match the clean `HEAD`, and it embeds them
 in the provenance manifest as `checks`. `verify` re-validates those embedded
 records against the commit, so a manifest with a dropped, rebound or failed
-phase does not verify. Records are local build output: a hosted CI pass does
-not satisfy a local release build, and any new commit (including a git-sync
-sweep) requires both phases to run again. `tools/tests/android-release-provenance-test.sh`
+phase does not verify. Records are local build output: any new commit (including
+a git-sync sweep) requires the complete independent gate to run again.
+`tools/tests/android-release-provenance-test.sh`
 covers each refusal.
 
 ### Automatic Android CI

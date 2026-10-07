@@ -17,6 +17,7 @@ for call in ("run_phase('host'", "run_phase('connected'", "run_phase('paired'", 
     assert call in text, 'independent CI omits gate: ' + call
 for contract in ('check-android-host', 'tokens-check', 'isolated-native', 'features',
                  'verify-isolated-native', 'source_identity(root) != identity',
+                 "if result['status'] == 'passed':",
                  'bundle-host-freshness.mjs', 'collect_artifacts(root, attempt)',
                  'fcntl.LOCK_EX | fcntl.LOCK_NB', 'emulator.terminate()', 'emulator.wait(timeout=15)',
                  'swiftshader', 'GLDirectMem,HasSharedSlotsHostMemoryAllocator', "'4096'", "'6144'",
