@@ -119,7 +119,9 @@ impl Ed25519KeyPair {
         scalar[0] &= 248;
         scalar[31] &= 127;
         scalar[31] |= 64;
-        let public = EdwardsPoint::mul_base_clamped(*scalar).compress().to_bytes();
+        let public = EdwardsPoint::mul_base_clamped(*scalar)
+            .compress()
+            .to_bytes();
         Self { scalar, public }
     }
 
@@ -160,7 +162,14 @@ impl Ed25519KeyPair {
 pub fn stream_id(handshake_hash: &[u8; 64], initiator: bool) -> [u8; 32] {
     let mut mac = <Blake2bMac<U32> as Mac>::new_from_slice(handshake_hash)
         .expect("BLAKE2b accepts a 64-byte key");
-    Mac::update(&mut mac, if initiator { &NS_INITIATOR } else { &NS_RESPONDER });
+    Mac::update(
+        &mut mac,
+        if initiator {
+            &NS_INITIATOR
+        } else {
+            &NS_RESPONDER
+        },
+    );
     let mut out = [0u8; 32];
     out.copy_from_slice(&mac.finalize().into_bytes());
     out
@@ -173,7 +182,11 @@ pub fn frame(payload: &[u8]) -> Result<Vec<u8>> {
         return Err(NoiseStreamError::FrameTooLarge(len));
     }
     let mut out = Vec::with_capacity(3 + len);
-    out.extend_from_slice(&[(len & 0xff) as u8, ((len >> 8) & 0xff) as u8, ((len >> 16) & 0xff) as u8]);
+    out.extend_from_slice(&[
+        (len & 0xff) as u8,
+        ((len >> 8) & 0xff) as u8,
+        ((len >> 16) & 0xff) as u8,
+    ]);
     out.extend_from_slice(payload);
     Ok(out)
 }
@@ -251,7 +264,12 @@ impl SymmetricState {
     fn new() -> Self {
         let mut h = [0u8; HASHLEN];
         h[..PROTOCOL_NAME.len()].copy_from_slice(PROTOCOL_NAME.as_bytes());
-        let mut state = Self { h, ck: Zeroizing::new(h), k: None, n: 0 };
+        let mut state = Self {
+            h,
+            ck: Zeroizing::new(h),
+            k: None,
+            n: 0,
+        };
         state.mix_hash(&[]); // empty prologue
         state
     }
@@ -274,7 +292,13 @@ impl SymmetricState {
         let ciphertext = match self.k.as_ref() {
             None => plaintext.to_vec(),
             Some(k) => ChaCha20Poly1305::new(AeadKey::from_slice(&k[..]))
-                .encrypt(Nonce::from_slice(&aead_nonce(self.n)), Payload { msg: plaintext, aad: &self.h })
+                .encrypt(
+                    Nonce::from_slice(&aead_nonce(self.n)),
+                    Payload {
+                        msg: plaintext,
+                        aad: &self.h,
+                    },
+                )
                 .map_err(|_| NoiseStreamError::HandshakeEncrypt)?,
         };
         if self.k.is_some() {
@@ -288,7 +312,13 @@ impl SymmetricState {
         let plaintext = match self.k.as_ref() {
             None => ciphertext.to_vec(),
             Some(k) => ChaCha20Poly1305::new(AeadKey::from_slice(&k[..]))
-                .decrypt(Nonce::from_slice(&aead_nonce(self.n)), Payload { msg: ciphertext, aad: &self.h })
+                .decrypt(
+                    Nonce::from_slice(&aead_nonce(self.n)),
+                    Payload {
+                        msg: ciphertext,
+                        aad: &self.h,
+                    },
+                )
                 .map_err(|_| NoiseStreamError::HandshakeDecrypt)?,
         };
         if self.k.is_some() {
@@ -336,7 +366,12 @@ impl NoiseXxInitiator {
         ephemeral: Ed25519KeyPair,
         expected_remote: Option<[u8; 32]>,
     ) -> Self {
-        Self { ss: SymmetricState::new(), s: static_keys, e: ephemeral, expected_remote }
+        Self {
+            ss: SymmetricState::new(),
+            s: static_keys,
+            e: ephemeral,
+            expected_remote,
+        }
     }
 
     /// `-> e`: the first message (unframed).
@@ -352,7 +387,10 @@ impl NoiseXxInitiator {
     /// `<- e, ee, s, es` then `-> s, se`, then split.
     pub fn read_message2(mut self, msg2: &[u8]) -> Result<HandshakeOutcome> {
         if msg2.len() < MSG2_MIN_BYTES {
-            return Err(NoiseStreamError::MessageLength { expected: MSG2_MIN_BYTES, actual: msg2.len() });
+            return Err(NoiseStreamError::MessageLength {
+                expected: MSG2_MIN_BYTES,
+                actual: msg2.len(),
+            });
         }
         let mut re = [0u8; 32];
         re.copy_from_slice(&msg2[..32]);
@@ -378,7 +416,13 @@ impl NoiseXxInitiator {
         message3.extend_from_slice(&self.ss.encrypt_and_hash(&[])?);
 
         let (tx, rx) = self.ss.split();
-        Ok(HandshakeOutcome { message3, tx, rx, handshake_hash: self.ss.h, remote_public_key: rs })
+        Ok(HandshakeOutcome {
+            message3,
+            tx,
+            rx,
+            handshake_hash: self.ss.h,
+            remote_public_key: rs,
+        })
     }
 }
 
@@ -413,7 +457,10 @@ pub struct SecretStreamInitiator {
 
 impl SecretStreamInitiator {
     /// Start a session. Returns the session and the first chunk to send.
-    pub fn start(static_keys: Ed25519KeyPair, expected_remote: Option<[u8; 32]>) -> Result<(Self, Vec<u8>)> {
+    pub fn start(
+        static_keys: Ed25519KeyPair,
+        expected_remote: Option<[u8; 32]>,
+    ) -> Result<(Self, Vec<u8>)> {
         Self::from_handshake(NoiseXxInitiator::new(static_keys, expected_remote))
     }
 
@@ -423,12 +470,22 @@ impl SecretStreamInitiator {
         ephemeral: Ed25519KeyPair,
         expected_remote: Option<[u8; 32]>,
     ) -> Result<(Self, Vec<u8>)> {
-        Self::from_handshake(NoiseXxInitiator::with_ephemeral(static_keys, ephemeral, expected_remote))
+        Self::from_handshake(NoiseXxInitiator::with_ephemeral(
+            static_keys,
+            ephemeral,
+            expected_remote,
+        ))
     }
 
     fn from_handshake(mut handshake: NoiseXxInitiator) -> Result<(Self, Vec<u8>)> {
         let first = frame(&handshake.write_message1()?)?;
-        Ok((Self { state: State::Handshaking(Box::new(handshake)), decoder: FrameDecoder::default() }, first))
+        Ok((
+            Self {
+                state: State::Handshaking(Box::new(handshake)),
+                decoder: FrameDecoder::default(),
+            },
+            first,
+        ))
     }
 
     /// True once the handshake finished and data can be sent.
@@ -498,7 +555,8 @@ impl SecretStreamInitiator {
                         {
                             return Err(NoiseStreamError::InvalidHeader);
                         }
-                        let header = Header::try_from(&body[32..]).map_err(|_| NoiseStreamError::InvalidHeader)?;
+                        let header = Header::try_from(&body[32..])
+                            .map_err(|_| NoiseStreamError::InvalidHeader)?;
                         est.pull = Some(PullStream::init(header, &StreamKey::from(*est.rx)));
                     }
                     Some(pull) => {
@@ -506,7 +564,8 @@ impl SecretStreamInitiator {
                             return Err(NoiseStreamError::ShortMessage);
                         }
                         let mut buf = body;
-                        pull.pull(&mut buf, &[]).map_err(|_| NoiseStreamError::StreamDecrypt)?;
+                        pull.pull(&mut buf, &[])
+                            .map_err(|_| NoiseStreamError::StreamDecrypt)?;
                         if !buf.is_empty() {
                             progress.messages.push(buf);
                         }
@@ -526,10 +585,14 @@ impl SecretStreamInitiator {
             State::Failed => return Err(NoiseStreamError::Failed),
         };
         if plaintext.len() + SECRETSTREAM_ABYTES > MAX_FRAME_BYTES {
-            return Err(NoiseStreamError::FrameTooLarge(plaintext.len() + SECRETSTREAM_ABYTES));
+            return Err(NoiseStreamError::FrameTooLarge(
+                plaintext.len() + SECRETSTREAM_ABYTES,
+            ));
         }
         let mut buf = plaintext.to_vec();
-        est.push.push(&mut buf, &[], Tag::Message).map_err(|_| NoiseStreamError::StreamEncrypt)?;
+        est.push
+            .push(&mut buf, &[], Tag::Message)
+            .map_err(|_| NoiseStreamError::StreamEncrypt)?;
         frame(&buf)
     }
 }
@@ -581,7 +644,10 @@ mod tests {
 
     #[test]
     fn frame_rejects_oversized_payload() {
-        assert_eq!(frame(&vec![0u8; MAX_FRAME_BYTES + 1]), Err(NoiseStreamError::FrameTooLarge(MAX_FRAME_BYTES + 1)));
+        assert_eq!(
+            frame(&vec![0u8; MAX_FRAME_BYTES + 1]),
+            Err(NoiseStreamError::FrameTooLarge(MAX_FRAME_BYTES + 1))
+        );
     }
 
     #[test]
@@ -590,7 +656,10 @@ mod tests {
         // The identity point (small order).
         let mut identity = [0u8; 32];
         identity[0] = 1;
-        assert_eq!(kp.diffie_hellman(&identity), Err(NoiseStreamError::InvalidPublicKey));
+        assert_eq!(
+            kp.diffie_hellman(&identity),
+            Err(NoiseStreamError::InvalidPublicKey)
+        );
         // y = p (non-canonical encoding of y = 0).
         let mut non_canonical = [0xffu8; 32];
         non_canonical[0] = 0xed;
@@ -608,7 +677,13 @@ mod tests {
     fn short_message2_is_refused_and_poisons_the_stream() {
         let (mut s, _) = SecretStreamInitiator::start(Ed25519KeyPair::generate(), None).unwrap();
         let err = s.receive(&frame(&[0u8; 10]).unwrap()).unwrap_err();
-        assert_eq!(err, NoiseStreamError::MessageLength { expected: MSG2_MIN_BYTES, actual: 10 });
+        assert_eq!(
+            err,
+            NoiseStreamError::MessageLength {
+                expected: MSG2_MIN_BYTES,
+                actual: 10
+            }
+        );
         assert_eq!(s.receive(&[]), Err(NoiseStreamError::Failed));
     }
 }
