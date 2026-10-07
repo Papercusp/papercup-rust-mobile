@@ -3,7 +3,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 suite="${1:-all}"
-[[ "$suite" == all || "$suite" == boot ]] || { echo 'Expected all or boot suite' >&2; exit 2; }
+[[ "$suite" == all || "$suite" == boot || "$suite" == live ]] || { echo 'Expected all, boot or live suite' >&2; exit 2; }
+[[ "$suite" == live || -z "${2:-}" ]] || { echo 'Case selection requires the live suite' >&2; exit 2; }
 mkdir -p "$ROOT/android/app/build/ci-evidence"
 TMP_ROOT="$(mktemp -d "$ROOT/android/app/build/ci-evidence/runner-fixtures.XXXXXX")"
 cleanup() {
@@ -302,11 +303,13 @@ if bash "$runner" verify-results "$TMP_ROOT" connected > "$TMP_ROOT/output" 2>&1
     exit 1
 fi
 
+fi
+if [[ "$suite" == all || "$suite" == live ]]; then
 # Exercise the live runner through actual HTTP and subprocess boundaries.
 # The fake Cargo process is deliberately separate from the fixture server:
 # skipped/empty exits, failed tests and interruption must all clean only the
 # resources created for this attempt, without changing desktop selection.
-python3 - "$runner" "$TMP_ROOT" <<'PY'
+python3 - "$runner" "$TMP_ROOT" "${2:-}" <<'PY'
 # Upper bound for one stubbed live-runner invocation (see its use below).
 STUB_HANG_TIMEOUT_SEC = 120
 import json
@@ -333,6 +336,9 @@ cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', '
          'native-preflight-fail', 'native-local-cleanup-fail', 'native-cleanup-fail',
          'native-unused-token', 'native-wrong-device', 'native-existing-files', 'native-missing-serial',
          'native-install-fail', 'native-install-incompatible']
+if sys.argv[3]:
+    assert sys.argv[3] in cases, 'Unknown live fixture case: ' + sys.argv[3]
+    cases = [sys.argv[3]]
 for case in cases:
     native_mode = case.startswith('native-')
     state = {'workspaces': [{'id': 'original', 'name': 'Original'}], 'current': 'original',
@@ -471,10 +477,25 @@ sys.exit(101 if case == 'test-fail' else 0)
         git.chmod(0o755)
         adb = bin_dir / 'adb'
         adb.write_text('''#!/usr/bin/env python3
-import json, os, sys
+import atexit, json, os, sys, time
 from pathlib import Path
 args = sys.argv[1:]
 case = os.environ['TEST_LIVE_CASE']
+# Retain readiness command entry/exit separately from the parent deadline.
+# Record only preflight commands; pairing inputs never enter this ledger.
+readiness = args in (['devices'], ['devices', '-l']) or (
+    args[:3] == ['-s', 'emulator-5556', 'shell'] and
+    len(args) > 3 and args[3] in ('getprop', 'pidof', 'settings', 'cat', 'df', 'getconf')) or (
+    args == ['-s', 'emulator-5556', 'logcat', '-b', 'crash', '-d'])
+if readiness:
+    def trace(phase):
+        row = dict(phase=phase, pid=os.getpid(), args=args,
+                   monotonicNs=time.monotonic_ns(), wallNs=time.time_ns())
+        fd = os.open('fake-adb-readiness.jsonl', os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try: os.write(fd, (json.dumps(row) + '\\n').encode())
+        finally: os.close(fd)
+    trace('start')
+    atexit.register(trace, 'end')
 if args in (['devices'], ['devices', '-l']):
     print('List of devices attached\\nemulator-5556 device')
     sys.exit(0)
@@ -614,6 +635,15 @@ else:
         boot_proof = evidence / 'emulator-preflight/emulator-boot.json'
         readiness = json.loads(boot_proof.read_text()) if boot_proof.exists() else None
         diagnostic = (case, run.stdout[-1500:], run.stderr[-1500:], result, readiness)
+        if native_mode and case not in ('native-existing-files', 'native-missing-serial'):
+            # A negative journey control must reach its intended predicate.
+            # A readiness timeout is a fixture failure, never acceptance proof.
+            assert readiness and readiness['frameworkReady'], diagnostic
+            rows = [json.loads(line) for line in (native_root / 'fake-adb-readiness.jsonl').read_text().splitlines()]
+            starts = {row['pid']: row for row in rows if row['phase'] == 'start'}
+            ends = {row['pid']: row for row in rows if row['phase'] == 'end'}
+            assert starts.keys() == ends.keys(), ('unfinished fake ADB command', rows)
+            assert all(ends[pid]['monotonicNs'] >= row['monotonicNs'] for pid, row in starts.items())
         assert (run.returncode == 0) == (case in ('pass', 'native-pass', 'native-install-incompatible')), diagnostic
         assert state['current'] == 'original'
         assert result['checkKind'] == ('native' if native_mode else 'rust')
@@ -657,6 +687,9 @@ else:
             assert '<failure>lifecycle failure</failure>' in xml.read_text(), 'failed native evidence was discarded'
             assert len(result['artifacts']) == 2, 'failed run lost its exact APKs'
             assert result['nativeObservedProof']['failedStage'] == 'persisted-credentials', 'failure-stage witness was discarded'
+        if case == 'native-duplicate-journey':
+            assert any('native journey and scope controls must each execute exactly once' in error
+                       for error in result['errors']), diagnostic
         if case == 'native-timeout':
             assert result['exitCode'] == 124 and 'nativeJourney' not in result
             assert result['nativeObservedProof']['currentStage'] == 'authenticated-jni-request'
@@ -693,6 +726,9 @@ assert failure['ownedDeviceIds'] == [] and failure['cleanupVerified']
 assert failure['errors'] and failure['finishedAt']
 print(f'Android live fixture guards: {len(cases) + 2} passed; Rust/native ownership, executed proof and independent cleanup verified')
 PY
+fi
+[[ "$suite" != live ]] || exit 0
+if [[ "$suite" == all ]]; then
 echo 'Android result guard tests: 10 passed'
 
 # The CI preparation phase must refuse a real developer/self-hosted machine.
