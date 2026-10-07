@@ -44,6 +44,7 @@ pub mod cache;
 pub mod client;
 pub mod intent;
 pub mod noise_stream;
+mod sealed_http;
 pub mod types;
 pub mod voice;
 

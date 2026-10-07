@@ -36,6 +36,8 @@ zeroize = "1"
 # Relay packets carry each raw secret-stream chunk as canonical standard base64
 # (byoc-sealed-channel.ts decodePacket). WI-10006994.
 base64 = "0.22"
+# Reuse reqwest's HTTP response type for sealed streaming responses.
+http = "1"
 
 [dev-dependencies]
 wiremock = "0.6"

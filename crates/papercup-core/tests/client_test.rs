@@ -392,8 +392,9 @@ async fn running_snapshot_decodes_scan_and_harnesses() {
     assert_eq!(harnesses[0].active_roles, vec!["architect"]);
 }
 
-// Current pair contract (routes/device/pair.ts): body is {pairToken}
-// only; response carries defguardEnrollmentUrl — no wgConfig, no mesh
+// Legacy LAN pair contract (routes/device/pair.ts): body is {pairToken};
+// key-advertising machines additionally require noisePublicKey. The
+// response carries defguardEnrollmentUrl — no wgConfig, no mesh
 // fields (Defguard self-enrollment, D-005).
 #[tokio::test]
 async fn pair_serialises_camel_case_and_returns_defguard_url() {
@@ -428,6 +429,132 @@ async fn pair_serialises_camel_case_and_returns_defguard_url() {
     );
     // An older server that omits baseUrls still pairs.
     assert!(resp.base_urls.is_null());
+}
+
+// Source contract: routes/device/pair.ts validates a canonical STANDARD
+// base64 32-byte phone key before consuming the token. Neither an existing
+// device JWT nor private seed material may reach the public pair request.
+#[tokio::test]
+async fn pair_with_noise_sends_only_public_key_without_bearer_through_relay() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use papercup_core::noise_stream::Ed25519KeyPair;
+
+    let server = MockServer::start().await;
+    let prefix = "/api/workspaces/ws_123abc";
+    let client = OperatorClient::new(format!("{}{prefix}/", server.uri()), Some(TOKEN.into()));
+    let seed = [0x31; 32];
+    let key = Ed25519KeyPair::from_seed(&seed);
+    Mock::given(method("POST"))
+        .and(path(format!("{prefix}/api/device/pair")))
+        .and(body_json(json!({
+            "pairToken": "PT-noise",
+            "noisePublicKey": STANDARD.encode(key.public_key()),
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "deviceToken": "JWT", "deviceId": "did-noise",
+            "desktopHost": "host:3070", "workspaceId": "ws_123abc",
+            "defguardEnrollmentUrl": null
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let response = client
+        .pair_with_noise(
+            PairBody {
+                pair_token: "PT-noise".into(),
+            },
+            &key.public_key(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.device_id, "did-noise");
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    assert!(!requests[0].headers.contains_key("authorization"));
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(body.as_object().unwrap().len(), 2);
+    assert_ne!(body["noisePublicKey"], STANDARD.encode(seed));
+    Mock::given(method("GET"))
+        .and(path(format!("{prefix}/api/device/harnesses")))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"harnesses":[]})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    assert!(client.list_harnesses().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn legacy_pair_on_authenticated_client_still_sends_no_key_or_bearer() {
+    let server = MockServer::start().await;
+    let client = OperatorClient::new(server.uri(), Some(TOKEN.into()));
+    Mock::given(method("POST"))
+        .and(path("/api/device/pair"))
+        .and(body_json(json!({"pairToken":"expired"})))
+        .respond_with(
+            ResponseTemplate::new(401).set_body_json(json!({"error":"invalid_or_expired_token"})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    assert!(matches!(
+        client
+            .pair(PairBody {
+                pair_token: "expired".into()
+            })
+            .await,
+        Err(ApiError::Unauthorized)
+    ));
+    let requests = server.received_requests().await.unwrap();
+    assert!(!requests[0].headers.contains_key("authorization"));
+    Mock::given(method("GET"))
+        .and(path("/api/device/harnesses"))
+        .and(bearer_token(TOKEN))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"harnesses":[]})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    assert!(client.list_harnesses().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn noise_pair_preserves_retryable_and_auth_error_contracts() {
+    for (status, error) in [
+        (401, "invalid_or_expired_token"),
+        (503, "workspace_offline"),
+    ] {
+        let server = MockServer::start().await;
+        let client = OperatorClient::new(server.uri(), None);
+        Mock::given(method("POST"))
+            .and(path("/api/device/pair"))
+            .respond_with(
+                ResponseTemplate::new(status)
+                    .insert_header("retry-after", "9")
+                    .set_body_json(json!({"error":error})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let result = client
+            .pair_with_noise(
+                PairBody {
+                    pair_token: "tok".into(),
+                },
+                &[0x31; 32],
+            )
+            .await;
+        if status == 401 {
+            assert!(matches!(result, Err(ApiError::Unauthorized)));
+        } else {
+            assert!(matches!(
+                result,
+                Err(ApiError::WorkspaceOffline {
+                    retry_after_secs: Some(9)
+                })
+            ));
+        }
+    }
 }
 
 // Pair on a cloud workspace (iPhone D-018 / D-014(3)): the machine

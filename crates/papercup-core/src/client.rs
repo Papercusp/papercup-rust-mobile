@@ -17,6 +17,7 @@
 //   - The voice WS lives on its own port, discovered via
 //     `GET /api/device/runtime-config` (`runtime_config`).
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::de::DeserializeOwned;
 
 use crate::types::{
@@ -231,6 +232,7 @@ pub struct OperatorClient {
     fallback_url: Option<String>,
     device_token: Option<String>,
     http: reqwest::Client,
+    sealed: std::sync::Arc<std::sync::RwLock<Option<crate::sealed_http::SealedIdentity>>>,
 }
 
 impl OperatorClient {
@@ -249,6 +251,7 @@ impl OperatorClient {
             fallback_url: None,
             device_token,
             http,
+            sealed: std::sync::Arc::new(std::sync::RwLock::new(None)),
         }
     }
 
@@ -268,6 +271,25 @@ impl OperatorClient {
 
     pub fn base_url(&self) -> String {
         self.base_url.read().unwrap().clone()
+    }
+
+    /// Configure the QR-pinned machine and the phone's persisted seed.
+    /// Once configured, all device requests (including pairing) use Noise;
+    /// transport failures never retry over plaintext.
+    pub fn configure_sealed_transport(
+        &self,
+        seed: &[u8; 32],
+        machine_key: &[u8; 32],
+    ) -> Result<(), ApiError> {
+        let local = crate::noise_stream::Ed25519KeyPair::from_seed(seed);
+        local
+            .diffie_hellman(machine_key)
+            .map_err(|e| ApiError::Decode(e.to_string()))?;
+        *self.sealed.write().unwrap() = Some(crate::sealed_http::SealedIdentity {
+            local,
+            remote: *machine_key,
+        });
+        Ok(())
     }
 
     /// Swap the active base URL. Public so the host can flip when mesh
@@ -329,7 +351,24 @@ impl OperatorClient {
             let method = method.clone();
             let token = token.clone();
             let body = body.clone();
+            let sealed = self.sealed.read().unwrap().clone();
             async move {
+                if let Some(identity) = sealed {
+                    let resp = crate::sealed_http::request(
+                        &base,
+                        identity,
+                        method.as_str(),
+                        path,
+                        Some(&token),
+                        body.as_ref(),
+                    )
+                    .await?;
+                    return if resp.status().is_success() {
+                        Ok(resp)
+                    } else {
+                        Err(into_api_error(resp).await)
+                    };
+                }
                 let mut req = self.http.request(method, &url).bearer_auth(&token);
                 if path == "/api/device/operator/converse" {
                     req = req.timeout(std::time::Duration::from_secs(90));
@@ -772,8 +811,53 @@ impl OperatorClient {
     /// auth. The response's `defguard_enrollment_url` is the Defguard
     /// self-enrollment hand-off (D-005); no WG config at pair time.
     pub async fn pair(&self, body: PairBody) -> Result<PairResp, ApiError> {
+        self.pair_request(serde_json::json!({ "pairToken": body.pair_token }))
+            .await
+    }
+
+    /// Pair a key-advertising machine with the phone's static Noise key.
+    /// Persist the corresponding seed before pairing, then use that same key
+    /// for the sealed transport. Only the public key crosses this boundary.
+    /// This additive method preserves the existing `PairBody` and LAN callers.
+    pub async fn pair_with_noise(
+        &self,
+        body: PairBody,
+        noise_public_key: &[u8; 32],
+    ) -> Result<PairResp, ApiError> {
+        if self
+            .sealed
+            .read()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|identity| identity.local.public_key() != *noise_public_key)
+        {
+            return Err(ApiError::Decode(
+                "pair public key differs from the configured phone key".into(),
+            ));
+        }
+        self.pair_request(serde_json::json!({
+            "pairToken": body.pair_token,
+            "noisePublicKey": STANDARD.encode(noise_public_key),
+        }))
+        .await
+    }
+
+    async fn pair_request(&self, body: serde_json::Value) -> Result<PairResp, ApiError> {
+        let identity = self.sealed.read().unwrap().clone();
         let url = format!("{}/api/device/pair", self.base_url());
-        let resp = self.http.post(&url).json(&body).send().await?;
+        let resp = if let Some(identity) = identity {
+            crate::sealed_http::request(
+                &self.base_url(),
+                identity,
+                "POST",
+                "/api/device/pair",
+                None,
+                Some(&body),
+            )
+            .await?
+        } else {
+            self.http.post(&url).json(&body).send().await?
+        };
         if !resp.status().is_success() {
             return Err(into_api_error(resp).await);
         }
