@@ -106,6 +106,15 @@ class AndroidCITest(unittest.TestCase):
         self.assertIn('missing source prerequisite', result['error'])
         self.assertTrue((Path(result['attempt']) / 'result.json').is_file())
 
+    def test_missing_required_tool_is_named_before_expensive_execution(self):
+        with patch.object(ci.shutil, 'which', side_effect=lambda command, **_: None if command == 'rg' else '/usr/bin/' + command):
+            with self.assertRaisesRegex(ValueError, 'Missing required Android CI tools: rg'):
+                ci.required_tools({'PATH': '/usr/bin:/bin'})
+
+    def test_complete_service_tool_set_is_admitted(self):
+        with patch.object(ci.shutil, 'which', side_effect=lambda command, **_: '/usr/bin/' + command):
+            ci.required_tools({'PATH': '/usr/bin:/bin'})
+
     def test_artifact_retention_excludes_checkout_and_configuration(self):
         build = self.root / 'android/app/build'
         (build / 'outputs/apk/debug').mkdir(parents=True)
