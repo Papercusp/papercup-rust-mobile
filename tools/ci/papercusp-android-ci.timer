@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Android source independently of GitHub Actions
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=30min
+Unit=papercusp-android-ci.service
+
+[Install]
+WantedBy=timers.target
