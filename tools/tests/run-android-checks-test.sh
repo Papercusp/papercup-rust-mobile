@@ -31,6 +31,12 @@ dispatch = temp / 'cloud-dispatch'; (dispatch / 'tools').mkdir(parents=True)
     'import os; print(os.environ["ANDROID_HOME"]); print(os.environ["ANDROID_SDK_ROOT"])')
 env = dict(os.environ, HOME=str(temp / 'owned-home'))
 env.pop('ANDROID_HOME', None); env.pop('ANDROID_SDK_ROOT', None)
+# This dispatch control owns SDK ordering, not a real rustup invocation in a
+# deliberately empty HOME. Toolchain failure semantics have their own suite.
+bin_dir = dispatch / 'bin'; bin_dir.mkdir()
+for tool in ('cargo', 'rustc'):
+    command = bin_dir / tool; command.write_text('#!/bin/sh\nexit 0\n'); command.chmod(0o755)
+env['PATH'] = str(bin_dir) + ':' + env['PATH']
 run = subprocess.run(['bash', str(dispatch / 'tools/run-android-checks.sh'), 'cloud-native', 'out', 'qr'],
                      env=env, text=True, capture_output=True, check=True, timeout=15)
 assert run.stdout.splitlines() == [str(temp / 'owned-home/Android/Sdk')] * 2

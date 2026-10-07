@@ -59,6 +59,7 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"
 
 mode="${1:-full}"
 if [[ "$mode" == cloud-native ]]; then
+    resolve_rust_toolchain
     exec python3 tools/cloud-native-check.py "${2:?fresh evidence directory is required}" "${3:?private fresh QR file is required}"
 fi
 if [[ "$mode" == sealed-native ]]; then
