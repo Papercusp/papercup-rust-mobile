@@ -276,6 +276,15 @@ requires `--paired-ui --pair-payload-file /private/fresh-payload.json` and is ne
 cached. The payload must be owner-only, outside the repository and sanitized for
 screenshots. Device/TestFlight acceptance and App Store review remain separate.
 
+After native preflight passes, install the maintained macOS launch agent with
+`python3 tools/ios-ci.py --install-launch-agent`. It checks this source checkout
+at login and every 30 minutes, preserves an explicit `DEVELOPER_DIR`, and invokes
+unsigned checks only. Inspect it with `launchctl print gui/$(id -u)/com.papercusp.ios-ci`;
+stop it with `launchctl bootout gui/$(id -u)/com.papercusp.ios-ci`. Check logs live
+beside `latest.json`. Retention keeps the newest 16 check attempts, protects current
+proof pointers, and preserves signed candidates and unrecognized directories.
+Private signing and pairing inputs are redacted from retained phase logs.
+
 Signed exports are explicit and require a clean source and a new positive build number:
 
 ```sh
@@ -295,6 +304,12 @@ signing inputs (`APPLE_TEAM_ID`, distribution P12/password, App Store profile,
 executor gates missing material before building, reserves build numbers, installs
 a temporary keychain/profile/API key outside retained evidence, validates the signed
 archive, optionally uploads, and cleans signing material even after a failed build.
+Successful signed execution extends the existing `candidate-manifest.json` with
+the shared release envelope: `schemaVersion`, `releaseVersion`, `sourceCommit`,
+`sourceDirty:false`, `builtAt`, and one `ipa` artifact with relative path, byte size
+and SHA256. The archive's validated identity and signing facts remain in that same
+manifest. Failed, preflight and unsigned runs do not create an admissible release
+envelope. The companion `result.json` records verification and the complete inventory.
 
 Only three things need the owner's Apple login: Apple Developer Program
 membership, the App Store Connect app record for
