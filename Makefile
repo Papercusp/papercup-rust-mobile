@@ -129,6 +129,18 @@ check-android-host:
 check-android:
 	bash tools/run-android-checks.sh full
 
+# The paired native journey CI runs: an isolated real operator (exact checkout
+# with a built apps/operator/dist-host/hono-host.mjs) plus the same proof
+# validation. Requires a booted API 36 / 16 KB device:
+#   make check-android-paired PAPERCUP_OPERATOR_DIR=/path/to/operator
+ANDROID_PAIRED_EVIDENCE ?= android/app/build/ci-evidence/paired
+.PHONY: check-android-paired
+check-android-paired:
+	@test -n "$(PAPERCUP_OPERATOR_DIR)" || { echo 'PAPERCUP_OPERATOR_DIR must name a prepared operator checkout' >&2; exit 2; }
+	rm -rf "$(ANDROID_PAIRED_EVIDENCE)" "$(ANDROID_PAIRED_EVIDENCE)-runtime"
+	bash tools/run-android-checks.sh isolated-native "$(PAPERCUP_OPERATOR_DIR)" "$(ANDROID_PAIRED_EVIDENCE)"
+	bash tools/run-android-checks.sh verify-isolated-native "$(ANDROID_PAIRED_EVIDENCE)" "$$(git -C "$(PAPERCUP_OPERATOR_DIR)" rev-parse HEAD)"
+
 test-android-runner:
 	bash tools/tests/run-android-checks-test.sh
 

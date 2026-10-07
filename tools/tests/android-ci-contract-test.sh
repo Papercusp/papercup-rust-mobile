@@ -103,6 +103,19 @@ for phase in [
 print('Android CI required host/native phase contract: passed')
 PY
 
+python3 - "${3:-$ROOT/Makefile}" <<'PY'
+import sys
+from pathlib import Path
+make = Path(sys.argv[1]).read_text()
+target = make.split('\ncheck-android-paired:\n', 1)
+assert len(target) == 2, 'local path must expose the paired native journey CI runs'
+recipe = target[1].split('\n\n', 1)[0]
+assert 'bash tools/run-android-checks.sh isolated-native "$(PAPERCUP_OPERATOR_DIR)"' in recipe, 'local paired target must execute the isolated journey'
+assert 'bash tools/run-android-checks.sh verify-isolated-native "$(ANDROID_PAIRED_EVIDENCE)"' in recipe, 'local paired target must validate proof like CI'
+assert recipe.index('isolated-native "$(') < recipe.index('verify-isolated-native'), 'validation must follow execution'
+print('Android local paired target contract: passed')
+PY
+
 if [[ $# == 0 ]]; then
     TMP_ROOT="$(mktemp -d)"
     trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -194,4 +207,24 @@ PY
         fi
     done
     echo 'Android CI runner phase mutation controls: 20 rejected'
+
+    python3 - "$ROOT/Makefile" "$TMP_ROOT" <<'PY'
+import sys
+from pathlib import Path
+text, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
+run = 'bash tools/run-android-checks.sh isolated-native "$(PAPERCUP_OPERATOR_DIR)"'
+check = 'bash tools/run-android-checks.sh verify-isolated-native "$(ANDROID_PAIRED_EVIDENCE)"'
+for needle in ('\ncheck-android-paired:\n', run, check):
+    assert needle in text, f'positive Makefile contract missing: {needle!r}'
+(out / 'make-missing-target.mk').write_text(text.replace('\ncheck-android-paired:\n', '\ncheck-android-unpaired:\n'))
+(out / 'make-missing-run.mk').write_text(text.replace(run, ': omitted'))
+(out / 'make-missing-check.mk').write_text(text.replace(check, ': omitted'))
+PY
+    for fixture in "$TMP_ROOT"/make-*.mk; do
+        if bash "$0" "$ROOT/.github/workflows/ci.yml" "$ROOT/tools/run-android-checks.sh" "$fixture" > "$TMP_ROOT/output" 2>&1; then
+            echo "FAIL: local paired target regression accepted: $fixture" >&2
+            exit 1
+        fi
+    done
+    echo 'Android local paired target mutation controls: 3 rejected'
 fi
