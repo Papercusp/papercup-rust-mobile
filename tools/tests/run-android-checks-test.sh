@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 suite="${1:-all}"
-[[ "$suite" == all || "$suite" == boot || "$suite" == live || "$suite" == generation ]] || { echo 'Expected all, boot, live or generation suite' >&2; exit 2; }
+[[ "$suite" == all || "$suite" == boot || "$suite" == live || "$suite" == generation || "$suite" == toolchain ]] || { echo 'Expected all, boot, live, generation or toolchain suite' >&2; exit 2; }
 [[ "$suite" == live || -z "${2:-}" ]] || { echo 'Case selection requires the live suite' >&2; exit 2; }
 mkdir -p "$ROOT/android/app/build/ci-evidence"
 TMP_ROOT="$(mktemp -d "$ROOT/android/app/build/ci-evidence/runner-fixtures.XXXXXX")"
@@ -17,11 +17,68 @@ cleanup() {
 }
 trap cleanup EXIT
 runner="$ROOT/tools/run-android-checks.sh"
+if [[ "$suite" == all || "$suite" == toolchain ]]; then
+python3 - "$runner" "$TMP_ROOT" <<'PY'
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+runner, temp = Path(sys.argv[1]), Path(sys.argv[2])
+home = temp / 'toolchain-home'; (home / '.cargo/bin').mkdir(parents=True)
+explicit = temp / 'explicit-cargo'; (explicit / 'bin').mkdir(parents=True)
+selected = temp / 'selected-path'; selected.mkdir()
+utilities = temp / 'toolchain-utilities'; utilities.mkdir()
+(utilities / 'dirname').symlink_to(shutil.which('dirname'))
+ledger = temp / 'toolchain-ledger'
+def executable(root, name, status=0):
+    path = root / name
+    path.write_text('#!/bin/sh\nprintf "%s:%s:%s:%s\\n" "$0" "$1" "$CARGO_HOME" "$RUSTUP_HOME" >> "$TOOLCHAIN_LEDGER"\nexit ' + str(status) + '\n')
+    path.chmod(0o755)
+for root in (home / '.cargo/bin', explicit / 'bin', selected):
+    for tool in ('cargo', 'rustc'):
+        executable(root, tool)
+base = dict(os.environ, HOME=str(home), PATH=str(utilities), TOOLCHAIN_LEDGER=str(ledger))
+for key in ('CARGO_HOME', 'RUSTUP_HOME'):
+    base.pop(key, None)
+cases = ('home', 'explicit', 'path', 'missing', 'broken-cargo', 'broken-rustc')
+for case in cases:
+    ledger.unlink(missing_ok=True)
+    env = dict(base)
+    expected = home / '.cargo/bin'
+    if case in ('explicit', 'missing'):
+        env.update(CARGO_HOME=str(explicit if case == 'explicit' else temp / 'absent'),
+                   RUSTUP_HOME=str(temp / 'explicit-rustup'))
+        expected = explicit / 'bin'
+    if case in ('path', 'broken-cargo', 'broken-rustc'):
+        env['PATH'] = str(selected) + ':' + env['PATH']
+        expected = selected
+    if case.startswith('broken-'):
+        executable(selected, case.removeprefix('broken-'), 17)
+    run = subprocess.run(['/bin/bash', str(runner), 'verify-rust-toolchain'],
+                         env=env, capture_output=True, text=True, timeout=10)
+    if case in ('missing', 'broken-cargo', 'broken-rustc'):
+        assert run.returncode == 2 and 'Rust toolchain preflight failed:' in run.stderr, (case, run)
+    else:
+        assert run.returncode == 0, (case, run.stderr)
+        rows = ledger.read_text().splitlines()
+        assert len(rows) == 2 and all(row.startswith(str(expected) + '/') for row in rows), rows
+        assert all(':--version:' in row for row in rows), rows
+        assert all(':' + env.get('CARGO_HOME', str(home / '.cargo')) + ':' in row for row in rows), rows
+        assert all(row.endswith(':' + env.get('RUSTUP_HOME', str(home / '.rustup'))) for row in rows), rows
+    for tool in ('cargo', 'rustc'):
+        executable(selected, tool)
+print('Android Rust toolchain preflight: six discovery and failure controls passed')
+PY
+fi
+[[ "$suite" != toolchain ]] || exit 0
 if [[ "$suite" == all || "$suite" == generation ]]; then
 python3 - "$runner" "$TMP_ROOT" <<'PY'
 import fcntl
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -64,15 +121,23 @@ else:
 '''
 node = bin_dir / 'node'; node.write_text(probe); node.chmod(0o755)
 cargo = bin_dir / 'cargo'; cargo.write_text('#!/bin/sh\nexit 0\n'); cargo.chmod(0o755)
+rustc = bin_dir / 'rustc'; rustc.write_text('#!/bin/sh\nexit 0\n'); rustc.chmod(0o755)
 (mobile / 'tools/tests/run-android-checks-test.sh').write_text('exec "' + str(node) + '"\n')
 base = dict(os.environ, PATH=str(bin_dir) + ':' + os.environ['PATH'], JAVA_HOME='/fixture-java',
             EXPECTED_ROOT=str(old), FIXTURE_LOCK=str(lock), FIXTURE_MARKER=str(marker),
             FIXTURE_RESULT=str(result), FIXTURE_ALIAS=str(alias), NEW_ROOT=str(new))
 base.pop('PAPERCUSP_INTEGRATION_ROOT', None)
-for case in ('pass', 'stale', 'missing', 'unpinned'):
+for case in ('pass', 'stale', 'missing', 'unpinned', 'missing-cargo', 'broken-rustc'):
     alias.unlink(missing_ok=True); alias.symlink_to(old)
     marker.unlink(missing_ok=True); result.unlink(missing_ok=True)
     env = dict(base, FRESHNESS_EXIT='19' if case == 'stale' else '0')
+    if case == 'missing-cargo':
+        cargo.unlink()
+        for tool in ('bash', 'dirname', 'realpath', 'flock', 'env', 'python3'):
+            (bin_dir / tool).symlink_to(shutil.which(tool))
+        env.update(PATH=str(bin_dir), CARGO_HOME=str(temp / 'absent-cargo'))
+    if case == 'broken-rustc':
+        rustc.write_text('#!/bin/sh\nexit 17\n')
     mode = 'isolated-native-pinned' if case == 'unpinned' else 'isolated-native'
     candidate = temp / 'absent-generation' if case == 'missing' else alias
     run = subprocess.run(['bash', str(fixture_runner), mode, str(candidate)],
@@ -84,6 +149,10 @@ for case in ('pass', 'stale', 'missing', 'unpinned'):
     else:
         assert run.returncode != 0, case + ': invalid candidate accepted'
         assert not marker.exists() and not result.exists(), case + ': expensive work began before refusal'
+        if case in ('missing-cargo', 'broken-rustc'):
+            assert run.returncode == 2 and 'Rust toolchain preflight failed:' in run.stderr, run.stderr
+    cargo.write_text('#!/bin/sh\nexit 0\n'); cargo.chmod(0o755)
+    rustc.write_text('#!/bin/sh\nexit 0\n'); rustc.chmod(0o755)
     with lock.open('a') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
 alias.unlink(); alias.symlink_to(old)

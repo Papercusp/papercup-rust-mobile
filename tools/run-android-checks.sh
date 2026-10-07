@@ -35,7 +35,27 @@ for group in groups:
 PY
 }
 
+resolve_rust_toolchain() {
+    # Preserve explicit toolchain homes across the private runtime's HOME.
+    export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+    export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+    if ! command -v cargo >/dev/null 2>&1; then
+        export PATH="$CARGO_HOME/bin:$PATH"
+    fi
+    local tool
+    for tool in cargo rustc; do
+        if ! command -v "$tool" >/dev/null 2>&1 || ! "$tool" --version; then
+            echo "Rust toolchain preflight failed: $tool unavailable or unusable (CARGO_HOME=$CARGO_HOME)" >&2
+            return 2
+        fi
+    done
+}
+
 mode="${1:-full}"
+if [[ "$mode" == verify-rust-toolchain ]]; then
+    resolve_rust_toolchain
+    exit
+fi
 if [[ "$mode" == verify-native-dependencies ]]; then
     # Fail before another expensive API36 run with Espresso's removed reflective
     # InputManager API. AndroidX 3.7.0 uses the public system service instead.
@@ -140,6 +160,7 @@ if [[ "$mode" == isolated-native-pinned ]]; then
     # The initial process environment now pins this generation for GC. Do not
     # hold the global sync lock during fixtures, builds or instrumentation.
     exec 9>&-
+    resolve_rust_toolchain
     # Reuse the operator's migrated-PG/profile owner; never reproduce its
     # isolation setup here or connect this journey to the shared operator.
     [[ -f "$operator_root/scripts/with-test-pg.mjs" &&
@@ -161,8 +182,6 @@ if [[ "$mode" == isolated-native-pinned ]]; then
     export PAPERCUP_ANDROID_EVIDENCE
     # The runtime's private HOME must not hide the explicitly selected build
     # toolchain. These paths contain toolchain state, not operator identity.
-    export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
-    export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
     export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
     export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/27.0.12077973}"
     if [[ -z "${JAVA_HOME:-}" ]]; then
