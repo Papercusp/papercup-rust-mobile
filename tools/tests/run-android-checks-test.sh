@@ -494,7 +494,10 @@ cases = ['pass', 'stale-counterpart', 'missing-bundle', 'native-failed', 'host-f
          'changed-apk', 'missing-apk', 'missing-xml', 'skipped-xml', 'duplicate-test',
          'stale-loaded-source', 'missing-loaded-source', 'missing-chat-tests',
          'skipped-chat-test', 'failed-chat-test'] + ['missing-'+f for f in flags] + [
-         'missing-recovery', 'failed-recovery', 'skipped-recovery', 'duplicate-recovery']
+         'missing-recovery', 'failed-recovery', 'skipped-recovery', 'duplicate-recovery',
+         'features-pass', 'features-historical-xml', 'features-skipped', 'features-other-workspace'] + [
+         'features-missing-' + field for field in ('chatStatePassed', 'plansStatePassed',
+         'attentionApprovalsStatePassed', 'fleetStatePassed', 'workspacePotStatePassed', 'diagnosticsStatePassed')]
 for case in cases:
     out = temp / ('paired-proof-' + case); out.mkdir()
     reports = out / 'native-results'; reports.mkdir()
@@ -505,6 +508,15 @@ for case in cases:
         (out / name).write_bytes(b'tested fixture APK')
         n['artifacts'].append({'path': str(out/name), 'sha256': hashlib.sha256((out/name).read_bytes()).hexdigest()})
     xml = good_xml
+    if case.startswith('features-'):
+        n['nativeSelection'] = 'features'
+        n['nativeJourney'].update({field: True for field in ('chatStatePassed', 'plansStatePassed',
+            'attentionApprovalsStatePassed', 'fleetStatePassed', 'workspacePotStatePassed', 'diagnosticsStatePassed')})
+        xml = '<testsuite tests="1"><testcase name="sixFeatureJourneysMatchOwnedOperatorState"/></testsuite>'
+        if case == 'features-historical-xml': xml = good_xml
+        if case == 'features-skipped': xml = xml.replace('/></testsuite>', '><skipped/></testcase></testsuite>')
+        if case == 'features-other-workspace': n['nativeJourney']['workspaceId'] = 'peer'
+        if case.startswith('features-missing-'): n['nativeJourney'].pop(case.removeprefix('features-missing-'))
     if case == 'stale-counterpart': r['operatorSourceCommit'] = 'c'*40
     if case == 'missing-bundle': r.pop('bundleSha256')
     if case == 'stale-loaded-source': r['health']['sha'] = 'c'*12
@@ -538,7 +550,7 @@ for case in cases:
     if case != 'missing-xml': (reports/'TEST-paired.xml').write_text(xml)
     (out/'result.json').write_text(json.dumps(n)); (host/'result.json').write_text(json.dumps(r))
     run = subprocess.run(['bash',str(runner),'verify-isolated-native',str(out),expected],capture_output=True,text=True,timeout=5)
-    assert (run.returncode == 0) == (case == 'pass'), (case, run.stdout, run.stderr)
+    assert (run.returncode == 0) == (case in ('pass', 'features-pass')), (case, run.stdout, run.stderr)
 print(f'Android paired proof barrier: {len(cases)} acceptance/refusal controls passed (evidence fixtures only)')
 PY
 python3 - "$runner" "$TMP_ROOT" <<'PY'
@@ -660,7 +672,7 @@ original_device = '87654321-4321-4321-4321-cba987654321'
 
 cases = ['pass', 'test-fail', 'empty', 'skipped', 'timeout', 'preflight-fail', 'cleanup-fail',
          'setup-unavailable', 'setup-no-selection',
-         'native-pass', 'native-empty', 'native-no-scope-test', 'native-duplicate-journey',
+         'native-pass', 'native-peer-present', 'native-empty', 'native-no-scope-test', 'native-duplicate-journey',
          'native-wrong-scope-test', 'native-skipped-scope-test',
          'native-no-proof', 'native-no-label-proof', 'native-no-browser-boundary',
          'native-no-inbox-scope', 'native-no-inbox-rendering', 'native-no-inbox-unauthorized', 'native-no-inbox-recovery',
@@ -831,6 +843,7 @@ if readiness:
     atexit.register(trace, 'end')
 if args in (['devices'], ['devices', '-l']):
     print('List of devices attached\\nemulator-5556 device')
+    if case == 'native-peer-present': print('emulator-5584 device')
     sys.exit(0)
 assert args[:2] == ['-s', 'emulator-5556']
 args = args[2:]
@@ -950,7 +963,12 @@ else:
     if case in ('native-unused-token', 'native-test-fail'): sys.exit(1)
 ''')
         gradle.chmod(0o755)
-        env.update(JAVA_HOME=str(native_root / 'jdk'), ANDROID_SERIAL='emulator-5556')
+        # The runner prepends SDK platform-tools before PATH. Pin an owned
+        # fixture SDK so an ambient installed adb cannot bypass our stub and
+        # inspect or operate on somebody else's emulator.
+        env.update(JAVA_HOME=str(native_root / 'jdk'), ANDROID_SERIAL='emulator-5556',
+                   ANDROID_HOME=str(native_root / 'fixture-sdk'),
+                   ANDROID_SDK_ROOT=str(native_root / 'fixture-sdk'))
         if case == 'native-missing-serial':
             env.pop('ANDROID_SERIAL')
         if case == 'native-existing-files':
@@ -981,7 +999,7 @@ else:
             ends = {row['pid']: row for row in rows if row['phase'] == 'end'}
             assert starts.keys() == ends.keys(), ('unfinished fake ADB command', rows)
             assert all(ends[pid]['monotonicNs'] >= row['monotonicNs'] for pid, row in starts.items())
-        assert (run.returncode == 0) == (case in ('pass', 'native-pass', 'native-install-incompatible')), diagnostic
+        assert (run.returncode == 0) == (case in ('pass', 'native-pass', 'native-peer-present', 'native-install-incompatible')), diagnostic
         assert state['current'] == 'original'
         assert result['checkKind'] == ('native' if native_mode else 'rust')
         assert len(result['runId']) == 32
@@ -1014,7 +1032,7 @@ else:
         if case == 'native-install-incompatible':
             assert result['replacedIncompatiblePackage'] is True, result
             assert result['nativeJourney']['journeyCompleted'] is True
-        if case == 'native-pass':
+        if case in ('native-pass', 'native-peer-present'):
             assert result['nativeJourney']['journeyCompleted'] is True
             assert 'replacedIncompatiblePackage' not in result, result
             assert len(result['artifacts']) == 2
@@ -1275,6 +1293,12 @@ for port in 5553 5555 5586 5596 invalid; do
 done
 fi
 mkdir -p "$TMP_ROOT/boot-bin"
+(
+# The runner prepends SDK platform-tools; pin this suite to an owned SDK so
+# every shell and Python adb call uses the fixture even on a configured host.
+export ANDROID_HOME="$TMP_ROOT/boot-sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+mkdir -p "$ANDROID_HOME/platform-tools"
 cat > "$TMP_ROOT/boot-bin/adb" <<'SH'
 #!/usr/bin/env bash
 if [[ "$*" == '-s emulator-5584 shell getprop sys.boot_completed' ]]; then
@@ -1333,6 +1357,7 @@ else
 fi
 SH
 chmod +x "$TMP_ROOT/boot-bin/adb"
+ln -s "$TMP_ROOT/boot-bin/adb" "$ANDROID_HOME/platform-tools/adb"
 TEST_BOOT_READY=1 PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 "$TMP_ROOT/boot-pass" 1
 for case in missing restart settings crash graphics-missing graphics-partial storage-full storage-small storage-unknown storage-read-fail memory-read-fail memory-malformed memory-missing memory-duplicate memory-small memory-low-available memory-low-total; do
     if TEST_BOOT_READY=1 TEST_BOOT_CASE="$case" TEST_BOOT_COUNTER="$TMP_ROOT/boot-counter" \
@@ -1393,6 +1418,7 @@ bad = json.loads((root / 'boot-fail/emulator-boot.json').read_text())
 assert bad['bootCompleted'] is False and 'device not found' in bad['adbError']
 assert (root / 'boot-fail/boot-transports.txt').is_file()
 PY
+)
 echo 'Android native readiness: healthy, memory boundary and API36 fallback accepted; 17 process/service/crash/graphics/userdata/memory controls rejected'
 [[ "$suite" != boot ]] || exit 0
 # Prove the failed-positive path leaves inspectable evidence and prints its
