@@ -502,6 +502,10 @@ class PapercupAppSmokeTest {
         expected.put("fleetAvailability", fleetAvailabilityText(activity))
         result.put("fleetStatePassed", true)
 
+        // Fleet activity is a detail route without the shell's pot switcher.
+        // Exercise its real back handler before continuing shell navigation.
+        scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitForPairedShell()
         val pots = runBlocking { client.listHarnesses() }
         waitForText("All Pots ▾")
         compose.onNodeWithText("All Pots ▾").performClick()
