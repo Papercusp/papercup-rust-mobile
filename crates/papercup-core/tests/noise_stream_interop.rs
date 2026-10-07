@@ -20,12 +20,9 @@ fn node_path() -> Option<PathBuf> {
         .chain(std::iter::once(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../papercusp/node_modules"),
         ));
-    for dir in candidates {
-        if dir.join("@hyperswarm/secret-stream/package.json").is_file() {
-            return Some(dir);
-        }
-    }
-    None
+    candidates
+        .into_iter()
+        .find(|dir| dir.join("@hyperswarm/secret-stream/package.json").is_file())
 }
 
 struct Responder {
@@ -49,7 +46,8 @@ fn start_responder() -> Option<Responder> {
         eprintln!("SKIP noise_stream_interop: no node_modules with @hyperswarm/secret-stream");
         return None;
     };
-    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/secret-stream-echo.cjs");
+    let script =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/secret-stream-echo.cjs");
     let mut child = Command::new("node")
         .arg(script)
         .env("NODE_PATH", modules)
@@ -59,12 +57,20 @@ fn start_responder() -> Option<Responder> {
         .spawn()
         .expect("spawn node");
     let mut line = String::new();
-    BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+    BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
     let info: serde_json::Value = serde_json::from_str(&line).expect("responder announce line");
     let hex = info["publicKey"].as_str().unwrap();
-    let public_key: Vec<u8> =
-        (0..64).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect();
-    Some(Responder { child, port: info["port"].as_u64().unwrap() as u16, public_key: public_key.try_into().unwrap() })
+    let public_key: Vec<u8> = (0..64)
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+        .collect();
+    Some(Responder {
+        child,
+        port: info["port"].as_u64().unwrap() as u16,
+        public_key: public_key.try_into().unwrap(),
+    })
 }
 
 /// Read from the socket until `want` application messages arrived.
@@ -85,12 +91,16 @@ fn pump(sock: &mut TcpStream, session: &mut SecretStreamInitiator, want: usize) 
 
 #[test]
 fn rust_initiator_interoperates_with_real_secret_stream() {
-    let Some(responder) = start_responder() else { return };
+    let Some(responder) = start_responder() else {
+        return;
+    };
     let mut sock = TcpStream::connect(("127.0.0.1", responder.port)).unwrap();
-    sock.set_read_timeout(Some(Duration::from_secs(15))).unwrap();
+    sock.set_read_timeout(Some(Duration::from_secs(15)))
+        .unwrap();
 
     let (mut session, first) =
-        SecretStreamInitiator::start(Ed25519KeyPair::generate(), Some(responder.public_key)).unwrap();
+        SecretStreamInitiator::start(Ed25519KeyPair::generate(), Some(responder.public_key))
+            .unwrap();
     sock.write_all(&first).unwrap();
 
     // Handshake completes, the responder's header arrives, then its greeting.
@@ -111,11 +121,15 @@ fn rust_initiator_interoperates_with_real_secret_stream() {
 
 #[test]
 fn pinning_the_wrong_responder_key_fails_against_real_secret_stream() {
-    let Some(responder) = start_responder() else { return };
+    let Some(responder) = start_responder() else {
+        return;
+    };
     let mut sock = TcpStream::connect(("127.0.0.1", responder.port)).unwrap();
-    sock.set_read_timeout(Some(Duration::from_secs(15))).unwrap();
+    sock.set_read_timeout(Some(Duration::from_secs(15)))
+        .unwrap();
     let wrong = Ed25519KeyPair::from_seed(&[8u8; 32]).public_key();
-    let (mut session, first) = SecretStreamInitiator::start(Ed25519KeyPair::generate(), Some(wrong)).unwrap();
+    let (mut session, first) =
+        SecretStreamInitiator::start(Ed25519KeyPair::generate(), Some(wrong)).unwrap();
     sock.write_all(&first).unwrap();
     let mut buf = vec![0u8; 4096];
     loop {
