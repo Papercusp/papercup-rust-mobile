@@ -1121,6 +1121,7 @@ dependencies = [
  "curve25519-dalek",
  "futures-util",
  "hmac",
+ "http",
  "rand_core 0.6.4",
  "reqwest",
  "serde",
