@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import plistlib
 import subprocess
 import tempfile
 import unittest
@@ -52,7 +53,9 @@ class NativeRunnerTests(unittest.TestCase):
         if name == 'signing-install':
             Path(env['PAPERCUP_SIGNING_ENV_FILE']).write_text('{}')
         if name == 'archive-guard':
-            (attempt / 'candidate-manifest.json').write_text('{}')
+            (attempt / 'candidate-manifest.json').write_text(json.dumps({
+                'sourceSha': self.identity['commit'], 'version': '1.0.0',
+                'build': self.args.build_number or '1', 'signed': self.args.mode == 'signed'}))
         if name.endswith('-guard') and name != 'archive-guard':
             # Exercise the maintained result classifier with a real subprocess.
             subprocess.run(['python3', str(ROOT / 'tools/build-scripts/check-xctest-summary.py'),
@@ -165,6 +168,103 @@ class NativeRunnerTests(unittest.TestCase):
         self.assertIsNotNone(ci.reuse(self.state, self.identity, self.native, False))
         (Path(proof['attempt']) / 'ui-smoke-attachments/candidate.png').write_bytes(b'changed')
         self.assertIsNone(ci.reuse(self.state, self.identity, self.native, False))
+
+    def test_signed_export_extends_existing_candidate_manifest(self):
+        self.args.mode = 'signed'
+        self.args.build_number = '42'
+        self.assertEqual(self.run_ci(), 0)
+        result = self.latest()
+        manifest = json.loads((Path(result['attempt']) / 'candidate-manifest.json').read_text())
+        self.assertEqual(manifest['schemaVersion'], 1)
+        self.assertEqual(manifest['sourceCommit'], self.identity['commit'])
+        self.assertIs(manifest['sourceDirty'], False)
+        self.assertIs(manifest['signed'], True)
+        self.assertEqual(manifest['releaseVersion'], '1.0.0')
+        self.assertEqual(manifest['builtAt'], result['finishedAt'])
+        self.assertEqual(manifest['artifacts'], [{
+            'kind': 'ipa', 'path': 'export/app.ipa', 'size': 9,
+            'sha256': ci.digest(Path(result['attempt']) / 'export/app.ipa')}])
+
+    def test_check_and_failed_cleanup_do_not_emit_release_envelope(self):
+        self.assertEqual(self.run_ci(), 0)
+        manifest = Path(self.latest()['attempt']) / 'candidate-manifest.json'
+        self.assertNotIn('schemaVersion', json.loads(manifest.read_text()))
+        self.args.mode = 'signed'
+        self.args.build_number = '42'
+        self.failure_phase = 'signing-cleanup'
+        self.assertEqual(self.run_ci(), 1)
+        manifest = Path(self.latest()['attempt']) / 'candidate-manifest.json'
+        self.assertNotIn('schemaVersion', json.loads(manifest.read_text()))
+
+    def test_failure_before_unit_does_not_collect_previous_run_results(self):
+        build = self.root / 'ios/build'
+        build.mkdir(parents=True)
+        (build / 'unit-stale.json').write_text('{"passedTests":99}')
+        self.failure_phase = 'build'
+        self.assertEqual(self.run_ci(), 1)
+        self.assertNotIn('unit-stale.json', {a['path'] for a in self.latest()['artifacts']})
+
+    def test_paired_and_signing_failure_logs_are_redacted_before_hashing(self):
+        attempt = self.base / 'logs'
+        attempt.mkdir()
+        phases = []
+        payload = '{"token":"private-token","server":"https://private.example"}'
+        env = {'TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD': payload,
+               'IOS_DIST_CERT_PASSWORD': 'private-password'}
+
+        def noisy_failure(name, command, root, env, attempt, phases):
+            log = attempt / (name + '.log')
+            log.write_text(payload + '\nprivate-token\nprivate-password\n')
+            phases.append({'name': name, 'sha256': ci.digest(log)})
+            raise RuntimeError('fixture failed')
+
+        with patch.object(ci.mobile_ci, 'run_phase', side_effect=noisy_failure):
+            with self.assertRaisesRegex(RuntimeError, 'fixture failed'):
+                ci.run_phase('paired-ui', [], self.root, env, attempt, phases)
+        text = (attempt / 'paired-ui.log').read_text()
+        self.assertNotIn('private-token', text)
+        self.assertNotIn('private-password', text)
+        self.assertEqual(phases[0]['sha256'], ci.digest(attempt / 'paired-ui.log'))
+
+    def test_retention_preserves_admitted_and_signed_candidates(self):
+        attempts = self.state / 'attempts'
+        attempts.mkdir()
+        paths = []
+        for number in range(5):
+            attempt = attempts / ('20260101T00000' + str(number) + 'Z-00000000')
+            attempt.mkdir()
+            (attempt / 'result.json').write_text(json.dumps({
+                'executor': 'native-mac', 'attempt': str(attempt),
+                'mode': 'signed' if number == 1 else 'check'}))
+            paths.append(attempt)
+        (self.state / 'success.json').write_text(json.dumps({'attempt': str(paths[0])}))
+        (self.state / 'latest.json').write_text(json.dumps({'attempt': str(paths[4])}))
+        unknown = attempts / 'not-runner-owned'
+        unknown.mkdir()
+        ci.prune_attempts(self.state, keep=1)
+        self.assertTrue(paths[0].exists())
+        self.assertTrue(paths[1].exists())
+        self.assertFalse(paths[2].exists())
+        self.assertFalse(paths[3].exists())
+        self.assertTrue(paths[4].exists())
+        self.assertTrue(unknown.exists())
+
+    def test_launch_agent_installs_checks_only_with_selected_xcode(self):
+        (self.root / 'tools/ci').mkdir(parents=True)
+        template = ROOT / 'tools/ci/com.papercusp.ios-ci.plist'
+        (self.root / 'tools/ci/com.papercusp.ios-ci.plist').write_bytes(template.read_bytes())
+        with patch.object(ci.platform, 'system', return_value='Darwin'), \
+                patch.object(ci.Path, 'home', return_value=self.base), \
+                patch.dict(os.environ, {'DEVELOPER_DIR': '/Xcode26/Contents/Developer'}), \
+                patch.object(ci.subprocess, 'run') as launch:
+            ci.install_launch_agent(self.root, self.state)
+        target = self.base / 'Library/LaunchAgents/com.papercusp.ios-ci.plist'
+        installed = plistlib.loads(target.read_bytes())
+        self.assertEqual(installed['ProgramArguments'][-2:], ['--mode', 'check'])
+        self.assertEqual(installed['StartInterval'], 1800)
+        self.assertTrue(installed['RunAtLoad'])
+        self.assertEqual(installed['EnvironmentVariables']['DEVELOPER_DIR'], '/Xcode26/Contents/Developer')
+        self.assertEqual(launch.call_args_list[-1].args[0][1], 'bootstrap')
 
     def test_private_inputs_reject_repository_or_public_files(self):
         inside = self.root / 'secret.json'

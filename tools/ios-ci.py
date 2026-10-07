@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import plistlib
 import re
 import shutil
 import subprocess
@@ -24,7 +25,6 @@ spec.loader.exec_module(mobile_ci)
 # with the maintained Android executor instead of introducing another CI service.
 source_identity = mobile_ci.source_identity
 write_json = mobile_ci.write_json
-run_phase = mobile_ci.run_phase
 digest = mobile_ci.digest
 SIGNING_KEYS = ('APPLE_TEAM_ID', 'IOS_DIST_CERT_P12_BASE64', 'IOS_DIST_CERT_PASSWORD',
                 'IOS_APPSTORE_PROFILE_BASE64', 'ASC_API_KEY_ID', 'ASC_API_ISSUER_ID',
@@ -38,6 +38,38 @@ SMOKE_TESTS = (
 
 class SigningCleanupError(RuntimeError):
     """Evidence was written, but temporary signing cleanup failed."""
+
+
+def run_phase(name, command, root, env, attempt, phases, **kwargs):
+    # Native tools can echo environment values on failure. Redact before hashing
+    # or retaining a log, including when the shared process runner raises.
+    try:
+        return mobile_ci.run_phase(name, command, root, env, attempt, phases, **kwargs)
+    finally:
+        log = attempt / (name + '.log')
+        if log.is_file():
+            text = log.read_text(errors='replace')
+            secrets = [env.get(key, '') for key in SIGNING_KEYS[1:]]
+            payload = env.get('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', '')
+            if payload:
+                secrets.append(payload)
+                try:
+                    values = json.loads(payload)
+                    if isinstance(values, dict):
+                        secrets.extend(v for v in values.values() if isinstance(v, str))
+                except ValueError:
+                    pass
+            for value in sorted(set(secrets), key=len, reverse=True):
+                if value:
+                    text = text.replace(value, '[REDACTED]')
+                    text = text.replace(json.dumps(value)[1:-1], '[REDACTED]')
+            log.write_text(text)
+            if not any(phase['name'] == name for phase in phases):
+                phases.append({'name': name, 'exitCode': None, 'log': str(log),
+                               'status': 'interrupted'})
+            for phase in phases:
+                if phase['name'] == name:
+                    phase['sha256'] = digest(log)
 
 
 def output(command, root, env):
@@ -118,8 +150,79 @@ def ui_test(root, env, attempt, phases, name, tests):
 
 def artifacts(attempt):
     # Signing keys/keychains live in a separate TemporaryDirectory, never here.
-    return [{'path': str(p.relative_to(attempt)), 'sha256': digest(p)}
+    return [{'path': str(p.relative_to(attempt)), 'size': p.stat().st_size, 'sha256': digest(p)}
             for p in sorted(attempt.rglob('*')) if p.is_file() and p.name != 'result.json']
+
+
+def release_manifest(attempt, result):
+    """Extend the existing archive facts only after signed delivery admission."""
+    path = attempt / 'candidate-manifest.json'
+    manifest = json.loads(path.read_text())
+    identity = result['source']
+    if (identity['dirty'] or manifest.get('signed') is not True
+            or manifest.get('sourceSha') != identity['commit']
+            or manifest.get('build') != result['buildNumber']
+            or not re.fullmatch(r'\d+\.\d+\.\d+', manifest.get('version', ''))):
+        raise ValueError('Signed candidate manifest does not match admitted source/build')
+    ipas = list((attempt / 'export').glob('*.ipa'))
+    if len(ipas) != 1 or ipas[0].is_symlink() or not ipas[0].is_file():
+        raise ValueError('Signed release requires exactly one retained regular IPA')
+    ipa = ipas[0]
+    manifest.update(schemaVersion=1, releaseVersion=manifest['version'],
+                    sourceCommit=identity['commit'], sourceDirty=False,
+                    builtAt=result['finishedAt'], artifacts=[{
+                        'kind': 'ipa', 'path': str(ipa.relative_to(attempt)),
+                        'size': ipa.stat().st_size, 'sha256': digest(ipa)}])
+    write_json(path, manifest)
+
+
+def prune_attempts(state, keep=16):
+    protected = set()
+    for name in ('latest.json', 'success.json'):
+        try:
+            protected.add(Path(json.loads((state / name).read_text())['attempt']).resolve())
+        except (OSError, ValueError, KeyError):
+            pass
+    attempts = state / 'attempts'
+    if not attempts.is_dir():
+        return
+    owned = sorted((p for p in attempts.iterdir() if p.is_dir() and not p.is_symlink()
+                    and re.fullmatch(r'\d{8}T\d{6}Z-[0-9a-f]{8}', p.name)), reverse=True)
+    for path in owned[keep:]:
+        if path.resolve() in protected or not (path / 'result.json').is_file():
+            continue
+        try:
+            result = json.loads((path / 'result.json').read_text())
+            if (result.get('executor') == 'native-mac' and result.get('mode') == 'check'
+                    and Path(result['attempt']).resolve() == path.resolve()):
+                shutil.rmtree(path)
+        except (OSError, KeyError, ValueError):
+            continue
+
+
+def install_launch_agent(root, state):
+    if platform.system() != 'Darwin':
+        raise ValueError('Native launch agent installation requires macOS')
+    template = plistlib.loads((root / 'tools/ci/com.papercusp.ios-ci.plist').read_bytes())
+    template['ProgramArguments'] = [sys.executable, str(root / 'tools/ios-ci.py'), '--mode', 'check']
+    template['WorkingDirectory'] = str(root)
+    template['StandardOutPath'] = str(state / 'launcher.log')
+    template['StandardErrorPath'] = str(state / 'launcher-error.log')
+    template['EnvironmentVariables'] = {'PAPERCUP_IOS_CI_STATE': str(state)}
+    if os.environ.get('DEVELOPER_DIR'):
+        template['EnvironmentVariables']['DEVELOPER_DIR'] = os.environ['DEVELOPER_DIR']
+    target = Path.home() / 'Library/LaunchAgents/com.papercusp.ios-ci.plist'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix('.tmp')
+    temporary.write_bytes(plistlib.dumps(template))
+    temporary.chmod(0o600)
+    temporary.replace(target)
+    domain = 'gui/' + str(os.getuid())
+    service = domain + '/' + template['Label']
+    subprocess.run(['launchctl', 'bootout', service], stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL, check=False)
+    subprocess.run(['launchctl', 'bootstrap', domain, str(target)], check=True)
+    print('Native iPhone checks installed: ' + str(target))
 
 
 def reuse(state, identity, tools, paired):
@@ -137,7 +240,8 @@ def reuse(state, identity, tools, paired):
             return None
         for entry in proof['artifacts']:
             path = (attempt / entry['path']).resolve()
-            if not path.is_relative_to(attempt) or digest(path) != entry['sha256']:
+            if (not path.is_relative_to(attempt) or path.stat().st_size != entry['size']
+                    or digest(path) != entry['sha256']):
                 return None
         return proof
     except (OSError, KeyError, ValueError, TypeError):
@@ -162,6 +266,7 @@ def _execute(root, state, args):
             env.pop(key, None)
     phases = result['phases']
     signing = None
+    unit_started = False
     try:
         if args.upload and (args.mode != 'signed' or not args.confirm_upload):
             raise ValueError('Upload requires --mode signed --upload --confirm-upload')
@@ -201,9 +306,10 @@ def _execute(root, state, args):
                 shutil.rmtree(path)
             elif path.is_file():
                 path.unlink()
+        unit_started = True
         run_phase('unit', ['make', 'test-ios'], root, env, attempt, phases)
         # Retain every unit attempt, including a failed destination-race attempt.
-        for path in (root / 'ios/build').glob('unit-*'):
+        for path in ((root / 'ios/build').glob('unit-*') if unit_started else ()):
             target = attempt / path.name
             if path.is_dir():
                 shutil.copytree(path, target)
@@ -270,7 +376,7 @@ def _execute(root, state, args):
                 cleanup_failed = True
             signing.cleanup()
         # Keep real unit failures too, even when execution stopped before UI.
-        for path in (root / 'ios/build').glob('unit-*'):
+        for path in ((root / 'ios/build').glob('unit-*') if unit_started else ()):
             target = attempt / path.name
             if target.exists():
                 continue
@@ -279,6 +385,13 @@ def _execute(root, state, args):
             elif path.is_file():
                 shutil.copyfile(path, target)
         result['finishedAt'] = dt.datetime.now(dt.timezone.utc).isoformat()
+        if result['status'] == 'passed' and args.mode == 'signed':
+            try:
+                release_manifest(attempt, result)
+            except Exception as error:
+                result['status'] = 'failed'
+                result['error'] = str(error)
+                cleanup_failed = True
         result['artifacts'] = artifacts(attempt)
         write_json(attempt / 'result.json', result)
         if result['status'] != 'reused':
@@ -287,6 +400,7 @@ def _execute(root, state, args):
             write_json(state / 'success.json', result)
         elif result['status'] == 'failed':
             (state / 'success.json').unlink(missing_ok=True)
+        prune_attempts(state)
         if cleanup_failed:
             raise SigningCleanupError(result['error'])
 
@@ -310,6 +424,8 @@ def main():
     parser.add_argument('--secrets-file')
     parser.add_argument('--upload', action='store_true')
     parser.add_argument('--confirm-upload', action='store_true')
+    parser.add_argument('--install-launch-agent', action='store_true',
+                        help='Install unsigned native checks every 30 minutes (macOS)')
     args = parser.parse_args()
     os.umask(0o077)
     state = Path(os.environ.get('PAPERCUP_IOS_CI_STATE', str(Path.home() / '.local/state/papercusp/ios-ci'))).resolve()
@@ -323,6 +439,9 @@ def main():
         except BlockingIOError:
             print('Native iPhone executor is already running; overlapping execution refused')
             return 1
+        if args.install_launch_agent:
+            install_launch_agent(ROOT, state)
+            return 0
         return execute(ROOT, state, args)
 
 
