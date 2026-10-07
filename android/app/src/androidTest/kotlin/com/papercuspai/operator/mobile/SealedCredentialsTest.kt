@@ -87,7 +87,7 @@ class SealedCredentialsTest {
         store.save(DeviceCredentials(base, outcome.deviceToken, outcome.deviceId, outcome.workspaceId,
             noiseSeed = seed, noiseKey = pin))
         val restored = CredentialStore(InstrumentationRegistry.getInstrumentation().targetContext).load()!!.client()
-        val rows = JSONObject(restored.restQuery("proof", "{}")).getJSONObject("rows")
+        val rows = JSONObject(restored.restQuery("proof", "{}"))
         assertEquals("Bearer test-jwt", rows.getString("authorization"))
         assertFalse(rows.getBoolean("plaintextCanaryFound"))
         restored.close()

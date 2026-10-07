@@ -188,7 +188,7 @@ fn validate_noise_public_key(key: &[u8; 32]) -> Result<(), ApiError> {
 fn generate_noise_seed() -> String {
     let mut seed = Zeroizing::new([0; 32]);
     OsRng.fill_bytes(&mut seed[..]);
-    STANDARD.encode(&*seed)
+    STANDARD.encode(*seed)
 }
 
 fn noise_public_key(seed: String) -> Result<String, ApiError> {
