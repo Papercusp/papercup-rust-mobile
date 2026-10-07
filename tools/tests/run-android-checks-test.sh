@@ -122,6 +122,71 @@ for changes in ({'runId': 'old-run'}, {'workspaceId': 'peer-workspace'}, {'stage
 for log in ('OK (0 tests)\nINSTRUMENTATION_CODE: -1', 'OK (1 test)', output + 'FAILURES!!!'):
     refused(lambda: module.verify_proof(proof, 'owned-run', 'workspace-owned', log))
 print('Cloud native guards: public pinned QR/current APK accepted; 31 unsafe-input/race/incomplete-proof controls refused')
+# Exercise main's actual failure/finally path, beyond the pure log parser.
+# Both a native assertion and a missing instrumentation completion must leave
+# scoped proof and remove our input, without retaining raw logcat secrets.
+path.chmod(0o600)
+for failure_mode in ('assertion', 'timeout'):
+    out = temp / ('cloud-failure-' + failure_mode)
+    calls = []
+    saved = {'runId': 'owned-run', 'workspaceId': 'workspace-owned',
+             'stage': 'failed', 'failedStage': 'pairing',
+             'failureClass': 'AssertionError', 'credentialsCleared': True}
+    def check_output(command, **kwargs):
+        if command == ['adb', 'devices']:
+            return 'List of devices attached\nemulator-5582\tdevice\nemulator-5584\tdevice\n'
+        if command[:2] == ['git', 'rev-parse']: return 'fixture-source\n'
+        if command[:2] == ['git', 'status']: return ''
+        if command == ['bash', 'tools/build-scripts/resolve-java-home.sh']: return '/fixture/jdk\n'
+        raise AssertionError(command)
+    def run_command(command, **kwargs):
+        calls.append(command)
+        if command[0] != 'adb':
+            assert command[0] in ('bash', 'android/gradlew')
+            return subprocess.CompletedProcess(command, 0, '', '')
+        assert command[:3] == ['adb', '-s', 'emulator-5584']
+        args = command[3:]
+        output = ''
+        if args == ['shell', 'getprop', 'ro.build.version.sdk']: output = '36\n'
+        elif args == ['shell', 'getconf', 'PAGE_SIZE']: output = '16384\n'
+        elif args[:3] == ['shell', 'pm', 'path']: output = 'package:/owned/base.apk\n'
+        elif args[0] == 'pull': Path(args[2]).write_bytes(b'held-candidate')
+        elif args[:3] == ['shell', 'am', 'instrument']:
+            if failure_mode == 'timeout':
+                raise subprocess.TimeoutExpired(command, 300)
+            output = 'FAILURES!!!\nINSTRUMENTATION_CODE: -1\n'
+        elif args[:4] == ['shell', 'run-as', 'com.papercuspai.operator.mobile', 'cat']:
+            output = json.dumps(saved)
+        elif args[:2] == ['logcat', '-d']: output = log
+        return subprocess.CompletedProcess(command, 0, output, '')
+    def capture(source, destination):
+        destination.write_bytes(b'held-candidate')
+        return hashlib.sha256(b'held-candidate').hexdigest()
+    cwd = os.getcwd()
+    try:
+        os.chdir(root)
+        with patch.dict(os.environ, ANDROID_SERIAL='emulator-5584', PAPERCUP_CLOUD_BASE=base), \
+             patch.object(sys, 'argv', ['cloud-native-check.py', str(out), str(path)]), \
+             patch.object(module.subprocess, 'check_output', check_output), \
+             patch.object(module.subprocess, 'run', run_command), \
+             patch.object(module, 'capture_apk', capture):
+            try: module.main()
+            except (ValueError, subprocess.TimeoutExpired): pass
+            else: raise AssertionError('Failed native journey was accepted')
+    finally:
+        os.chdir(cwd)
+    result = json.loads((out / 'result.json').read_text())
+    assert result['exitCode'] == 1 and result['installedApkMatches'] is True
+    assert result['journey'] == saved
+    assert result['pairingStages'] == module.pairing_stages(log)
+    assert 'private-token' not in (out / 'result.json').read_text()
+    assert ['adb', '-s', 'emulator-5584', 'shell', 'run-as',
+            'com.papercuspai.operator.mobile', 'rm', '-f',
+            'files/cloud-pairing-input.json'] in calls
+    clear = calls.index(['adb', '-s', 'emulator-5584', 'logcat', '-c'])
+    instrument = next(i for i, command in enumerate(calls) if command[3:6] == ['shell', 'am', 'instrument'])
+    assert clear < instrument
+print('Cloud failure persistence: assertion/timeout retain safe proof and clean only owned input PASS')
 PY
 fi
 [[ "$suite" != cloud ]] || exit 0
