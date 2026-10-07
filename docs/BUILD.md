@@ -284,6 +284,7 @@ stop it with `launchctl bootout gui/$(id -u)/com.papercusp.ios-ci`. Check logs l
 beside `latest.json`. Retention keeps the newest 16 check attempts, protects current
 proof pointers, and preserves signed candidates and unrecognized directories.
 Private signing and pairing inputs are redacted from retained phase logs.
+Installation checks the supported Xcode/SDK/simulator before changing launchd.
 
 Signed exports are explicit and require a clean source and a new positive build number:
 
