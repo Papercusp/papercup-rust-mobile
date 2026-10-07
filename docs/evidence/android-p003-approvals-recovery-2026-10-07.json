@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "workItem": "WI-10004770",
+  "planItem": "android-public-release-2026-10-01#P-003",
+  "scope": "Local debug Compose/JNI HTTP fixture regression only; not six-feature live-operator or signed release acceptance",
+  "rootCause": "StandingApprovalsScreen used null candidates for both active loading and completed request failure; failure left the loading subtitle and spinner active.",
+  "fix": "Explicit loading lifecycle with finally; unavailable subtitle and retry after failed load.",
+  "command": "ANDROID_SERIAL=emulator-5580 android/gradlew -p android :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.papercuspai.operator.mobile.StandingApprovalsScreenTest --offline",
+  "runtime": {"serial": "emulator-5580", "api": 36, "pageSize": 16384, "owned": true},
+  "junit": {
+    "path": "android/app/build/ci-evidence/p003-approvals-20261007/native-results/TEST-android-p003-m4-20261007-5580(AVD) - 16-_app-.xml",
+    "sha256": "a93e44c316f8ca8e50a94b71898f44b0da20fd0eda7b24c99f38b92c6bbb82c4",
+    "tests": 1, "failures": 0, "errors": 0, "skips": 0
+  },
+  "source": {
+    "android/app/src/main/kotlin/com/papercuspai/operator/mobile/StandingApprovalsScreen.kt": "d576c85c8af59c442af18ec2289d84d92b5759ae2f459f21a50518acef4c318e",
+    "android/app/src/androidTest/kotlin/com/papercuspai/operator/mobile/StandingApprovalsScreenTest.kt": "27a79bbacb23577bbf6b10096dc85d9f00b07578e47d5916901796f8b713f2ef"
+  },
+  "observed": ["401 request shows unavailable", "failed request has no progress indicator or healthy empty state", "retry makes a second real JNI request", "successful empty response renders zero pending"],
+  "fixtureLesson": "Grant notification permission before ActivityScenario, matching existing maintained native tests. Earlier attempts had no Compose hierarchy; final selected test passes with that precondition.",
+  "remaining": "Full supported-current-operator chat/plans/attention-approvals/agent-fleet/workspace-pot/diagnostics live journeys remain open."
+}

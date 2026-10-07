@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package com.papercuspai.operator.mobile
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.setContent
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -9,6 +11,8 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -18,6 +22,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
@@ -26,6 +31,17 @@ import java.util.concurrent.TimeUnit
 @RunWith(AndroidJUnit4::class)
 class StandingApprovalsScreenTest {
     @get:Rule val compose = createEmptyComposeRule()
+
+    @Before
+    fun requireOwnedUnpairedDevice() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        assertNull(CredentialStore(instrumentation.targetContext).load())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            instrumentation.uiAutomation.grantRuntimePermission(
+                instrumentation.targetContext.packageName, Manifest.permission.POST_NOTIFICATIONS,
+            )
+        }
+    }
 
     @Test
     fun failedLoadStopsLoadingAndRetryShowsMeasuredEmptyState() {
@@ -56,8 +72,12 @@ class StandingApprovalsScreenTest {
     }
 
     private fun waitFor(text: String) {
-        compose.waitUntil(15_000) {
-            compose.onAllNodes(hasText(text)).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+        try {
+            compose.waitUntil(15_000) {
+                compose.onAllNodes(hasText(text)).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()
+            }
+        } catch (failure: Throwable) {
+            throw AssertionError("Missing $text: ${compose.onRoot(useUnmergedTree = true).printToString()}", failure)
         }
     }
 }
