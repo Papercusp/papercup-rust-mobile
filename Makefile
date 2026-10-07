@@ -44,8 +44,8 @@ help:
 	@echo "  make tokens-check       — regen tokens then fail if anything changed (drift guard; part of 'make check')"
 	@echo "  make clean              — remove all build artifacts"
 
-# Mirror of .github/workflows/ci.yml — run before every push so master
-# stays green even with the org's Actions on workflow_dispatch only.
+# Shared local gates; Android automation uses tools/android-ci.py independently
+# of GitHub Actions. iPhone-only workflows retain their own execution route.
 check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-store-cloud-pending test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-ios-unit-runner test-git-hooks test-rust-toolchain-pin test-ios-signing lint-workflows lint-shell
 
 # Regenerate design-token outputs and fail if the working tree differs.
@@ -146,6 +146,11 @@ test-android-runner:
 
 test-android-ci:
 	bash tools/tests/android-ci-contract-test.sh
+	python3 tools/tests/android-ci-runner-test.py
+
+.PHONY: check-android-ci
+check-android-ci:
+	python3 tools/android-ci.py
 
 test-ios-template-runner:
 	bash tools/tests/run-ios-template-tests-test.sh
