@@ -219,8 +219,10 @@ The executor reuses `check-android-host`, design-token drift verification,
 `run-android-checks.sh connected`, the canonical isolated operator/JNI feature
 journey, and `verify-isolated-native`. Supply a prepared operator checkout through
 `PAPERCUP_OPERATOR_DIR` in external configuration
-`~/.config/papercusp/android-ci.env`; the default is the sibling canonical
-Papercusp checkout. Its exact commit and bundle freshness must verify before
+`~/.config/papercusp/android-ci.env`; the default is the maintained
+`papercusp-staging.current` prepared generation. The executor resolves and pins
+that generation under the existing staging GC lock before re-exec. Its exact
+commit and bundle freshness must verify before
 expensive checks. The paired journey uses a private migrated operator runtime.
 Toolchain, SDK image, emulator loader, disk and KVM preflight failures retain
 a failed receipt.
@@ -241,7 +243,10 @@ Results, logs, tested APKs, JUnit, lint and paired-runtime evidence live under
 verdict. Success reuse requires the exact mobile source, counterpart, current week
 and retained artifact hashes, followed by paired-proof revalidation. Source or
 counterpart changes during execution and failing gates revoke admission. There is
-no upload or publication step. Signed-candidate, physical-phone and Play acceptance
+no upload or publication step. The existing candidate publication gate additionally
+requires the executor's clean-source `ci` pass, written only after paired proof
+verification; a failed or interrupted replacement run removes that admission.
+Signed-candidate, physical-phone and Play acceptance
 remain separate release requirements.
 
 The remaining `ci.yml` and `testflight.yml` workflows are iPhone-only. Android's

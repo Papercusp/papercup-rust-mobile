@@ -7,15 +7,18 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = 'system-images;android-36;google_apis_ps16k;x86_64'
+CI_ADMISSION = 'android/app/build/outputs/papercusp-android-checks/ci.json'
 
 
 def digest(path):
@@ -37,7 +40,7 @@ def source_identity(root):
         if path.is_file():
             h.update(path.read_bytes())
         elif path.is_dir():
-            h.update(output(['git', '-C', str(path), 'rev-parse', 'HEAD'], root).encode())
+            h.update(json.dumps(source_identity(path), sort_keys=True).encode())
         else:
             h.update(b'missing')
     # Include new source files, without ever retaining their content as evidence.
@@ -51,6 +54,9 @@ def source_identity(root):
     if any(line.startswith(('+', '-', 'U')) for line in modules.splitlines()):
         raise ValueError('Uninitialized or mismatched submodule; CI refused')
     h.update(modules.encode())
+    firebase = root / 'android/app/google-services.json'
+    if firebase.is_file():
+        h.update(b'firebase-config\0' + firebase.read_bytes())
     return {'commit': commit, 'fingerprint': h.hexdigest(),
             'dirty': bool(output(['git', 'status', '--porcelain'], root))}
 
@@ -64,6 +70,7 @@ def write_json(path, value):
 
 def run_phase(name, command, root, env, attempt, phases, timeout=5400):
     log = attempt / (name + '.log')
+    print(f'Android CI phase: {name}; log: {log}', flush=True)
     with log.open('w') as stream:
         child = subprocess.Popen(command, cwd=root, env=env, stdout=stream,
                                  stderr=subprocess.STDOUT, start_new_session=True)
@@ -139,6 +146,29 @@ def cached_proof(state, identity, counterpart):
         return None
 
 
+def prune_attempts(state, keep=16):
+    protected = set()
+    for name in ('latest.json', 'success.json'):
+        try:
+            protected.add(Path(json.loads((state / name).read_text())['attempt']).resolve())
+        except (OSError, ValueError, KeyError):
+            pass
+    attempts = state / 'attempts'
+    if not attempts.is_dir():
+        return
+    owned = sorted((p for p in attempts.iterdir() if p.is_dir() and not p.is_symlink()
+                    and re.fullmatch(r'\d{8}T\d{6}Z-[0-9a-f]{8}', p.name)), reverse=True)
+    for path in owned[keep:]:
+        if path.resolve() in protected or not (path / 'result.json').is_file():
+            continue
+        try:
+            result = json.loads((path / 'result.json').read_text())
+            if result.get('executor') == 'local-systemd' and Path(result['attempt']).resolve() == path.resolve():
+                shutil.rmtree(path)
+        except (OSError, KeyError, ValueError):
+            continue
+
+
 def execute(root, operator, state, force=False, preflight_only=False):
     stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
     attempt = state / 'attempts' / stamp
@@ -155,6 +185,7 @@ def execute(root, operator, state, force=False, preflight_only=False):
     env['PATH'] = str(Path(env['CARGO_HOME']) / 'bin') + ':' + str(sdk / 'platform-tools') + ':' + env['PATH']
     emulator = None
     avd_root = None
+    (root / CI_ADMISSION).unlink(missing_ok=True)
     try:
         identity = source_identity(root)
         result['source'] = identity
@@ -187,6 +218,9 @@ def execute(root, operator, state, force=False, preflight_only=False):
         if proof:
             run_phase('verify-cached-paired', ['bash', 'tools/run-android-checks.sh', 'verify-isolated-native',
                       str(Path(proof['attempt']) / 'paired'), result['operator']['commit']],
+                      root, env, attempt, result['phases'], 60)
+            run_phase('ci-admission', ['bash', 'tools/build-scripts/android-release-provenance.sh',
+                      'checks-pass', 'ci', identity['commit'] if not identity['dirty'] else 'dirty'],
                       root, env, attempt, result['phases'], 60)
             result.update(status='reused', proofAttempt=proof['attempt'])
             return 0
@@ -226,12 +260,16 @@ def execute(root, operator, state, force=False, preflight_only=False):
         if source_identity(root) != identity or output(['git', 'rev-parse', 'HEAD'], operator) != result['operator']['commit']:
             raise RuntimeError('Source/counterpart changed during verification; admission refused')
         run_phase('operator-freshness-end', fresh, operator, env, attempt, result['phases'], 60)
+        run_phase('ci-admission', ['bash', 'tools/build-scripts/android-release-provenance.sh',
+                  'checks-pass', 'ci', identity['commit'] if not identity['dirty'] else 'dirty'],
+                  root, env, attempt, result['phases'], 60)
         result.update(status='passed', week=dt.datetime.now(dt.timezone.utc).strftime('%G-%V'))
         return 0
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         result['error'] = str(error)
         print(result['error'], flush=True)
         (state / 'success.json').unlink(missing_ok=True)
+        (root / CI_ADMISSION).unlink(missing_ok=True)
         return 1
     finally:
         if emulator is not None:
@@ -257,16 +295,32 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--preflight', action='store_true')
+    parser.add_argument('--pinned', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if not args.pinned:
+        # Reuse staging GC's pin protocol: resolve under its lock and re-exec
+        # so the immutable physical root is visible in /proc before releasing.
+        pin = os.open('/tmp/papercup-staging-sync.lock', os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(pin, fcntl.LOCK_SH)
+        os.set_inheritable(pin, True)
+        operator = Path(os.environ.get('PAPERCUP_OPERATOR_DIR',
+                        str(ROOT.parent / 'papercusp-staging.current'))).resolve()
+        env = dict(os.environ, PAPERCUP_OPERATOR_DIR=str(operator),
+                   PAPERCUSP_INTEGRATION_ROOT=str(operator), PAPERCUP_ANDROID_CI_PIN_FD=str(pin))
+        os.execve(sys.executable, [sys.executable, str(Path(__file__).resolve()), '--pinned', *sys.argv[1:]], env)
+    pin = int(os.environ.pop('PAPERCUP_ANDROID_CI_PIN_FD'))
+    os.close(pin)
     state = Path(os.environ.get('PAPERCUP_ANDROID_CI_STATE', str(Path.home() / '.local/state/papercusp/android-ci'))).resolve()
     state.mkdir(parents=True, exist_ok=True)
-    operator = Path(os.environ.get('PAPERCUP_OPERATOR_DIR', str(ROOT.parent / 'papercusp'))).resolve()
+    state.chmod(0o700)
+    operator = Path(os.environ['PAPERCUP_OPERATOR_DIR']).resolve()
     with (state / 'executor.lock').open('w') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             print('Android CI is already running; overlapping execution skipped')
             return 0
+        prune_attempts(state)
         return execute(ROOT, operator, state, args.force, args.preflight)
 
 
