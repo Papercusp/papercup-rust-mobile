@@ -77,6 +77,15 @@ def verify_proof(proof, run_id, workspace, output):
         raise ValueError('Cloud native journey incomplete; inspect retained stage proof')
 
 
+def inject_pairing_input(adb, app, payload):
+    # A fresh install has no app files directory until an Activity creates it.
+    # Prepare only our owned input; exclusive creation preserves prior evidence.
+    adb('shell', 'run-as', app, 'mkdir', '-p', 'files', check=True)
+    adb('shell', 'run-as', app, 'test', '!', '-e', 'files/cloud-pairing-input.json', check=True)
+    adb('shell', 'run-as ' + app + ' sh -c ' + shlex.quote(
+        'umask 077; set -C; cat > files/cloud-pairing-input.json'), input=payload, check=True)
+
+
 def main():
     out, qr_file = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
     serial = os.environ.get('ANDROID_SERIAL', '')
@@ -132,10 +141,8 @@ def main():
         # A large build must not silently reuse a changed/replaced QR file.
         if validate_input(qr_file, serial, qr['server']) != qr:
             raise ValueError('Fresh QR changed during build')
-        adb('shell', 'run-as', app, 'test', '!', '-e', 'files/cloud-pairing-input.json', check=True)
         payload = json.dumps({'runId': run_id, 'pairPayload': qr})
-        adb('shell', 'run-as ' + app + ' sh -c ' + shlex.quote(
-            'umask 077; set -C; cat > files/cloud-pairing-input.json'), input=payload, check=True)
+        inject_pairing_input(adb, app, payload)
         injected = True
         run = adb('shell', 'am', 'instrument', '-w', '-r', '-e', 'class',
                   app + '.PapercupAppSmokeTest#launcherActivityStarts', '-e', 'cloudPairing', 'true',

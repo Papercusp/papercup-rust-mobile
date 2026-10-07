@@ -42,6 +42,28 @@ run = subprocess.run(['bash', str(dispatch / 'tools/run-android-checks.sh'), 'cl
 assert run.stdout.splitlines() == [str(temp / 'owned-home/Android/Sdk')] * 2
 spec = importlib.util.spec_from_file_location('cloud_runner', root / 'tools/cloud-native-check.py')
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+# Fresh Android installs have no files/ directory. Execute the actual shell
+# preparation in an empty sandbox, and refuse replacement of prior input.
+guest = temp / 'fresh-cloud-guest'; guest.mkdir()
+def guest_adb(*args, **kwargs):
+    assert args[0] == 'shell'
+    if len(args) == 2:
+        command = args[1].removeprefix('run-as owned.app ')
+        return subprocess.run(command, shell=True, cwd=guest, text=True, capture_output=True, **kwargs)
+    assert args[1:3] == ('run-as', 'owned.app')
+    return subprocess.run(args[3:], cwd=guest, text=True, capture_output=True, **kwargs)
+module.inject_pairing_input(guest_adb, 'owned.app', 'private-owned-input')
+input_file = guest / 'files/cloud-pairing-input.json'
+assert input_file.read_text() == 'private-owned-input'
+assert input_file.stat().st_mode & 0o777 == 0o600
+try:
+    module.inject_pairing_input(guest_adb, 'owned.app', 'replacement')
+except subprocess.CalledProcessError:
+    pass
+else:
+    raise AssertionError('Cloud input replacement was accepted')
+assert input_file.read_text() == 'private-owned-input'
+print('Cloud input preparation: fresh directory/private input and preserved prior input PASS')
 base = 'https://cloud.example.com/api/workspaces/ws-owned'
 qr = {'server': base, 'workspaceId': 'workspace-owned', 'pairToken': 'one-use-private',
       'noiseKey': base64.b64encode(bytes(range(32))).decode()}
