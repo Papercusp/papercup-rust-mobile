@@ -474,8 +474,10 @@ out = Path(sys.argv[1] or f'android/app/build/ci-evidence/live-{attempt}')
 out.mkdir(parents=True, exist_ok=False, mode=0o700)
 log_path = out / ('native-test.log' if kind == 'native' else 'cargo-test.log')
 
-def api(path, method='GET', body=None, bearer=None):
+def api(path, method='GET', body=None, bearer=None, workspace_id=None):
     headers = {'Content-Type': 'application/json'}
+    if workspace_id is not None:
+        headers['x-papercusp-workspace'] = workspace_id
     if bearer is not None:
         headers['Authorization'] = 'Bearer ' + bearer
     request = urllib.request.Request(base + path, method=method,
@@ -483,6 +485,18 @@ def api(path, method='GET', body=None, bearer=None):
         headers=headers)
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
+
+def seed_feature_chat(workspace_id, run_id):
+    # Only called by the private isolated feature profile, after ownership is
+    # established. Explicit request scope keeps the host's home thread empty.
+    for role in ('user', 'assistant'):
+        text = f'owned {role} {run_id}'
+        saved = api('/api/operator/conversations/active/turns', 'POST',
+                    {'role': role, 'text': text, 'source': 'text_typed'},
+                    workspace_id=workspace_id)
+        turn = saved.get('turn', {})
+        if turn.get('role') != role or turn.get('text') != text or not saved.get('conversationId'):
+            raise RuntimeError('private chat fixture did not persist the expected turn')
 
 def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -665,6 +679,8 @@ try:
     if (ready.get('current') != before['current'] or not any(
             row['id'] == fixture_id and row['name'] == fixture_name for row in ready['workspaces'])):
         raise RuntimeError('second-workspace prerequisite was not established')
+    if feature_fixture_enabled:
+        seed_feature_chat(fixture_id, attempt)
     token = api('/api/device/desktop/mint-pair-token', 'POST',
                 {'workspaceId': fixture_id if kind == 'native' else workspace})
     if kind == 'native':

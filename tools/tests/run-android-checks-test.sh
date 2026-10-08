@@ -17,6 +17,34 @@ cleanup() {
 }
 trap cleanup EXIT
 runner="$ROOT/tools/run-android-checks.sh"
+if [[ "$suite" == all || "$suite" == live ]]; then
+python3 - "$runner" <<'PY'
+import sys
+from pathlib import Path
+source = Path(sys.argv[1]).read_text()
+seed = source.split('def seed_feature_chat(', 1)[1].split('\ndef now():', 1)[0]
+calls = []
+def api(path, method, body, *, workspace_id):
+    assert path == '/api/operator/conversations/active/turns' and method == 'POST'
+    assert workspace_id == 'owned-fixture'
+    calls.append(body)
+    return {'conversationId': 'private-thread', 'turn': body}
+scope = {'api': api}
+exec('def seed_feature_chat(' + seed, scope)
+scope['seed_feature_chat']('owned-fixture', 'current-run')
+assert [(c['role'], c['text']) for c in calls] == [
+    ('user', 'owned user current-run'), ('assistant', 'owned assistant current-run')]
+for bad in ({}, {'conversationId': 'thread', 'turn': {'role': 'user', 'text': 'old-run'}}):
+    scope['api'] = lambda *args, **kwargs: bad
+    try:
+        scope['seed_feature_chat']('owned-fixture', 'current-run')
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError('missing/stale persisted chat fixture accepted')
+print('Private populated chat fixture controls passed')
+PY
+fi
 if [[ "$suite" == all || "$suite" == cloud ]]; then
 python3 - "$ROOT" "$TMP_ROOT" <<'PY'
 import base64, hashlib, importlib.util, json, os, subprocess, sys
