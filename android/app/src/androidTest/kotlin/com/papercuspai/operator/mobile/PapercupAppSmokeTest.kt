@@ -520,8 +520,8 @@ class PapercupAppSmokeTest {
         val workspaces = runBlocking { client.listWorkspaces() }
         val workspace = workspaces.first { it.id == paired.workspaceId }
         compose.onNodeWithContentDescription("Settings").performClick()
-        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Workspaces"))
-        compose.onNodeWithText("Workspaces").performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Workspace selector"))
+        compose.onNodeWithText("Workspace selector").performClick()
         waitForText("Workspace selector")
         compose.onAllNodes(hasText(workspace.name)).fetchSemanticsNodes().also { assertTrue(it.isNotEmpty()) }
         compose.onNodeWithContentDescription("Back").performClick()
