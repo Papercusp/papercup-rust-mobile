@@ -477,11 +477,18 @@ class PapercupAppSmokeTest {
         val expected = JSONObject()
         val client = paired.client()
         // Read independently through JNI before entering each screen. The
-        // private workspace deliberately has no conversation/plans/candidates.
+        // producer seeds both chat roles in this owned workspace only.
         val conversation = runBlocking { client.operatorConversation(50u) }
-        assertTrue("Owned conversation must start empty", conversation.turns.isEmpty())
+        val runId = result.getString("runId")
+        assertEquals("Owned conversation must contain both fixture turns", 2, conversation.turns.size)
+        for (role in listOf("user", "assistant")) {
+            assertTrue("Owned $role turn must match JNI", conversation.turns.any {
+                it.role == role && it.text == "owned $role $runId"
+            })
+        }
         compose.onNodeWithContentDescription("Operator").performClick()
-        waitForText("Ask the operator anything.")
+        waitForText("owned user $runId")
+        waitForText("owned assistant $runId")
         compose.onNode(hasSetTextAction()).performTextInput("owned draft ${result.getString("runId")}")
         expected.put("chatTurns", conversation.turns.size)
         result.put("chatStatePassed", true)
