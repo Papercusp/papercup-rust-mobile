@@ -495,7 +495,12 @@ cases = ['pass', 'stale-counterpart', 'missing-bundle', 'native-failed', 'host-f
          'stale-loaded-source', 'missing-loaded-source', 'missing-chat-tests',
          'skipped-chat-test', 'failed-chat-test'] + ['missing-'+f for f in flags] + [
          'missing-recovery', 'failed-recovery', 'skipped-recovery', 'duplicate-recovery',
-         'features-pass', 'features-historical-xml', 'features-skipped', 'features-other-workspace'] + [
+         'features-pass', 'features-historical-xml', 'features-skipped', 'features-other-workspace',
+         'features-no-witness', 'features-foreign-witness', 'features-blank-workspace',
+         'features-blank-fleet', 'features-list-witness'] + [
+         'features-witness-' + key + '-' + defect
+         for key in ('chatTurns', 'plans', 'pots', 'standingCandidates')
+         for defect in ('missing', 'negative', 'boolean', 'string')] + [
          'features-missing-' + field for field in ('chatStatePassed', 'plansStatePassed',
          'attentionApprovalsStatePassed', 'fleetStatePassed', 'workspacePotStatePassed', 'diagnosticsStatePassed')]
 for case in cases:
@@ -512,6 +517,19 @@ for case in cases:
         n['nativeSelection'] = 'features'
         n['nativeJourney'].update({field: True for field in ('chatStatePassed', 'plansStatePassed',
             'attentionApprovalsStatePassed', 'fleetStatePassed', 'workspacePotStatePassed', 'diagnosticsStatePassed')})
+        witness = dict(chatTurns=0, plans=0, pots=0, standingCandidates=0,
+                       workspaceId='fixture-workspace', workspaceName='Owned fixture',
+                       fleetAvailability='Unavailable')
+        n['nativeJourney']['featureExpectedState'] = witness
+        if case == 'features-no-witness': n['nativeJourney'].pop('featureExpectedState')
+        if case == 'features-foreign-witness': witness['workspaceId'] = 'peer'
+        if case == 'features-blank-workspace': witness['workspaceName'] = ' '
+        if case == 'features-blank-fleet': witness['fleetAvailability'] = ''
+        if case == 'features-list-witness': n['nativeJourney']['featureExpectedState'] = []
+        if case.startswith('features-witness-'):
+            key, defect = case.removeprefix('features-witness-').split('-')
+            if defect == 'missing': witness.pop(key)
+            else: witness[key] = {'negative': -1, 'boolean': True, 'string': '0'}[defect]
         xml = '<testsuite tests="1"><testcase name="sixFeatureJourneysMatchOwnedOperatorState"/></testsuite>'
         if case == 'features-historical-xml': xml = good_xml
         if case == 'features-skipped': xml = xml.replace('/></testsuite>', '><skipped/></testcase></testsuite>')

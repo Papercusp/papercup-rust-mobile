@@ -213,6 +213,17 @@ if features:
         'activityRecreated', 'enrollmentBrowserStubbed', 'credentialsCleared',
         'chatStatePassed', 'plansStatePassed', 'attentionApprovalsStatePassed',
         'fleetStatePassed', 'workspacePotStatePassed', 'diagnosticsStatePassed')
+    # Pass flags alone cannot establish what the JNI oracle measured. Keep
+    # the observed population and workspace binding mandatory, including
+    # honest zero populations (which do not imply populated acceptance).
+    state = journey.get('featureExpectedState')
+    if (not isinstance(state, dict)
+            or any(type(state.get(key)) is not int or state[key] < 0
+                   for key in ('chatTurns', 'plans', 'pots', 'standingCandidates'))
+            or state.get('workspaceId') != native.get('ownedWorkspace', {}).get('id')
+            or not isinstance(state.get('workspaceName'), str) or not state['workspaceName'].strip()
+            or not isinstance(state.get('fleetAvailability'), str) or not state['fleetAvailability'].strip()):
+        raise SystemExit('Feature JNI expected-state witness is missing, malformed or foreign-scoped')
 if (journey.get('runId') != native.get('runId')
         or journey.get('workspaceId') != native.get('ownedWorkspace', {}).get('id')
         or not journey.get('deviceId') in native.get('ownedDeviceIds', [])
