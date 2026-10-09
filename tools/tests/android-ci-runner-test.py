@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Behavioral guards for independent Android CI admission and diagnostics."""
 import datetime as dt
+import fcntl
 import importlib.util
 import json
 import os
@@ -46,6 +47,91 @@ class AndroidCITest(unittest.TestCase):
         for source, operator in ((dict(self.source, fingerprint='changed'), self.operator),
                                  (self.source, dict(self.operator, commit='d' * 40))):
             self.assertIsNone(ci.cached_proof(self.root, source, operator))
+
+    def test_real_android_and_shared_rust_edits_invalidate_cached_proof(self):
+        paths = ('android/app/src/main/kotlin/Example.kt',
+                 'crates/papercup-core/src/lib.rs')
+        for path in paths:
+            file = self.root / path
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text('original source\n')
+
+        def metadata(command, root):
+            if command == ['git', 'rev-parse', 'HEAD']:
+                return self.source['commit']
+            if command == ['git', 'submodule', 'status', '--recursive']:
+                return ''
+            if command == ['git', 'status', '--porcelain']:
+                return ''
+            self.fail('Source-change detection must not consult commit messages: ' + repr(command))
+
+        def tracked(command, cwd):
+            if command == ['git', 'ls-files', '-z', '--cached']:
+                return ('\0'.join(paths) + '\0').encode()
+            if command == ['git', 'ls-files', '-z', '--others', '--exclude-standard']:
+                return b''
+            self.fail('Unexpected source inventory command: ' + repr(command))
+
+        # Commit-message filters such as [skip ci] are not inputs to this
+        # timer-driven detector. Exercise actual file bytes with a stable
+        # commit id rather than injecting a synthetic changed fingerprint.
+        with patch.object(ci, 'output', side_effect=metadata), \
+                patch.object(ci.subprocess, 'check_output', side_effect=tracked):
+            baseline = ci.source_identity(self.root)
+            self.proof['source'] = baseline
+            self.save()
+            self.assertIsNotNone(ci.cached_proof(self.root, baseline, self.operator))
+            for path in paths:
+                with self.subTest(path=path):
+                    file = self.root / path
+                    file.write_text('changed source\n')
+                    changed = ci.source_identity(self.root)
+                    self.assertNotEqual(changed['fingerprint'], baseline['fingerprint'])
+                    self.assertIsNone(ci.cached_proof(self.root, changed, self.operator))
+                    file.write_text('original source\n')
+
+    def executor_env(self):
+        env = dict(os.environ, PAPERCUP_ANDROID_CI_STATE=str(self.root))
+        env.pop('PAPERCUP_ANDROID_EXECUTOR_FD', None)
+        env.pop('PAPERCUP_ANDROID_EXECUTOR_PID', None)
+        return env
+
+    def test_shared_executor_refuses_another_writer_before_execution(self):
+        marker = self.root / 'unexpected-output'
+        with (self.root / 'executor.lock').open('a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            run = subprocess.run([sys.executable, str(SPEC.origin), '--exclusive-command',
+                sys.executable, '-c', 'from pathlib import Path; Path(' + repr(str(marker)) + ').touch()'],
+                env=self.executor_env(), capture_output=True, text=True, timeout=10)
+        self.assertEqual(run.returncode, 73, run.stderr)
+        self.assertFalse(marker.exists())
+
+    def test_shared_executor_reenters_and_releases_real_process_custody(self):
+        command = [sys.executable, str(SPEC.origin), '--exclusive-command',
+                   sys.executable, str(SPEC.origin), '--exclusive-command',
+                   sys.executable, str(SPEC.origin), '--verify-executor']
+        run = subprocess.run(command, env=self.executor_env(), capture_output=True, text=True, timeout=10)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        with (self.root / 'executor.lock').open('a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def test_foreign_or_closed_inherited_descriptor_fails_closed(self):
+        (self.root / 'executor.lock').touch()
+        foreign = self.root / 'foreign.lock'
+        with foreign.open('a+') as lock:
+            env = dict(self.executor_env(), PAPERCUP_ANDROID_EXECUTOR_FD=str(lock.fileno()))
+            with self.assertRaisesRegex(ValueError, 'Invalid inherited'):
+                ci.inherited_executor(env)
+        with self.assertRaisesRegex(ValueError, 'Invalid inherited'):
+            ci.inherited_executor(env)
+
+    def test_private_adapter_can_close_fd_without_losing_ancestor_custody(self):
+        code = ('import subprocess,sys; subprocess.run([sys.executable,' +
+                repr(str(SPEC.origin)) + ',"--verify-executor"],check=True)')
+        run = subprocess.run([sys.executable, str(SPEC.origin), '--exclusive-command',
+                              sys.executable, '-c', code], env=self.executor_env(),
+                             capture_output=True, text=True, timeout=10)
+        self.assertEqual(run.returncode, 0, run.stderr)
 
     def test_mutated_or_missing_artifact_refuses_old_success(self):
         self.save()
