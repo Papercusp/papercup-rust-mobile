@@ -498,6 +498,31 @@ def seed_feature_chat(workspace_id, run_id):
         if turn.get('role') != role or turn.get('text') != text or not saved.get('conversationId'):
             raise RuntimeError('private chat fixture did not persist the expected turn')
 
+def verify_feature_chat(workspace_id, run_id):
+    # Validate the same authenticated endpoint JNI will read. A successful
+    # desktop write alone cannot prove that the device sees its paired scope.
+    minted = api('/api/device/desktop/mint-pair-token', 'POST', {'workspaceId': workspace_id})
+    native_pair_tokens.append(minted)
+    control = api('/api/device/pair', 'POST', {'pairToken': minted['qrPayload']['pairToken']})
+    device_id = control.get('deviceId', '')
+    if (control.get('workspaceId') != workspace_id or device_id in existing_devices
+            or not re.fullmatch('[0-9a-f-]{36}', device_id)):
+        raise RuntimeError('chat readback control did not return an owned newly paired device')
+    result['ownedDeviceIds'].append(device_id)
+    try:
+        read = api('/api/device/operator/conversation?limit=50', bearer=control['deviceToken'])
+        turns = read.get('turns', [])
+        expected = {('user', f'owned user {run_id}'), ('assistant', f'owned assistant {run_id}')}
+        observed = {(turn.get('role'), turn.get('text')) for turn in turns}
+        if (read.get('conversation', {}).get('workspaceId') != workspace_id
+                or len(turns) != 2 or observed != expected):
+            raise RuntimeError('owned device chat readback did not match the populated private fixture')
+        result['featureChatFixtureBasis'] = {
+            'workspaceId': workspace_id, 'deviceReadbackPassed': True, 'turnCount': len(turns),
+        }
+    finally:
+        api('/api/device/desktop/devices/' + device_id, 'DELETE')
+
 def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -681,6 +706,7 @@ try:
         raise RuntimeError('second-workspace prerequisite was not established')
     if feature_fixture_enabled:
         seed_feature_chat(fixture_id, attempt)
+        verify_feature_chat(fixture_id, attempt)
     token = api('/api/device/desktop/mint-pair-token', 'POST',
                 {'workspaceId': fixture_id if kind == 'native' else workspace})
     if kind == 'native':

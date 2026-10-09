@@ -42,7 +42,37 @@ for bad in ({}, {'conversationId': 'thread', 'turn': {'role': 'user', 'text': 'o
         pass
     else:
         raise AssertionError('missing/stale persisted chat fixture accepted')
-print('Private populated chat fixture controls passed')
+import re
+control_id = '12345678-1234-1234-1234-123456789abc'
+for mode in ('pass', 'empty', 'foreign-workspace', 'stale-turn'):
+    deleted = []
+    def readback_api(path, method='GET', body=None, bearer=None):
+        if path == '/api/device/desktop/mint-pair-token':
+            assert method == 'POST' and body == {'workspaceId': 'owned-fixture'}
+            return {'qrPayload': {'pairToken': 'private-control'}}
+        if path == '/api/device/pair':
+            assert body == {'pairToken': 'private-control'}
+            return {'workspaceId': 'owned-fixture', 'deviceId': control_id, 'deviceToken': 'private-device'}
+        if path == '/api/device/operator/conversation?limit=50':
+            assert bearer == 'private-device'
+            return {'conversation': {'workspaceId': 'foreign' if mode == 'foreign-workspace' else 'owned-fixture'},
+                    'turns': [] if mode == 'empty' else [
+                        {'role': role, 'text': f'owned {role} ' + ('old-run' if mode == 'stale-turn' else 'current-run')}
+                        for role in ('user', 'assistant')]}
+        assert path == '/api/device/desktop/devices/' + control_id and method == 'DELETE'
+        deleted.append(control_id)
+        return {}
+    scope.update(api=readback_api, re=re, native_pair_tokens=[], existing_devices=set(), result={'ownedDeviceIds': []})
+    try:
+        scope['verify_feature_chat']('owned-fixture', 'current-run')
+    except RuntimeError:
+        assert mode != 'pass', mode
+    else:
+        assert mode == 'pass', 'invalid device readback accepted: ' + mode
+        assert scope['result']['featureChatFixtureBasis']['deviceReadbackPassed']
+    assert deleted == [control_id], 'owned readback control was not revoked: ' + mode
+    assert scope['result']['ownedDeviceIds'] == [control_id]
+print('Private populated chat fixture controls passed; device readback accepts current turns and rejects empty/foreign/stale scope with cleanup')
 PY
 fi
 if [[ "$suite" == all || "$suite" == cloud ]]; then
