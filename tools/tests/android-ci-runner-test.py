@@ -199,6 +199,62 @@ class AndroidCITest(unittest.TestCase):
         self.assertIn('missing source prerequisite', result['error'])
         self.assertTrue((Path(result['attempt']) / 'result.json').is_file())
 
+    def test_preflight_measures_owned_avd_filesystem_and_refuses_its_shortfall(self):
+        state = self.root / 'owned state with spaces'
+        state.mkdir()
+        foreign = self.root / 'foreign avd filesystem'
+        foreign.mkdir()
+        sdk = self.root / 'sdk'
+        image = sdk / 'system-images/android-36/google_apis_ps16k/x86_64/system.img'
+        image.parent.mkdir(parents=True)
+        image.touch()
+        runner = self.root / 'tools/run-android-checks.sh'
+        runner.parent.mkdir()
+        runner.write_bytes((Path(SPEC.origin).parent / 'run-android-checks.sh').read_bytes())
+        bin_dir = self.root / 'bin'
+        bin_dir.mkdir()
+        df = bin_dir / 'df'
+        real_run_phase = ci.run_phase
+
+        def phase(name, command, root, env, attempt, phases, timeout=5400):
+            if name == 'avd-space-preflight':
+                return real_run_phase(name, command, root, env, attempt, phases, timeout)
+            phases.append({'name': name, 'exitCode': 0})
+
+        def metadata(command, root, env=None):
+            if command == ['node', '--version']:
+                return 'v25.0.0'
+            if command == ['git', 'rev-parse', 'HEAD']:
+                return self.operator['commit']
+            return '/prepared/jdk'
+
+        # The two mounts have opposite capacities. A default/inherited AVD
+        # lookup must fail the positive control and pass the negative control.
+        for owned_kb, foreign_kb, expected in ((10 * 1024**2, 1, 0), (1, 10 * 1024**2, 1)):
+            with self.subTest(owned_kb=owned_kb):
+                df.write_text('#!/usr/bin/env python3\nimport sys\n'
+                    'available = ' + str(owned_kb) + ' if sys.argv[-1] == ' + repr(str(state))
+                    + ' else ' + str(foreign_kb) + '\n'
+                    'print("Filesystem 1024-blocks Used Available Capacity Mounted on")\n'
+                    'print("fixture 0 0", available, "0% fixture")\n')
+                df.chmod(0o755)
+                with patch.dict(os.environ, {'ANDROID_AVD_HOME': str(foreign),
+                        'ANDROID_HOME': str(sdk), 'PATH': str(bin_dir) + ':' + os.environ['PATH']}), \
+                        patch.object(ci, 'required_tools'), \
+                        patch.object(ci, 'source_identity', return_value=self.source), \
+                        patch.object(ci, 'output', side_effect=metadata), \
+                        patch.object(ci, 'run_phase', side_effect=phase), \
+                        patch.object(ci.os, 'access', return_value=True):
+                    self.assertEqual(ci.execute(self.root, self.root, state, preflight_only=True), expected)
+                result = json.loads((state / 'latest.json').read_text())
+                report = json.loads((Path(result['attempt']) / 'avd-space.txt').read_text())
+                self.assertEqual(report['avdRoot'], str(state))
+                self.assertEqual(report['availableBytes'], owned_kb * 1024)
+                self.assertEqual(report['sufficient'], expected == 0)
+                self.assertEqual(result['status'], 'preflight-passed' if expected == 0 else 'failed')
+                self.assertFalse((state / 'success.json').exists())
+                self.assertFalse((self.root / ci.CI_ADMISSION).exists())
+
     def test_missing_required_tool_is_named_before_expensive_execution(self):
         with patch.object(ci.shutil, 'which', side_effect=lambda command, **_: None if command == 'rg' else '/usr/bin/' + command):
             with self.assertRaisesRegex(ValueError, 'Missing required Android CI tools: rg'):

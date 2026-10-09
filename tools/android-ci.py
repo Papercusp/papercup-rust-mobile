@@ -268,6 +268,10 @@ def execute(root, operator, state, force=False, preflight_only=False):
     env['CARGO_HOME'] = env.get('CARGO_HOME', str(Path.home() / '.cargo'))
     env['RUSTUP_HOME'] = env.get('RUSTUP_HOME', str(Path.home() / '.rustup'))
     env['PATH'] = str(Path(env['CARGO_HOME']) / 'bin') + ':' + str(sdk / 'platform-tools') + ':' + env['PATH']
+    # Owned AVDs are created beneath state, which can be on a different
+    # filesystem from the user's default AVD directory. Measure this parent
+    # before creating the per-run directory, then select that directory below.
+    env['ANDROID_AVD_HOME'] = str(state)
     emulator = None
     avd_root = None
     (root / CI_ADMISSION).unlink(missing_ok=True)
