@@ -272,10 +272,15 @@ def execute(root, operator, state, force=False, preflight_only=False):
     # filesystem from the user's default AVD directory. Measure this parent
     # before creating the per-run directory, then select that directory below.
     env['ANDROID_AVD_HOME'] = str(state)
+    # Host fixtures and TMPDIR-aware helpers must use the owned filesystem
+    # as the space preflight, rather than an inherited/default /tmp mount.
+    child_tmp = attempt / 'tmp'
+    env['TMPDIR'] = str(child_tmp)
     emulator = None
     avd_root = None
     (root / CI_ADMISSION).unlink(missing_ok=True)
     try:
+        child_tmp.mkdir(mode=0o700)
         required_tools(env)
         identity = source_identity(root)
         result['source'] = identity
@@ -372,6 +377,9 @@ def execute(root, operator, state, force=False, preflight_only=False):
             result['emulatorCleanupVerified'] = emulator.poll() is not None
         if avd_root is not None:
             shutil.rmtree(avd_root)
+        if child_tmp.exists():
+            shutil.rmtree(child_tmp)
+        result['temporaryCleanupVerified'] = not child_tmp.exists()
         result['artifacts'] = collect_artifacts(root, attempt)
         result['finishedAt'] = dt.datetime.now(dt.timezone.utc).isoformat()
         write_json(attempt / 'result.json', result)

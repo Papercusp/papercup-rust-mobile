@@ -257,6 +257,54 @@ class AndroidCITest(unittest.TestCase):
                 self.assertFalse((state / 'success.json').exists())
                 self.assertFalse((self.root / ci.CI_ADMISSION).exists())
 
+    def test_children_use_owned_temporary_filesystem_and_cleanup_after_failure(self):
+        sdk = self.root / 'sdk'
+        image = sdk / 'system-images/android-36/google_apis_ps16k/x86_64/system.img'
+        image.parent.mkdir(parents=True)
+        image.touch()
+        foreign = self.root / 'unusable inherited tmp'
+        foreign.write_text('not a directory')
+        real_run_phase = ci.run_phase
+
+        def metadata(command, root, env=None):
+            if command == ['node', '--version']:
+                return 'v25.0.0'
+            if command == ['git', 'rev-parse', 'HEAD']:
+                return self.operator['commit']
+            return '/prepared/jdk'
+
+        def phase(name, command, root, env, attempt, phases, timeout=5400):
+            if name in ('rust-preflight', 'host'):
+                code = ('import pathlib,tempfile; '
+                        'p=pathlib.Path(tempfile.mkdtemp()); '
+                        '(p/"fixture").write_text("executed child fixture"); '
+                        'print(p); raise SystemExit(' + ('7' if name == 'host' else '0') + ')')
+                return real_run_phase(name, [sys.executable, '-c', code], root,
+                                      env, attempt, phases, timeout)
+            phases.append({'name': name, 'exitCode': 0})
+
+        for preflight_only, expected in ((True, 0), (False, 1)):
+            with self.subTest(preflight_only=preflight_only), \
+                    patch.dict(os.environ, {'ANDROID_HOME': str(sdk), 'TMPDIR': str(foreign)}), \
+                    patch.object(ci, 'required_tools'), \
+                    patch.object(ci, 'source_identity', return_value=self.source), \
+                    patch.object(ci, 'output', side_effect=metadata), \
+                    patch.object(ci, 'run_phase', side_effect=phase), \
+                    patch.object(ci.os, 'access', return_value=True):
+                self.assertEqual(ci.execute(self.root, self.root, self.root,
+                                            preflight_only=preflight_only), expected)
+                result = json.loads((self.root / 'latest.json').read_text())
+                attempt = Path(result['attempt'])
+                for name in ('rust-preflight',) if preflight_only else ('rust-preflight', 'host'):
+                    used = Path((attempt / (name + '.log')).read_text().strip())
+                    self.assertEqual(used.parent, attempt / 'tmp')
+                    self.assertFalse(used.exists())
+                self.assertTrue(result['temporaryCleanupVerified'])
+                self.assertFalse((attempt / 'tmp').exists())
+                self.assertFalse((self.root / 'success.json').exists())
+                self.assertFalse((self.root / ci.CI_ADMISSION).exists())
+                self.assertTrue(foreign.is_file())
+
     def test_missing_required_tool_is_named_before_expensive_execution(self):
         with patch.object(ci.shutil, 'which', side_effect=lambda command, **_: None if command == 'rg' else '/usr/bin/' + command):
             with self.assertRaisesRegex(ValueError, 'Missing required Android CI tools: rg'):
