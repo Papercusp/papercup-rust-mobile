@@ -85,9 +85,13 @@ root, temp = map(Path, sys.argv[1:])
 # is supplied; the helper must receive the shared default before any build.
 dispatch = temp / 'cloud-dispatch'; (dispatch / 'tools').mkdir(parents=True)
 (dispatch / 'tools/run-android-checks.sh').write_text((root / 'tools/run-android-checks.sh').read_text())
+(dispatch / 'tools/android-ci.py').write_text((root / 'tools/android-ci.py').read_text())
 (dispatch / 'tools/cloud-native-check.py').write_text(
     'import os; print(os.environ["ANDROID_HOME"]); print(os.environ["ANDROID_SDK_ROOT"])')
 env = dict(os.environ, HOME=str(temp / 'owned-home'))
+env['PAPERCUP_ANDROID_CI_STATE'] = str(temp / 'cloud-executor')
+env.pop('PAPERCUP_ANDROID_EXECUTOR_FD', None)
+env.pop('PAPERCUP_ANDROID_EXECUTOR_PID', None)
 env.pop('ANDROID_HOME', None); env.pop('ANDROID_SDK_ROOT', None)
 # This dispatch control owns SDK ordering, not a real rustup invocation in a
 # deliberately empty HOME. Toolchain failure semantics have their own suite.
@@ -200,6 +204,9 @@ for failure_mode in ('assertion', 'timeout'):
     def run_command(command, **kwargs):
         calls.append(command)
         if command[0] != 'adb':
+            if command[0] == sys.executable:
+                assert command[-1] == '--verify-executor'
+                return subprocess.CompletedProcess(command, 0, '', '')
             assert command[0] in ('bash', 'android/gradlew')
             return subprocess.CompletedProcess(command, 0, '', '')
         assert command[:3] == ['adb', '-s', 'emulator-5584']
@@ -223,8 +230,13 @@ for failure_mode in ('assertion', 'timeout'):
     cwd = os.getcwd()
     try:
         os.chdir(root)
-        with patch.dict(os.environ, ANDROID_SERIAL='emulator-5584', PAPERCUP_CLOUD_BASE=base), \
+        # This fixture tests native failure cleanup. Real executor contention
+        # and inheritance have their own process suite; never re-exec out of
+        # these patched ADB/build controls into a real connected device.
+        with patch.dict(os.environ, ANDROID_SERIAL='emulator-5584', PAPERCUP_CLOUD_BASE=base,
+                        PAPERCUP_ANDROID_EXECUTOR_FD='99999'), \
              patch.object(sys, 'argv', ['cloud-native-check.py', str(out), str(path)]), \
+             patch.object(module.os, 'execv', side_effect=AssertionError('cloud fixture attempted re-exec')), \
              patch.object(module.subprocess, 'check_output', check_output), \
              patch.object(module.subprocess, 'run', run_command), \
              patch.object(module, 'capture_apk', capture):
@@ -321,6 +333,7 @@ lock = temp / 'staging-sync.lock'
 fixture_runner = mobile / 'tools/run-android-checks.sh'
 # Execute the maintained shell entry, substituting only its shared lock path.
 fixture_runner.write_text(runner.read_text().replace('/tmp/papercup-staging-sync.lock', str(lock)))
+(mobile / 'tools/android-ci.py').write_text(runner.with_name('android-ci.py').read_text())
 old = temp / 'old-generation'; new = temp / 'new-generation'
 for root in (old, new):
     (root / 'scripts').mkdir(parents=True)
@@ -357,6 +370,9 @@ rustc = bin_dir / 'rustc'; rustc.write_text('#!/bin/sh\nexit 0\n'); rustc.chmod(
 base = dict(os.environ, PATH=str(bin_dir) + ':' + os.environ['PATH'], JAVA_HOME='/fixture-java',
             EXPECTED_ROOT=str(old), FIXTURE_LOCK=str(lock), FIXTURE_MARKER=str(marker),
             FIXTURE_RESULT=str(result), FIXTURE_ALIAS=str(alias), NEW_ROOT=str(new))
+base['PAPERCUP_ANDROID_CI_STATE'] = str(temp / 'generation-executor')
+base.pop('PAPERCUP_ANDROID_EXECUTOR_FD', None)
+base.pop('PAPERCUP_ANDROID_EXECUTOR_PID', None)
 base.pop('PAPERCUSP_INTEGRATION_ROOT', None)
 for case in ('pass', 'stale', 'missing', 'unpinned', 'missing-cargo', 'broken-rustc'):
     alias.unlink(missing_ok=True); alias.symlink_to(old)
@@ -864,13 +880,16 @@ sys.exit(101 if case == 'test-fail' else 0)
                # isolated feature runner invokes this suite with features set.
                PAPERCUP_ANDROID_NATIVE_SELECTION='historical',
                PAPERCUP_LIVE_CONVERSE='1', PAPERCUP_LIVE_TIMEOUT_SEC='1', TEST_LIVE_CASE=case)
+    env['PAPERCUP_ANDROID_CI_STATE'] = str(root / ('executor-' + case))
+    env.pop('PAPERCUP_ANDROID_EXECUTOR_FD', None)
+    env.pop('PAPERCUP_ANDROID_EXECUTOR_PID', None)
     selected_runner = runner
     if native_mode:
         # Run the real maintained script in a private fixture tree. Fake ADB
         # and Gradle are separate processes; no production build reports,
         # connected devices, credentials or working-tree files are touched.
         native_root = root / ('native-root-' + case)
-        for relative in ['tools/run-android-checks.sh', 'crates/papercup-core/tests/live_smoke.rs',
+        for relative in ['tools/run-android-checks.sh', 'tools/android-ci.py', 'crates/papercup-core/tests/live_smoke.rs',
                          'android/app/build.gradle.kts',
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/SettingsScreen.kt',
                          'android/app/src/main/kotlin/com/papercuspai/operator/mobile/LibraryNoticesScreen.kt',

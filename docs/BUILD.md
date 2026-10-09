@@ -214,6 +214,25 @@ checks every 30 minutes after the preceding invocation finishes, including manag
 16-KB emulator. `ANDROID_SERIAL` scopes installation and instrumentation to that
 device; other fleet devices are untouched.
 
+The maintained debug/release builder, complete native/check journey and cloud
+native runner share the same `android-ci/executor.lock`. A competing writer
+refuses before modifying outputs; nested commands verify their inherited
+descriptor or the exact held descriptor of their live ancestor. A different
+emulator does not provide independent custody of the shared build directory.
+For a multi-step producer, hold custody across build, capture and verification:
+
+```sh
+python3 tools/android-ci.py --exclusive-command bash -c 'bash tools/build-scripts/build-android.sh release && bash tools/build-scripts/android-release-provenance.sh verify "$PAPERCUP_RELEASE_VERSION"'
+```
+
+Supply the existing required release version/signing configuration before that
+command. The executor disables persistent Gradle daemons for its leased command;
+the lease ends when the producer exits. Before a release handoff, complete the
+current CI invocation, verify its clean-source receipt, and agree a bounded
+producer interval. The timer may be held during that interval and resumed after
+the producer has verified and retained its candidate. Never bypass executor
+custody or consume mutable shared outputs while another writer owns it.
+
 The executor reuses `check-android-host`, design-token drift verification,
 `run-android-checks.sh connected`, the canonical isolated operator/JNI feature
 journey, and `verify-isolated-native`. Supply a prepared operator checkout through
