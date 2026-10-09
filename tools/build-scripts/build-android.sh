@@ -45,6 +45,11 @@ if [ "$BUILD_MODE" = "release" ]; then
         echo "ERROR: PAPERCUP_RELEASE_VERSION is required for a release build" >&2
         exit 2
     }
+fi
+# Measure the actual JVM temp and build destinations before removing outputs
+# or compiling. The executor owns and cleans temporary files on every exit.
+python3 tools/android-ci.py --verify-build-storage
+if [ "$BUILD_MODE" = "release" ]; then
     # A failed/partial Gradle invocation must not leave the preceding release as
     # a candidate. The manifest is written atomically only after both outputs pass
     # every release verification below.
@@ -156,6 +161,8 @@ verify_16kb_alignment() {
 }
 
 if [ -f android/gradlew ]; then
+    # Compilation can change free capacity and the module ZIP working set.
+    python3 tools/android-ci.py --verify-build-storage
     cd android
     if [ "$BUILD_MODE" = "release" ]; then
         # Refuse before the expensive build: provenance write repeats this gate.
