@@ -57,6 +57,8 @@ fi
 grep -qx 'INVALID_SECRET: IOS_DIST_CERT_P12_BASE64' "$TMP/gate.log" || fail 'non-base64 certificate was not named'
 
 run_gate "${all_secrets[@]}" || { cat "$TMP/gate.log" >&2; fail 'secrets gate rejected a complete secret set'; }
+run_gate "${all_secrets[@]:0:4}" PAPERCUP_EXPORT_METHOD=release-testing || fail 'Ad Hoc export required an ASC key'
+if run_gate "${all_secrets[@]:0:4}" PAPERCUP_REQUIRE_UPLOAD_SECRETS=1; then fail 'upload accepted no ASC key'; fi
 
 # ----------------------------------------------------------- profile validation
 openssl req -x509 -newkey rsa:2048 -nodes -keyout "$TMP/signer.key" -out "$TMP/signer.pem" \
@@ -96,6 +98,10 @@ elif variant == "push-development":
     profile["Entitlements"]["aps-environment"] = "development"
 elif variant == "expired":
     profile["ExpirationDate"] = now - datetime.timedelta(days=1)
+elif variant == "adhoc":
+    profile["ProvisionedDevices"] = ["00008110-000000000000001E"]
+elif variant == "enterprise":
+    profile["ProvisionsAllDevices"] = True
 with open(out, "wb") as handle:
     plistlib.dump(profile, handle)
 PY
@@ -127,6 +133,23 @@ expect_rejected development 'lists devices'
 expect_rejected development 'allows debugging'
 expect_rejected push-development 'production Push Notifications'
 expect_rejected expired 'expired'
+make_profile adhoc
+if check "$TMP/profile-adhoc.mobileprovision"; then fail 'store route accepted Ad Hoc profile'; fi
+PAPERCUP_EXPORT_METHOD=release-testing check "$TMP/profile-adhoc.mobileprovision" || fail 'Ad Hoc route rejected registered devices'
+if PAPERCUP_EXPORT_METHOD=release-testing check "$TMP/profile-good.mobileprovision"; then fail 'Ad Hoc accepted a store profile'; fi
+if PAPERCUP_EXPORT_METHOD=release-testing check "$TMP/profile-development.mobileprovision"; then fail 'Ad Hoc accepted a debug profile'; fi
+make_profile enterprise
+if PAPERCUP_EXPORT_METHOD=release-testing check "$TMP/profile-enterprise.mobileprovision"; then fail 'Ad Hoc accepted enterprise distribution'; fi
+PAPERCUP_EXPORT_METHOD=release-testing PAPERCUP_PROFILE_DECODER=openssl bash "$SIGNING" \
+    check-profile "$TMP/profile-adhoc.mobileprovision" "$TEAM" --json > "$TMP/profile.json"
+python3 - "$TMP/profile.json" <<'PY' || fail 'Ad Hoc install facts invalid'
+import json,sys
+facts = json.load(open(sys.argv[1]))
+assert facts['registeredDeviceCount'] == 1
+assert len(facts['certificateSha1s']) == 1
+assert facts['expiresAt']
+assert '00008110' not in json.dumps(facts), 'device identifier leaked into public facts'
+PY
 
 printf 'not a profile' > "$TMP/garbage.mobileprovision"
 if check "$TMP/garbage.mobileprovision"; then fail 'accepted an unsigned profile'; fi
@@ -216,6 +239,19 @@ release || { cat "$TMP/release.log" >&2; fail 'automatic signing export failed';
 grep -qx -- -allowProvisioningUpdates "$TMP/log/xcodebuildarchive.args" || fail 'automatic archive lost provisioning updates'
 if grep -q '^CODE_SIGN_STYLE=' "$TMP/log/xcodebuildarchive.args"; then fail 'automatic archive overrode the signing style'; fi
 cmp -s "$TMP/log/export-options.plist" "$ROOT/ios/ExportOptions.plist" || fail 'automatic export must use the tracked ExportOptions.plist'
+release PAPERCUP_EXPORT_METHOD=release-testing PAPERCUP_SIGNING_STYLE=manual \
+    "PAPERCUP_PROVISIONING_PROFILE=$PROFILE_NAME" || fail 'Ad Hoc manual export failed'
+python3 - "$TMP/log/export-options.plist" <<'PY' || fail 'Ad Hoc export method was not selected'
+import plistlib,sys
+options = plistlib.load(open(sys.argv[1], 'rb'))
+assert options['method'] == 'release-testing'
+assert options['signingStyle'] == 'manual'
+assert 'uploadSymbols' not in options
+PY
+if PAPERCUP_EXPORT_METHOD=release-testing bash "$RELEASE" upload > "$TMP/refusal.log" 2>&1; then
+    fail 'Ad Hoc route allowed ASC upload'
+fi
+grep -q 'cannot be submitted' "$TMP/refusal.log" || fail 'Ad Hoc upload refusal missing'
 
 # ------------------------------------------------------------ project contract
 python3 - "$PROJECT" <<'PY' || fail 'project.yml must give only the app target the CI profile variable'

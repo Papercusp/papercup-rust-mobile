@@ -312,6 +312,48 @@ and SHA256. The archive's validated identity and signing facts remain in that sa
 manifest. Failed, preflight and unsigned runs do not create an admissible release
 envelope. The companion `result.json` records verification and the complete inventory.
 
+### Manual iPhone download and registered-device installation
+
+Manual delivery uses an **Ad Hoc distribution IPA**, exported with Xcode's
+`release-testing` method. It requires Apple Developer Program membership, an
+Apple Distribution certificate/private key, and an unexpired Ad Hoc profile for
+this exact app/team that includes each recipient iPhone's registered UDID and
+production Push Notifications. A downloaded IPA installs only on those devices;
+a public link does not make it installable on arbitrary iPhones. Registering another
+device requires a renewed profile and a new signed export. App Store listing,
+TestFlight submission, ASC app record and API key are separate from this route.
+
+Keep one Ad Hoc `.mobileprovision`, the matching distribution certificate and
+`dist.key` in a private folder outside the source tree. Reuse the existing loader:
+
+```sh
+PAPERCUP_EXPORT_METHOD=release-testing \
+  bash tools/build-scripts/ios-signing-secrets.sh plan
+PAPERCUP_EXPORT_METHOD=release-testing \
+  bash tools/build-scripts/ios-signing-secrets.sh apply
+python3 tools/ios-ci.py --mode signed --distribution release-testing \
+  --build-number 42 --secrets-file ~/.config/papercusp/ios-signing.json
+# For the private backend journey add:
+# --paired-ui --pair-payload-file /private/fresh-payload.json
+```
+
+The loader retains the existing `IOS_APPSTORE_PROFILE_BASE64` key for compatibility;
+in this mode its value is the Ad Hoc profile. Only the four export inputs are
+required. The runner refuses a store, development, enterprise, expired or wrong
+app/team profile. It also validates the exported IPA's embedded profile and
+distribution certificate. Upload is refused in `release-testing` mode. Installation
+facts in the existing candidate manifest record the method, registered-device
+count and profile expiry without exposing UDIDs.
+
+After a real native pass, distribute the retained `export/*.ipa` with its SHA256.
+On a registered device, download the IPA to a Mac, connect and trust the iPhone,
+open Xcode **Window → Devices and Simulators**, select it, and add the IPA under
+Installed Apps (or use Apple Configurator's Add Apps operation). Verify launch,
+pairing, cloud reconnect and push on the actual phone, retaining candidate identity
+and acceptance evidence. A Safari download link alone is not an installation flow;
+over-the-air installation needs a separately hosted HTTPS installation manifest.
+No installable IPA or device acceptance is implied by fixture tests or preflight.
+
 Only three things need the owner's Apple login: Apple Developer Program
 membership, the App Store Connect app record for
 `com.papercuspai.operator.mobile` (Apple's API cannot create apps), and one App

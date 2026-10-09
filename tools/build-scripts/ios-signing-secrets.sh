@@ -25,6 +25,20 @@ DIR="${PAPERCUP_APPLE_SECRETS_DIR:-$HOME/.papercusp/secrets/apple}"
 OUTPUT="${PAPERCUP_IOS_SIGNING_CONFIG:-$HOME/.config/papercusp/ios-signing.json}"
 MODE="${1:-plan}"
 SECRET_NAMES="APPLE_TEAM_ID IOS_DIST_CERT_P12_BASE64 IOS_DIST_CERT_PASSWORD IOS_APPSTORE_PROFILE_BASE64 ASC_API_KEY_ID ASC_API_ISSUER_ID ASC_API_KEY_P8_BASE64"
+SECRET_COUNT=7
+EXPORT_METHOD="${PAPERCUP_EXPORT_METHOD:-app-store-connect}"
+case "$EXPORT_METHOD" in
+    app-store-connect) REQUIRE_UPLOAD="${PAPERCUP_REQUIRE_UPLOAD_SECRETS:-1}" ;;
+    release-testing) REQUIRE_UPLOAD="${PAPERCUP_REQUIRE_UPLOAD_SECRETS:-0}" ;;
+    *) echo 'ERROR: unsupported PAPERCUP_EXPORT_METHOD' >&2; exit 1 ;;
+esac
+case "$REQUIRE_UPLOAD" in 0|1) ;; *) echo 'ERROR: PAPERCUP_REQUIRE_UPLOAD_SECRETS must be 0 or 1' >&2; exit 1 ;; esac
+[ "$EXPORT_METHOD" != release-testing ] || [ "$REQUIRE_UPLOAD" = 0 ] || { echo 'ERROR: registered-device export cannot upload' >&2; exit 1; }
+if [ "$REQUIRE_UPLOAD" = 0 ]; then
+    SECRET_NAMES="APPLE_TEAM_ID IOS_DIST_CERT_P12_BASE64 IOS_DIST_CERT_PASSWORD IOS_APPSTORE_PROFILE_BASE64"
+    SECRET_COUNT=4
+fi
+export PAPERCUP_EXPORT_METHOD="$EXPORT_METHOD" PAPERCUP_REQUIRE_UPLOAD_SECRETS="$REQUIRE_UPLOAD"
 
 die() {
     echo "ERROR: $*" >&2
@@ -77,9 +91,13 @@ private_mode "$DIR/dist.key"
 
 waiting=0
 cer="$(one_file 'Apple Distribution certificate' "$DIR" '*.cer')" || waiting=1
-profile="$(one_file 'App Store provisioning profile' "$DIR" '*.mobileprovision')" || waiting=1
-p8="$(one_file 'App Store Connect API key' "$DIR/asc" 'AuthKey_*.p8')" || waiting=1
-[ -f "$DIR/notes.txt" ] || { echo "WAITING_FOR: identifiers ($DIR/notes.txt)" >&2; waiting=1; }
+profile_label='App Store provisioning profile'
+[ "$EXPORT_METHOD" != release-testing ] || profile_label='Ad Hoc provisioning profile'
+profile="$(one_file "$profile_label" "$DIR" '*.mobileprovision')" || waiting=1
+if [ "$REQUIRE_UPLOAD" = 1 ]; then
+    p8="$(one_file 'App Store Connect API key' "$DIR/asc" 'AuthKey_*.p8')" || waiting=1
+    [ -f "$DIR/notes.txt" ] || { echo "WAITING_FOR: identifiers ($DIR/notes.txt)" >&2; waiting=1; }
+fi
 [ "$waiting" -eq 0 ] || die "the Apple files are not all in $DIR yet"
 
 # ----------------------------------------------------------------- certificate
@@ -115,6 +133,7 @@ case ",$profile_sha1s," in
 esac
 
 # --------------------------------------------------------- App Store Connect key
+if [ "$REQUIRE_UPLOAD" = 1 ]; then
 key_id="$(basename "$p8" .p8)"
 key_id="${key_id#AuthKey_}"
 [[ "$key_id" =~ ^[A-Z0-9]{10}$ ]] || die "$p8: the key ID in the file name must be 10 characters"
@@ -126,6 +145,7 @@ case "$(printf '%s' "$issuers" | grep -c . || true)" in
     0) die "notes.txt has no Issuer ID (the UUID shown above the App Store Connect API keys)" ;;
     *) die "notes.txt has more than one UUID; keep only the App Store Connect Issuer ID" ;;
 esac
+fi
 
 # ------------------------------------------------------------- PKCS#12 bundle
 # SHA1-3DES encryption with a SHA1 MAC imports on every macOS keychain without
@@ -217,6 +237,8 @@ if path.exists() and (not path.is_file() or path.stat().st_mode & 0o077):
 path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 keys = ('APPLE_TEAM_ID', 'IOS_DIST_CERT_P12_BASE64', 'IOS_DIST_CERT_PASSWORD',
         'IOS_APPSTORE_PROFILE_BASE64', 'ASC_API_KEY_ID', 'ASC_API_ISSUER_ID', 'ASC_API_KEY_P8_BASE64')
+if os.environ['PAPERCUP_REQUIRE_UPLOAD_SECRETS'] == '0':
+    keys = keys[:4]
 values = {key: os.environ[key] for key in keys}
 fd, temporary = tempfile.mkstemp(dir=path.parent, prefix='.ios-signing-')
 try:
@@ -230,4 +252,4 @@ finally:
         os.unlink(temporary)
 PY
 )
-echo "APPLIED: 7 TestFlight signing inputs written to owner-only native JSON"
+echo "APPLIED: $SECRET_COUNT native signing inputs written to owner-only native JSON"

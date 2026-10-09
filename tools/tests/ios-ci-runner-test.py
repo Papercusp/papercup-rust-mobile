@@ -8,11 +8,14 @@ import os
 from pathlib import Path
 import plistlib
 import subprocess
+import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('ios_ci', ROOT / 'tools/ios-ci.py')
 ci = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci)
@@ -33,7 +36,7 @@ class NativeRunnerTests(unittest.TestCase):
         self.calls = []
         self.failure_phase = None
         self.counts = {'passedTests': 3, 'failedTests': 0, 'skippedTests': 0}
-        self.args = argparse.Namespace(mode='check', preflight=False, force=False,
+        self.args = argparse.Namespace(mode='check', distribution='app-store-connect', preflight=False, force=False,
                                        paired_ui=False, pair_payload_file=None,
                                        build_number=None, secrets_file=None,
                                        upload=False, confirm_upload=False)
@@ -49,9 +52,11 @@ class NativeRunnerTests(unittest.TestCase):
             (attempt / 'Papercusp.xcarchive').mkdir()
         if name == 'signed-export':
             (attempt / 'export').mkdir()
-            (attempt / 'export/app.ipa').write_bytes(b'candidate')
+            with zipfile.ZipFile(attempt / 'export/app.ipa', 'w') as ipa:
+                ipa.writestr('Payload/Papercup.app/embedded.mobileprovision', b'fixture profile')
         if name == 'signing-install':
-            Path(env['PAPERCUP_SIGNING_ENV_FILE']).write_text('{}')
+            Path(env['PAPERCUP_SIGNING_ENV_FILE']).write_text(json.dumps({
+                'APPLE_TEAM_ID': 'ABCDE12345', 'PAPERCUP_SIGNING_CERT_SHA1': 'C' * 40}))
         if name == 'archive-guard':
             (attempt / 'candidate-manifest.json').write_text(json.dumps({
                 'sourceSha': self.identity['commit'], 'version': '1.0.0',
@@ -79,7 +84,10 @@ class NativeRunnerTests(unittest.TestCase):
 
         with patch.object(ci, 'source_identity', side_effect=identities or [self.identity, self.identity]), \
                 patch.object(ci, 'toolchain', return_value=self.native), \
-                patch.object(ci, 'output', return_value='rustc 1.99.0'), \
+                patch.object(ci, 'output', side_effect=lambda command, *unused: (
+                    json.dumps({'registeredDeviceCount': 2 if self.args.distribution == 'release-testing' else 0,
+                                'expiresAt': '2030-01-01T00:00:00+00:00', 'certificateSha1s': ['C' * 40]})
+                    if command[0] == 'bash' else 'rustc 1.99.0')), \
                 patch.object(ci, 'run_phase', side_effect=self.phase), \
                 patch.object(ci, 'load_signing'), \
                 patch.object(ci.subprocess, 'run', side_effect=native_run):
@@ -182,8 +190,72 @@ class NativeRunnerTests(unittest.TestCase):
         self.assertEqual(manifest['releaseVersion'], '1.0.0')
         self.assertEqual(manifest['builtAt'], result['finishedAt'])
         self.assertEqual(manifest['artifacts'], [{
-            'kind': 'ipa', 'path': 'export/app.ipa', 'size': 9,
+            'kind': 'ipa', 'path': 'export/app.ipa',
+            'size': (Path(result['attempt']) / 'export/app.ipa').stat().st_size,
             'sha256': ci.digest(Path(result['attempt']) / 'export/app.ipa')}])
+
+    def test_registered_device_export_records_install_prerequisites_without_upload(self):
+        self.args.mode = 'signed'
+        self.args.distribution = 'release-testing'
+        self.args.build_number = '42'
+        self.assertEqual(self.run_ci(), 0)
+        result = self.latest()
+        self.assertNotIn('testflight-upload', self.calls)
+        manifest = json.loads((Path(result['attempt']) / 'candidate-manifest.json').read_text())
+        self.assertEqual(manifest['installation'], {
+            'distributionMethod': 'release-testing', 'registeredDeviceCount': 2,
+            'profileExpiresAt': '2030-01-01T00:00:00+00:00', 'installationRoute': 'registered-device'})
+
+    def test_registered_device_upload_refuses_before_build_or_signing(self):
+        self.args.mode = 'signed'
+        self.args.distribution = 'release-testing'
+        self.args.upload = self.args.confirm_upload = True
+        self.assertEqual(self.run_ci(), 1)
+        self.assertEqual(self.calls, [])
+
+    def test_exported_ipa_must_have_one_matching_profile(self):
+        ipa = self.base / 'app.ipa'
+        env = {'APPLE_TEAM_ID': 'ABCDE12345', 'PAPERCUP_SIGNING_CERT_SHA1': 'C' * 40,
+               'PAPERCUP_EXPORT_METHOD': 'release-testing'}
+        with zipfile.ZipFile(ipa, 'w') as archive:
+            archive.writestr('Payload/Papercup.app/Info.plist', b'fixture')
+        with self.assertRaisesRegex(ValueError, 'exactly one'):
+            ci.exported_profile(self.root, env, ipa)
+        with zipfile.ZipFile(ipa, 'a') as archive:
+            archive.writestr('Payload/Papercup.app/embedded.mobileprovision', b'fixture')
+        with patch.object(ci, 'output', return_value=json.dumps({'certificateSha1s': ['D' * 40]})):
+            with self.assertRaisesRegex(ValueError, 'installed distribution identity'):
+                ci.exported_profile(self.root, env, ipa)
+
+    def test_private_export_config_needs_four_inputs_but_upload_needs_seven(self):
+        config = self.base / 'signing.json'
+        config.write_text(json.dumps({key: 'fixture' for key in ci.SIGNING_KEYS[:4]}))
+        config.chmod(0o600)
+        env = {'PAPERCUP_REQUIRE_UPLOAD_SECRETS': '0'}
+        with patch.object(ci.subprocess, 'run') as gate:
+            ci.load_signing(config, self.root, env)
+            gate.assert_called_once()
+        env['PAPERCUP_REQUIRE_UPLOAD_SECRETS'] = '1'
+        with self.assertRaisesRegex(ValueError, 'required signing inputs'):
+            ci.load_signing(config, self.root, env)
+
+    def test_private_paired_ui_is_checked_before_expensive_build_and_runs_selected_test(self):
+        self.args.paired_ui = True
+        self.assertEqual(self.run_ci(), 1)
+        self.assertEqual(self.calls, [])
+        payload = self.base / 'pair.json'
+        payload.write_text('{"token":"fixture"}')
+        payload.chmod(0o600)
+        self.args.pair_payload_file = str(payload)
+        self.counts = {'passedTests': 1, 'failedTests': 0, 'skippedTests': 0}
+        real_summary = self.summary
+        def summary(command, **kwargs):
+            self.counts['passedTests'] = 1 if 'paired-ui.xcresult' in ' '.join(command) else 3
+            return real_summary(command, **kwargs)
+        with patch.object(self, 'summary', side_effect=summary):
+            self.assertEqual(self.run_ci(), 0)
+        self.assertIn('paired-ui-guard', self.calls)
+        self.assertIs(self.latest()['pairedUI'], True)
 
     def test_check_and_failed_cleanup_do_not_emit_release_envelope(self):
         self.assertEqual(self.run_ci(), 0)

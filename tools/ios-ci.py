@@ -16,8 +16,10 @@ import subprocess
 import sys
 import tempfile
 import uuid
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True  # Importing shared CI must not change candidate source identity.
 spec = importlib.util.spec_from_file_location('mobile_ci', ROOT / 'tools/android-ci.py')
 mobile_ci = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mobile_ci)
@@ -88,13 +90,39 @@ def private_input(path, root):
 def load_signing(path, root, env):
     if path:
         values = json.loads(private_input(path, root).read_text())
-        if not isinstance(values, dict) or set(values) != set(SIGNING_KEYS):
-            raise ValueError('Signing JSON must contain exactly the seven signing inputs')
+        required = set(SIGNING_KEYS if env.get('PAPERCUP_REQUIRE_UPLOAD_SECRETS', '1') == '1'
+                       else SIGNING_KEYS[:4])
+        if (not isinstance(values, dict) or not required <= set(values)
+                or set(values) - set(SIGNING_KEYS)):
+            raise ValueError('Signing JSON must contain the required signing inputs and no unknown keys')
         if any(not isinstance(v, str) or not v for v in values.values()):
             raise ValueError('Signing inputs must be nonempty strings')
         env.update(values)
     subprocess.run(['bash', 'tools/build-scripts/ios-ci-signing.sh', 'require-secrets'],
                    cwd=root, env=env, check=True)
+
+
+def exported_profile(root, env, ipa):
+    """Check the profile in the exported bytes, not just the archive's profile."""
+    with zipfile.ZipFile(ipa) as archive:
+        profiles = [name for name in archive.namelist()
+                    if re.fullmatch(r'Payload/[^/]+\.app/embedded\.mobileprovision', name)]
+        if len(profiles) != 1:
+            raise ValueError('IPA must contain exactly one app provisioning profile')
+        with tempfile.TemporaryDirectory(prefix='papercup-export-profile-') as directory:
+            profile = Path(directory) / 'embedded.mobileprovision'
+            profile.write_bytes(archive.read(profiles[0]))
+            profile.chmod(0o600)
+            facts = json.loads(output(['bash', 'tools/build-scripts/ios-ci-signing.sh',
+                                      'check-profile', str(profile), env['APPLE_TEAM_ID'],
+                                      '--json'], root, env))
+    if env['PAPERCUP_SIGNING_CERT_SHA1'] not in facts['certificateSha1s']:
+        raise ValueError('Exported profile does not include the installed distribution identity')
+    return {'distributionMethod': env['PAPERCUP_EXPORT_METHOD'],
+            'registeredDeviceCount': facts['registeredDeviceCount'],
+            'profileExpiresAt': facts['expiresAt'],
+            'installationRoute': ('registered-device' if env['PAPERCUP_EXPORT_METHOD'] == 'release-testing'
+                                  else 'app-store-connect')}
 
 
 def toolchain(root, env):
@@ -170,7 +198,7 @@ def release_manifest(attempt, result):
     ipa = ipas[0]
     manifest.update(schemaVersion=1, releaseVersion=manifest['version'],
                     sourceCommit=identity['commit'], sourceDirty=False,
-                    builtAt=result['finishedAt'], artifacts=[{
+                    builtAt=result['finishedAt'], installation=result['installation'], artifacts=[{
                         'kind': 'ipa', 'path': str(ipa.relative_to(attempt)),
                         'size': ipa.stat().st_size, 'sha256': digest(ipa)}])
     write_json(path, manifest)
@@ -258,13 +286,16 @@ def _execute(root, state, args):
     attempt.mkdir(parents=True)
     result = {'schemaVersion': 1, 'executor': 'native-mac', 'attempt': str(attempt),
               'startedAt': dt.datetime.now(dt.timezone.utc).isoformat(), 'status': 'failed',
-              'mode': args.mode, 'pairedUI': args.paired_ui, 'phases': [],
+              'mode': args.mode, 'distributionMethod': args.distribution,
+              'pairedUI': args.paired_ui, 'phases': [],
               'day': dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d')}
     env = os.environ.copy()
     env['PATH'] = str(Path.home() / '.cargo/bin') + ':/opt/homebrew/bin:/usr/local/bin:' + env.get('PATH', '/usr/bin:/bin:/usr/sbin:/sbin')
     env.pop('GITHUB_ENV', None)
     env.pop('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', None)
     env.pop('PAPERCUP_PAIR_PAYLOAD', None)
+    env['PAPERCUP_EXPORT_METHOD'] = args.distribution
+    env['PAPERCUP_REQUIRE_UPLOAD_SECRETS'] = '1' if args.upload else '0'
     if args.mode == 'check':
         for key in SIGNING_KEYS:
             env.pop(key, None)
@@ -274,6 +305,18 @@ def _execute(root, state, args):
     try:
         if args.upload and (args.mode != 'signed' or not args.confirm_upload):
             raise ValueError('Upload requires --mode signed --upload --confirm-upload')
+        if args.distribution not in ('app-store-connect', 'release-testing'):
+            raise ValueError('Unsupported iPhone distribution method')
+        if args.upload and args.distribution != 'app-store-connect':
+            raise ValueError('Registered-device IPA export cannot be uploaded to App Store Connect')
+        paired_env = None
+        if args.paired_ui:
+            if not args.pair_payload_file:
+                raise ValueError('--paired-ui requires an owner-only --pair-payload-file')
+            payload = private_input(args.pair_payload_file, root).read_text().strip()
+            if not payload or not isinstance(json.loads(payload), dict) or not json.loads(payload):
+                raise ValueError('Paired UI input must be a nonempty JSON object')
+            paired_env = dict(env, TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD=payload)
         if args.mode == 'signed':
             if not args.build_number or not re.fullmatch(r'[1-9]\d*', args.build_number):
                 raise ValueError('Signed delivery requires an explicit positive --build-number')
@@ -321,12 +364,7 @@ def _execute(root, state, args):
                 shutil.copyfile(path, target)
         ui_test(root, env, attempt, phases, 'ui-smoke', SMOKE_TESTS)
         if args.paired_ui:
-            if not args.pair_payload_file:
-                raise ValueError('--paired-ui requires an owner-only --pair-payload-file')
-            payload = private_input(args.pair_payload_file, root).read_text().strip()
-            if not payload:
-                raise ValueError('Paired UI input is empty')
-            paired_env = dict(env, TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD=payload)
+            paired_env.update(env)
             ui_test(root, paired_env, attempt, phases, 'paired-ui',
                     ('PapercupUITests/PairFlowUITests/testPairAndPairedNavigation',))
         archive = attempt / 'Papercusp.xcarchive'
@@ -357,6 +395,11 @@ def _execute(root, state, args):
         run_phase('archive-guard', validation, root, env, attempt, phases)
         if source_identity(root) != identity:
             raise ValueError('Source changed during execution; candidate admission refused')
+        if args.mode == 'signed':
+            ipas = list((attempt / 'export').glob('*.ipa'))
+            if len(ipas) != 1 or ipas[0].is_symlink() or not ipas[0].is_file():
+                raise ValueError('Signed export must produce exactly one regular IPA')
+            result['installation'] = exported_profile(root, env, ipas[0])
         if args.upload:
             ipas = list((attempt / 'export').glob('*.ipa'))
             if len(ipas) != 1:
@@ -420,6 +463,9 @@ def execute(root, state, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=('check', 'signed'), default='check')
+    parser.add_argument('--distribution', choices=('app-store-connect', 'release-testing'),
+                        default='app-store-connect',
+                        help='release-testing exports an Ad Hoc IPA for registered devices')
     parser.add_argument('--preflight', action='store_true')
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--paired-ui', action='store_true')

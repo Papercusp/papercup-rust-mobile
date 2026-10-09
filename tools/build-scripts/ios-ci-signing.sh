@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Apple signing setup for the native tools/ios-ci.py TestFlight route.
+# Apple signing setup for native store and registered-device exports.
 #
 # Secrets arrive as injected environment variables on the native Mac. Signing material
 # is written only under $PAPERCUP_SIGNING_DIR (default $TMPDIR), never into
@@ -10,7 +10,16 @@
 #        ios-ci-signing.sh check-profile <file.mobileprovision> <team-id>
 set -euo pipefail
 
-REQUIRED_SECRETS="APPLE_TEAM_ID IOS_DIST_CERT_P12_BASE64 IOS_DIST_CERT_PASSWORD IOS_APPSTORE_PROFILE_BASE64 ASC_API_KEY_ID ASC_API_ISSUER_ID ASC_API_KEY_P8_BASE64"
+EXPORT_METHOD="${PAPERCUP_EXPORT_METHOD:-app-store-connect}"
+case "$EXPORT_METHOD" in
+    app-store-connect) REQUIRE_UPLOAD="${PAPERCUP_REQUIRE_UPLOAD_SECRETS:-1}" ;;
+    release-testing) REQUIRE_UPLOAD="${PAPERCUP_REQUIRE_UPLOAD_SECRETS:-0}" ;;
+    *) echo 'ERROR: unsupported PAPERCUP_EXPORT_METHOD' >&2; exit 1 ;;
+esac
+case "$REQUIRE_UPLOAD" in 0|1) ;; *) echo 'ERROR: PAPERCUP_REQUIRE_UPLOAD_SECRETS must be 0 or 1' >&2; exit 1 ;; esac
+[ "$EXPORT_METHOD" != release-testing ] || [ "$REQUIRE_UPLOAD" = 0 ] || { echo 'ERROR: registered-device export cannot upload' >&2; exit 1; }
+REQUIRED_SECRETS="APPLE_TEAM_ID IOS_DIST_CERT_P12_BASE64 IOS_DIST_CERT_PASSWORD IOS_APPSTORE_PROFILE_BASE64"
+[ "$REQUIRE_UPLOAD" = 0 ] || REQUIRED_SECRETS="$REQUIRED_SECRETS ASC_API_KEY_ID ASC_API_ISSUER_ID ASC_API_KEY_P8_BASE64"
 APP_BUNDLE_ID="${PAPERCUP_APP_BUNDLE_ID:-com.papercuspai.operator.mobile}"
 WORK_DIR="${PAPERCUP_SIGNING_DIR:-${TMPDIR:-/tmp}/papercup-signing}"
 KEYCHAIN="$WORK_DIR/papercup-ci.keychain-db"
@@ -40,19 +49,22 @@ require_secrets() {
         fi
     done
     if [ "$missing" -gt 0 ]; then
-        die "TestFlight signing needs $missing missing native signing input(s); see docs/BUILD.md (TestFlight)"
+        die "Native signing needs $missing missing input(s); see docs/BUILD.md"
     fi
     if ! [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
         echo "INVALID_SECRET: APPLE_TEAM_ID" >&2
         die "APPLE_TEAM_ID must be the 10-character Apple Developer team ID"
     fi
-    for name in IOS_DIST_CERT_P12_BASE64 IOS_APPSTORE_PROFILE_BASE64 ASC_API_KEY_P8_BASE64; do
+    for name in IOS_DIST_CERT_P12_BASE64 IOS_APPSTORE_PROFILE_BASE64; do
         if ! printf '%s' "${!name}" | base64 --decode >/dev/null 2>&1; then
             echo "INVALID_SECRET: $name" >&2
             die "$name must be the base64 encoding of the file"
         fi
     done
-    echo "OK: all TestFlight signing secrets are present"
+    if [ "$REQUIRE_UPLOAD" = 1 ] && ! printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode >/dev/null 2>&1; then
+        die 'INVALID_SECRET: ASC_API_KEY_P8_BASE64 must be base64'
+    fi
+    echo "OK: required native signing secrets are present"
 }
 
 decode_profile() {
@@ -73,13 +85,14 @@ check_profile() {
         rm -f "$plist"
         die "IOS_APPSTORE_PROFILE_BASE64 is not a signed provisioning profile"
     fi
-    python3 - "$plist" "$team" "$APP_BUNDLE_ID" <<'PY' || { rm -f "$plist"; exit 1; }
+    python3 - "$plist" "$team" "$APP_BUNDLE_ID" "$EXPORT_METHOD" "${3:-}" <<'PY' || { rm -f "$plist"; exit 1; }
 import datetime
 import hashlib
+import json
 import plistlib
 import sys
 
-path, team, bundle_id = sys.argv[1:]
+path, team, bundle_id, method, output_format = sys.argv[1:]
 with open(path, "rb") as handle:
     profile = plistlib.load(handle)
 entitlements = profile.get("Entitlements", {})
@@ -89,10 +102,15 @@ if team not in profile.get("TeamIdentifier", []):
 if entitlements.get("application-identifier") != f"{team}.{bundle_id}":
     problems.append(
         f"profile is for {entitlements.get('application-identifier')}, not {team}.{bundle_id}")
-if "ProvisionedDevices" in profile or profile.get("ProvisionsAllDevices"):
+devices = profile.get("ProvisionedDevices", [])
+if method == "app-store-connect" and ("ProvisionedDevices" in profile or profile.get("ProvisionsAllDevices")):
     problems.append("profile lists devices; an App Store profile must not")
+if method == "release-testing" and (not isinstance(devices, list) or not devices
+        or any(not isinstance(device, str) or not device.strip() for device in devices)
+        or len(devices) != len(set(devices)) or profile.get("ProvisionsAllDevices")):
+    problems.append("Ad Hoc profile must list registered devices and must not provision all devices")
 if entitlements.get("get-task-allow", False):
-    problems.append("profile allows debugging (development profile); use App Store distribution")
+    problems.append("profile allows debugging (development profile); use distribution signing")
 if entitlements.get("aps-environment") != "production":
     problems.append("profile lacks production Push Notifications (aps-environment)")
 expires = profile.get("ExpirationDate")
@@ -107,7 +125,12 @@ if problems:
         print(f"PROFILE_REJECTED: {problem}", file=sys.stderr)
     sys.exit(1)
 sha1s = ",".join(hashlib.sha1(cert).hexdigest().upper() for cert in certs)
-print(f"{profile['Name']}\t{profile['UUID']}\t{sha1s}")
+if output_format == '--json':
+    print(json.dumps({'registeredDeviceCount': len(devices),
+                      'expiresAt': expires.replace(tzinfo=datetime.timezone.utc).isoformat(),
+                      'certificateSha1s': sha1s.split(',')}))
+else:
+    print(f"{profile['Name']}\t{profile['UUID']}\t{sha1s}")
 PY
     rm -f "$plist"
 }
@@ -184,18 +207,21 @@ install_signing() {
     done
     printf '%s\n' "$profile_uuid" > "$WORK_DIR/profile.uuid"
 
-    mkdir -p "$WORK_DIR/private_keys"
-    printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode \
-        > "$WORK_DIR/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
-    chmod 600 "$WORK_DIR/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+    if [ "$REQUIRE_UPLOAD" = 1 ]; then
+        mkdir -p "$WORK_DIR/private_keys"
+        printf '%s' "$ASC_API_KEY_P8_BASE64" | base64 --decode \
+            > "$WORK_DIR/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+        chmod 600 "$WORK_DIR/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+        emit_env APP_STORE_CONNECT_API_KEY_ID "$ASC_API_KEY_ID"
+        emit_env APP_STORE_CONNECT_API_ISSUER_ID "$ASC_API_ISSUER_ID"
+        emit_env APP_STORE_CONNECT_API_KEY_PATH "$WORK_DIR/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+    fi
 
     emit_env PAPERCUP_SIGNING_STYLE manual
     emit_env PAPERCUP_DEVELOPMENT_TEAM "$APPLE_TEAM_ID"
     emit_env PAPERCUP_PROVISIONING_PROFILE "$profile_name"
     emit_env PAPERCUP_CI_KEYCHAIN "$KEYCHAIN"
-    emit_env APP_STORE_CONNECT_API_KEY_ID "$ASC_API_KEY_ID"
-    emit_env APP_STORE_CONNECT_API_ISSUER_ID "$ASC_API_ISSUER_ID"
-    emit_env APP_STORE_CONNECT_API_KEY_PATH "$WORK_DIR/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+    emit_env PAPERCUP_SIGNING_CERT_SHA1 "$identity"
     echo "OK: identity $identity and profile '$profile_name' ($profile_uuid) installed"
 }
 
@@ -217,8 +243,8 @@ cleanup_signing() {
 case "${1:-}" in
     require-secrets) require_secrets ;;
     check-profile)
-        [ "$#" -eq 3 ] || die "usage: ios-ci-signing.sh check-profile <file.mobileprovision> <team-id>"
-        check_profile "$2" "$3"
+        [ "$#" -eq 3 ] || { [ "$#" -eq 4 ] && [ "$4" = --json ]; } || die "usage: ios-ci-signing.sh check-profile <file.mobileprovision> <team-id> [--json]"
+        check_profile "$2" "$3" "${4:-}"
         ;;
     install) install_signing ;;
     cleanup) cleanup_signing ;;

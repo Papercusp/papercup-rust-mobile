@@ -80,6 +80,12 @@ with open(out, "wb") as handle:
             "aps-environment": "production",
         },
     }, handle)
+if sys.argv[2].endswith('/adhoc.plist'):
+    with open(out, 'rb') as handle:
+        profile = plistlib.load(handle)
+    profile['ProvisionedDevices'] = ['00008110-000000000000001E']
+    with open(out, 'wb') as handle:
+        plistlib.dump(profile, handle)
 PY
     openssl smime -sign -binary -nodetach -outform der -signer "$TMP/src/signer.pem" \
         -inkey "$TMP/src/signer.key" -in "$TMP/src/$1.plist" -out "$TMP/src/$1.mobileprovision"
@@ -87,6 +93,7 @@ PY
 make_profile good "$TMP/src/distribution.cer" "$TEAM"
 make_profile foreign "$TMP/src/foreign.cer" "$TEAM"
 make_profile wrong-team "$TMP/src/distribution.cer" ZZZZZ99999
+make_profile adhoc "$TMP/src/distribution.cer" "$TEAM"
 
 # A complete folder as the owner would leave it; tests then break one thing.
 make_folder() {
@@ -182,6 +189,19 @@ if secrets apply; then fail 'apply overwrote a publicly readable native config';
 grep -q 'owner-only' "$TMP/err" || fail 'public config refusal did not name its mode'
 rm "$TMP/native-signing.json"
 echo 'ok: private config readback and refusal guards'
+
+# Ad Hoc export has no dependency on an ASC app record, API key or issuer.
+make_folder
+rm -rf "$F/asc" "$F/notes.txt"
+cp "$TMP/src/adhoc.mobileprovision" "$F/Papercusp_App_Store.mobileprovision"
+PAPERCUP_EXPORT_METHOD=release-testing secrets apply || fail 'Ad Hoc loader required ASC files'
+python3 - "$TMP/native-signing.json" <<'PY' || fail 'Ad Hoc JSON must contain only export inputs'
+import json,sys
+assert set(json.load(open(sys.argv[1]))) == {
+    'APPLE_TEAM_ID', 'IOS_DIST_CERT_P12_BASE64', 'IOS_DIST_CERT_PASSWORD', 'IOS_APPSTORE_PROFILE_BASE64'}
+PY
+grep -q '^APPLIED: 4 ' "$TMP/out" || fail 'Ad Hoc loader did not report four inputs'
+echo 'ok: Ad Hoc export provisions without ASC credentials'
 
 # ---------------------------------------------------------------- refusals
 make_folder; cp "$TMP/src/other.key" "$F/dist.key"

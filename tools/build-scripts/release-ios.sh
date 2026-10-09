@@ -13,6 +13,15 @@ ARCHIVE_PATH="$RELEASE_ROOT/Papercusp.xcarchive"
 EXPORT_DIR="$RELEASE_ROOT/export"
 SIGNING_STYLE="${PAPERCUP_SIGNING_STYLE:-automatic}"
 APP_BUNDLE_ID="${PAPERCUP_APP_BUNDLE_ID:-com.papercuspai.operator.mobile}"
+EXPORT_METHOD="${PAPERCUP_EXPORT_METHOD:-app-store-connect}"
+case "$EXPORT_METHOD" in
+    app-store-connect|release-testing) ;;
+    *) echo 'ERROR: unsupported PAPERCUP_EXPORT_METHOD' >&2; exit 1 ;;
+esac
+if [ "$EXPORT_METHOD" = release-testing ] && { [ "$ACTION" = upload ] || [ "$ACTION" = validate ]; }; then
+    echo 'ERROR: registered-device export cannot be submitted to App Store Connect' >&2
+    exit 1
+fi
 
 usage() {
     cat >&2 <<'EOF'
@@ -85,25 +94,24 @@ set_signing_args() {
 # Manual export options are derived from the tracked ExportOptions.plist so the
 # method and symbol settings stay single-sourced; only signing fields differ.
 write_export_options() {
-    if [ "$SIGNING_STYLE" != manual ]; then
+    if [ "$SIGNING_STYLE" != manual ] && [ "$EXPORT_METHOD" = app-store-connect ]; then
         EXPORT_OPTIONS="$REPO_ROOT/ios/ExportOptions.plist"
         return
     fi
     EXPORT_OPTIONS="$RELEASE_ROOT/ExportOptions.manual.plist"
     python3 - "$REPO_ROOT/ios/ExportOptions.plist" "$EXPORT_OPTIONS" \
-        "$PAPERCUP_DEVELOPMENT_TEAM" "$APP_BUNDLE_ID" "$PAPERCUP_PROVISIONING_PROFILE" <<'PY'
+        "$PAPERCUP_DEVELOPMENT_TEAM" "$APP_BUNDLE_ID" "${PAPERCUP_PROVISIONING_PROFILE:-}" "$SIGNING_STYLE" "$EXPORT_METHOD" <<'PY'
 import plistlib
 import sys
 
-source, target, team, bundle_id, profile = sys.argv[1:]
+source, target, team, bundle_id, profile, style, method = sys.argv[1:]
 with open(source, "rb") as handle:
     options = plistlib.load(handle)
-options.update({
-    "signingStyle": "manual",
-    "teamID": team,
-    "signingCertificate": "Apple Distribution",
-    "provisioningProfiles": {bundle_id: profile},
-})
+options.update(method=method, signingStyle=style, teamID=team)
+if style == 'manual':
+    options.update(signingCertificate='Apple Distribution', provisioningProfiles={bundle_id: profile})
+if method == 'release-testing':
+    options.pop('uploadSymbols', None)
 with open(target, "wb") as handle:
     plistlib.dump(options, handle)
 PY
