@@ -92,7 +92,56 @@ def executor_command(command):
         env['PAPERCUP_ANDROID_EXECUTOR_PID'] = str(os.getpid())
         # A producer must not leave a Gradle daemon holding its executor FD.
         env['GRADLE_OPTS'] = env.get('GRADLE_OPTS', '') + ' -Dorg.gradle.daemon=false'
-        return subprocess.call(command, env=env, pass_fds=(lock.fileno(),))
+        with tempfile.TemporaryDirectory(prefix='command-tmp-', dir=state) as temporary:
+            owned_temporary_environment(env, Path(temporary))
+            return subprocess.call(command, env=env, pass_fds=(lock.fileno(),))
+
+
+def owned_temporary_environment(env, temporary):
+    # BundleTool uses Files.createTempDirectory without a parent. Java ignores
+    # TMPDIR, so route every JVM (including Gradle workers) at JVM startup too.
+    value = str(temporary.resolve())
+    if any(character in value for character in ('"', "'", '\n', '\r')):
+        raise ValueError('Android temporary path cannot be quoted for JVM options')
+    env['TMPDIR'] = value
+    env['JAVA_TOOL_OPTIONS'] = env.get('JAVA_TOOL_OPTIONS', '') + ' -Djava.io.tmpdir="' + value + '"'
+
+
+def filesystem_capacity(path):
+    return {'device': path.stat().st_dev, 'availableBytes': shutil.disk_usage(path).free}
+
+
+def verify_build_storage(root, env):
+    temporary = Path(env['TMPDIR']).resolve(strict=True)
+    java_home = output(['bash', 'tools/build-scripts/resolve-java-home.sh'], root, env)
+    probe = subprocess.run([str(Path(java_home) / 'bin/java'), '-XshowSettings:properties', '-version'],
+                           env=env, text=True, capture_output=True, timeout=60)
+    match = re.search(r'^\s*java.io.tmpdir = (.+)$', probe.stderr, re.MULTILINE)
+    if probe.returncode or not match or Path(match[1]).resolve() != temporary:
+        raise ValueError('Selected Android JVM does not use the owned temporary directory')
+    build = root / 'android/app/build'
+    build.mkdir(parents=True, exist_ok=True)
+    # BundleTool unpacks module ZIPs and writes the bundle; budget those copies
+    # plus a working-set reserve. Recheck after compilation, when inputs exist.
+    modules = build / 'intermediates/module_bundle'
+    input_bytes = sum(path.stat().st_size for path in modules.rglob('*.zip') if path.is_file())
+    role_bytes = max(1024**3, input_bytes * 3 + 512 * 1024**2)
+    filesystems = {}
+    for role, path in (('temporary', temporary), ('build', build)):
+        capacity = filesystem_capacity(path)
+        entry = filesystems.setdefault(capacity['device'],
+            {'availableBytes': capacity['availableBytes'], 'requiredBytes': 0, 'paths': {}})
+        entry['availableBytes'] = min(entry['availableBytes'], capacity['availableBytes'])
+        entry['requiredBytes'] += role_bytes
+        entry['paths'][role] = str(path)
+    report = {'jvmTemporaryDirectory': str(temporary), 'moduleInputBytes': input_bytes,
+              'filesystems': list(filesystems.values())}
+    report['sufficient'] = all(row['availableBytes'] >= row['requiredBytes']
+                               for row in report['filesystems'])
+    print(json.dumps(report), flush=True)
+    if not report['sufficient']:
+        raise ValueError('Insufficient Android build or JVM temporary filesystem capacity')
+    return report
 
 
 def digest(path):
@@ -275,12 +324,12 @@ def execute(root, operator, state, force=False, preflight_only=False):
     # Host fixtures and TMPDIR-aware helpers must use the owned filesystem
     # as the space preflight, rather than an inherited/default /tmp mount.
     child_tmp = attempt / 'tmp'
-    env['TMPDIR'] = str(child_tmp)
     emulator = None
     avd_root = None
     (root / CI_ADMISSION).unlink(missing_ok=True)
     try:
         child_tmp.mkdir(mode=0o700)
+        owned_temporary_environment(env, child_tmp)
         required_tools(env)
         identity = source_identity(root)
         result['source'] = identity
@@ -297,6 +346,8 @@ def execute(root, operator, state, force=False, preflight_only=False):
                  '--manifest', 'apps/operator/dist-host/.bundle-fresh.json']
         run_phase('operator-freshness', fresh, operator, env, attempt, result['phases'], 60)
         run_phase('rust-preflight', ['bash', 'tools/run-android-checks.sh', 'verify-rust-toolchain'],
+                  root, env, attempt, result['phases'], 60)
+        run_phase('build-storage-preflight', ['python3', 'tools/android-ci.py', '--verify-build-storage'],
                   root, env, attempt, result['phases'], 60)
         run_phase('emulator-preflight', ['bash', 'tools/run-android-checks.sh', 'verify-emulator', str(attempt)],
                   root, env, attempt, result['phases'], 60)
@@ -397,12 +448,16 @@ def main():
     parser.add_argument('--exclusive-command', nargs=argparse.REMAINDER,
                         help='Run a maintained output producer under the shared executor')
     parser.add_argument('--verify-executor', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--verify-build-storage', action='store_true', help=argparse.SUPPRESS)
     argv = sys.argv[1:]
     command_index = argv.index('--exclusive-command') if '--exclusive-command' in argv else None
     # argparse treats a literal -- as its own terminator even with REMAINDER.
     # Parse our options separately so private-runtime and producer arguments
     # arrive byte-for-byte, including their command separator.
     args = parser.parse_args(argv if command_index is None else argv[:command_index])
+    if args.verify_build_storage:
+        verify_build_storage(ROOT, os.environ)
+        return 0
     if args.verify_executor:
         if 'PAPERCUP_ANDROID_EXECUTOR_FD' not in os.environ:
             raise ValueError('Inherited Android executor custody is required')
