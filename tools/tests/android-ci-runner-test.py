@@ -133,6 +133,13 @@ class AndroidCITest(unittest.TestCase):
                              capture_output=True, text=True, timeout=10)
         self.assertEqual(run.returncode, 0, run.stderr)
 
+    def test_executor_forwards_literal_separator_and_spaced_argument(self):
+        run = subprocess.run([sys.executable, str(SPEC.origin), '--exclusive-command',
+            sys.executable, '-c', 'import sys; assert sys.argv[1:] == ["--", "argument with spaces"]',
+            '--', 'argument with spaces'], env=self.executor_env(),
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(run.returncode, 0, run.stderr)
+
     def test_mutated_or_missing_artifact_refuses_old_success(self):
         self.save()
         artifact = self.attempt / 'proof.bin'

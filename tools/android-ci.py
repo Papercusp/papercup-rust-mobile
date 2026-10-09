@@ -385,14 +385,19 @@ def main():
     parser.add_argument('--exclusive-command', nargs=argparse.REMAINDER,
                         help='Run a maintained output producer under the shared executor')
     parser.add_argument('--verify-executor', action='store_true', help=argparse.SUPPRESS)
-    args = parser.parse_args()
+    argv = sys.argv[1:]
+    command_index = argv.index('--exclusive-command') if '--exclusive-command' in argv else None
+    # argparse treats a literal -- as its own terminator even with REMAINDER.
+    # Parse our options separately so private-runtime and producer arguments
+    # arrive byte-for-byte, including their command separator.
+    args = parser.parse_args(argv if command_index is None else argv[:command_index])
     if args.verify_executor:
         if 'PAPERCUP_ANDROID_EXECUTOR_FD' not in os.environ:
             raise ValueError('Inherited Android executor custody is required')
         inherited_executor(os.environ)
         return 0
-    if args.exclusive_command is not None:
-        return executor_command(args.exclusive_command)
+    if command_index is not None:
+        return executor_command(argv[command_index + 1:])
     if not args.pinned:
         # Reuse staging GC's pin protocol: resolve under its lock and re-exec
         # so the immutable physical root is visible in /proc before releasing.
