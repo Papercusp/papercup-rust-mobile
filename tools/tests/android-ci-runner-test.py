@@ -19,7 +19,9 @@ SPEC.loader.exec_module(ci)
 
 class AndroidCITest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
+        evidence = Path(SPEC.origin).parents[1] / 'android/app/build/ci-evidence'
+        evidence.mkdir(parents=True, exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(prefix='ci-runner-fixtures.', dir=evidence)
         self.root = Path(self.temp.name)
         self.attempt = self.root / 'attempts/run'
         self.attempt.mkdir(parents=True)

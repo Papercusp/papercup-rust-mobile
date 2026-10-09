@@ -1037,13 +1037,14 @@ proof = {'serial': serial, 'bootCompleted': ready == '1', 'checks': int(count),
 proof['frameworkReady'] = False
 proof['frameworkSamples'] = []
 proof['frameworkErrors'] = []
+def adb(*args):
+    result = subprocess.run(['adb', '-s', serial, *args], capture_output=True,
+                            text=True, timeout=8)
+    if result.returncode:
+        raise RuntimeError(f'{args}: exit {result.returncode}: {result.stdout}{result.stderr}')
+    return result.stdout.strip()
+
 if proof['bootCompleted']:
-    def adb(*args):
-        result = subprocess.run(['adb', '-s', serial, *args], capture_output=True,
-                                text=True, timeout=8)
-        if result.returncode:
-            raise RuntimeError(f'{args}: exit {result.returncode}: {result.stdout}{result.stderr}')
-        return result.stdout.strip()
     try:
         memory = adb('shell', 'cat', '/proc/meminfo')
         (out / 'guest-memory.txt').write_text(memory + '\n')
@@ -1121,6 +1122,32 @@ if proof['bootCompleted']:
         proof['frameworkReady'] = True
     except (RuntimeError, subprocess.TimeoutExpired) as error:
         proof['frameworkErrors'].append(str(error))
+if not proof['bootCompleted'] or not proof['frameworkReady']:
+    # The CI owner destroys its temporary guest after this check returns.
+    # Retain bounded boot evidence now, including when the boot flag never
+    # arrives. Diagnostic success cannot revive the failed readiness check.
+    proof['failureDiagnostics'] = []
+    for filename, command in (
+            ('boot-properties.txt', ('shell', 'getprop')),
+            ('framework-crash.log', ('logcat', '-b', 'crash', '-d', '-t', '200')),
+            ('framework-system.log', ('logcat', '-b', 'system', '-d', '-t', '200'))):
+        item = {'path': filename, 'timeoutSeconds': 8}
+        try:
+            text = adb(*command)
+            if filename == 'boot-properties.txt':
+                allowed = {'sys.boot_completed', 'init.svc.bootanim', 'init.svc.zygote',
+                           'init.svc.zygote64', 'init.svc.surfaceflinger',
+                           'init.svc.servicemanager', 'ro.build.version.sdk'}
+                text = '\n'.join(line for line in text.splitlines()
+                                 if line.partition(']:')[0].lstrip('[') in allowed)
+            # Keep one bounded tail per owned-guest diagnostic, not arbitrary
+            # guest properties or an unbounded log dump.
+            text = '\n'.join(text.splitlines()[-200:])[-16384:]
+            (out / filename).write_text(text + '\n')
+            item['status'] = 'captured'
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            item.update(status='unavailable', error=str(error)[:2000])
+        proof['failureDiagnostics'].append(item)
 (out / 'emulator-boot.json').write_text(json.dumps(proof, indent=2) + '\n')
 if not proof['bootCompleted'] or not proof['frameworkReady']:
     errors = proof['frameworkErrors'] or [proof['adbError'] or 'boot completion property is not 1']

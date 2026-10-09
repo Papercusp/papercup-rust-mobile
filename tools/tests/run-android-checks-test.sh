@@ -1403,9 +1403,14 @@ mkdir -p "$ANDROID_HOME/platform-tools"
 cat > "$TMP_ROOT/boot-bin/adb" <<'SH'
 #!/usr/bin/env bash
 if [[ "$*" == '-s emulator-5584 shell getprop sys.boot_completed' ]]; then
-    if [[ "${TEST_BOOT_READY:-0}" == 1 ]]; then printf '1\r\n'; else echo 'error: device not found' >&2; exit 1; fi
+    if [[ "${TEST_BOOT_READY:-0}" == 1 ]]; then printf '1\r\n'
+    elif [[ "${TEST_BOOT_CASE:-}" == late-boot || "${TEST_BOOT_CASE:-}" == diagnostic-failure || "${TEST_BOOT_CASE:-}" == diagnostic-timeout ]]; then printf '\n'
+    else echo 'error: device not found' >&2; exit 1; fi
 elif [[ "$*" == 'devices -l' ]]; then
     printf 'List of devices attached\n'
+elif [[ "$*" == '-s emulator-5584 shell getprop' ]]; then
+    [[ "${TEST_BOOT_CASE:-}" != diagnostic-failure ]] || exit 224
+    printf '[sys.boot_completed]: [1]\n[init.svc.zygote]: [running]\n[private.fixture]: [DO_NOT_RETAIN]\n'
 elif [[ "$*" == *'shell cat /proc/meminfo' ]]; then
     case "${TEST_BOOT_CASE:-}" in
         memory-read-fail) exit 224 ;;
@@ -1428,11 +1433,16 @@ elif [[ "$*" == *'shell pidof '* ]]; then
 elif [[ "$*" == *'shell settings get global airplane_mode_on' ]]; then
     if [[ "${TEST_BOOT_CASE:-}" == settings ]]; then echo 'Broken pipe' >&2; exit 224; fi
     echo 0
-elif [[ "$*" == *'logcat -b crash -d' ]]; then
+elif [[ "$*" == *'logcat -b crash -d' || "$*" == '-s emulator-5584 logcat -b crash -d -t 200' ]]; then
+    [[ "${TEST_BOOT_CASE:-}" != diagnostic-failure ]] || exit 224
     if [[ "${TEST_BOOT_CASE:-}" == crash ]]; then
         echo 'Fatal signal 6 (SIGABRT) in tid 843 (RegionSampling), pid 762 (surfaceflinger)'
         echo "Abort message: 'Assertion failed: !rcEnc->featureInfo()->hasReadColorBufferDma'"
     fi
+elif [[ "$*" == '-s emulator-5584 logcat -b system -d -t 200' ]]; then
+    [[ "${TEST_BOOT_CASE:-}" != diagnostic-failure ]] || exit 224
+    [[ "${TEST_BOOT_CASE:-}" != diagnostic-timeout ]] || sleep 10
+    printf 'SystemServer: boot diagnostic fixture\n'
 elif [[ "$*" == *'shell getprop ro.build.version.sdk_full' ]]; then
     if [[ "${TEST_BOOT_CASE:-}" == sdk-fallback ]]; then echo; else echo 36.1; fi
 elif [[ "$*" == *'shell getprop ro.build.version.sdk' ]]; then
@@ -1474,6 +1484,12 @@ TEST_BOOT_READY=1 TEST_BOOT_CASE=memory-boundary PATH="$TMP_ROOT/boot-bin:$PATH"
 if PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot emulator-5584 "$TMP_ROOT/boot-fail" 1 > "$TMP_ROOT/output" 2>&1; then
     echo 'FAIL: missing ADB transport accepted as a booted emulator' >&2; exit 1
 fi
+for case in late-boot diagnostic-failure diagnostic-timeout; do
+    if TEST_BOOT_CASE="$case" PATH="$TMP_ROOT/boot-bin:$PATH" bash "$runner" verify-emulator-boot \
+        emulator-5584 "$TMP_ROOT/boot-$case" 1 > "$TMP_ROOT/output" 2>&1; then
+        echo "FAIL: failure diagnostics revived an incomplete boot: $case" >&2; exit 1
+    fi
+done
 python3 - "$TMP_ROOT" <<'PY'
 import json, sys
 from pathlib import Path
@@ -1518,6 +1534,25 @@ for case in ['missing', 'restart', 'settings', 'crash', 'graphics-missing', 'gra
 bad = json.loads((root / 'boot-fail/emulator-boot.json').read_text())
 assert bad['bootCompleted'] is False and 'device not found' in bad['adbError']
 assert (root / 'boot-fail/boot-transports.txt').is_file()
+assert 'failureDiagnostics' not in good
+for case in ['late-boot', 'diagnostic-failure', 'diagnostic-timeout']:
+    proof = json.loads((root / f'boot-{case}/emulator-boot.json').read_text())
+    assert not proof['bootCompleted'] and not proof['frameworkReady']
+    entries = {item['path']: item for item in proof['failureDiagnostics']}
+    assert set(entries) == {'boot-properties.txt', 'framework-crash.log', 'framework-system.log'}
+    assert all(item['timeoutSeconds'] == 8 for item in entries.values())
+    if case == 'diagnostic-failure':
+        assert all(item['status'] == 'unavailable' and 'exit 224' in item['error']
+                   for item in entries.values())
+    else:
+        properties = (root / f'boot-{case}/boot-properties.txt').read_text()
+        assert '[sys.boot_completed]: [1]' in properties and 'DO_NOT_RETAIN' not in properties
+        assert entries['framework-crash.log']['status'] == 'captured'
+        if case == 'diagnostic-timeout':
+            assert entries['framework-system.log']['status'] == 'unavailable'
+            assert 'timed out after 8 seconds' in entries['framework-system.log']['error']
+        else:
+            assert 'SystemServer' in (root / f'boot-{case}/framework-system.log').read_text()
 PY
 )
 echo 'Android native readiness: healthy, memory boundary and API36 fallback accepted; 17 process/service/crash/graphics/userdata/memory controls rejected'

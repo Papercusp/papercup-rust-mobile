@@ -100,7 +100,8 @@ print('Android local paired target contract: passed')
 PY
 
 if [[ $# == 0 ]]; then
-    TMP_ROOT="$(mktemp -d)"
+    mkdir -p "$ROOT/android/app/build/ci-evidence"
+    TMP_ROOT="$(mktemp -d "$ROOT/android/app/build/ci-evidence/ci-contract-fixtures.XXXXXX")"
     trap 'rm -rf "$TMP_ROOT"' EXIT
     python3 - "$ROOT/tools/android-ci.py" "$TMP_ROOT" <<'PY'
 from pathlib import Path
