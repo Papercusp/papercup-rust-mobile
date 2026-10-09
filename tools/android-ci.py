@@ -138,7 +138,7 @@ def verify_build_storage(root, env):
               'filesystems': list(filesystems.values())}
     report['sufficient'] = all(row['availableBytes'] >= row['requiredBytes']
                                for row in report['filesystems'])
-    print(json.dumps(report), flush=True)
+    print(json.dumps(report), file=sys.stderr, flush=True)
     if not report['sufficient']:
         raise ValueError('Insufficient Android build or JVM temporary filesystem capacity')
     return report

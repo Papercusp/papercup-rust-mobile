@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -141,6 +142,145 @@ class AndroidCITest(unittest.TestCase):
             '--', 'argument with spaces'], env=self.executor_env(),
             capture_output=True, text=True, timeout=10)
         self.assertEqual(run.returncode, 0, run.stderr)
+
+    def java_environment(self):
+        env = self.executor_env()
+        env['JAVA_HOME'] = ci.output(['bash', 'tools/build-scripts/resolve-java-home.sh'], ci.ROOT, env)
+        resolver = self.root / 'tools/build-scripts/resolve-java-home.sh'
+        resolver.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ci.ROOT / 'tools/build-scripts/resolve-java-home.sh', resolver)
+        return env
+
+    def test_real_bundletool_packaging_uses_owned_jvm_temp_and_cleans_both_exits(self):
+        cache = Path(os.environ.get('GRADLE_USER_HOME', str(Path.home() / '.gradle'))) / 'caches/modules-2/files-2.1'
+        bundletool = sorted((cache / 'com.android.tools.build/bundletool').glob('*/*/*.jar'))
+        guava = sorted((cache / 'com.google.guava/guava').glob('*/*/*.jar'))
+        self.assertTrue(bundletool and guava, 'Prepare the maintained Android Gradle dependencies before this guard')
+        classpath = os.pathsep.join(map(str, (bundletool[-1], guava[-1])))
+        source = self.root / 'BundleTempGuard.java'
+        source.write_text('''
+import java.nio.file.*;
+import java.util.zip.*;
+import com.android.tools.build.bundletool.io.TempDirectory;
+class BundleTempGuard {
+    public static void main(String[] args) throws Exception {
+        try (TempDirectory temporary = new TempDirectory("bundletool-guard-")) {
+            Path archive = temporary.getPath().resolve("module.zip");
+            try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(archive))) {
+                zip.putNextEntry(new ZipEntry("base/payload"));
+                zip.write("real BundleTool temporary packaging".getBytes());
+                zip.closeEntry();
+            }
+            try (ZipFile zip = new ZipFile(archive.toFile())) {
+                if (zip.getEntry("base/payload") == null) throw new AssertionError("missing ZIP entry");
+            }
+            if (!"preserved".equals(System.getProperty("guard.option"))) throw new AssertionError("lost JVM option");
+            System.out.println(System.getProperty("java.io.tmpdir"));
+            System.out.println(temporary.getPath());
+            System.exit(Integer.parseInt(args[0]));
+        }
+    }
+}
+''')
+        foreign = self.root / 'unusable foreign JVM temp'
+        foreign.write_text('not a directory')
+        env = self.java_environment()
+        env.update(TMPDIR=str(self.root), JAVA_TOOL_OPTIONS='-Dguard.option=preserved -Djava.io.tmpdir="' + str(foreign) + '"')
+        java = [str(Path(env['JAVA_HOME']) / 'bin/java'), '--class-path', classpath, str(source)]
+        # A real JVM/BundleTool negative control: shell TMPDIR cannot override
+        # Java's selected parent. No release, signing input or shared APK is used.
+        baseline = subprocess.run(java + ['0'], env=env, capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(baseline.returncode, 0, baseline.stdout)
+        self.assertIn('Not a directory', baseline.stderr)
+        for code in (0, 7):
+            command = [sys.executable, str(SPEC.origin), '--exclusive-command',
+                       sys.executable, str(SPEC.origin), '--exclusive-command', *java, str(code)]
+            run = subprocess.run(command, env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(run.returncode, code, run.stderr)
+            lines = [line for line in run.stdout.splitlines() if not line.startswith('{')]
+            temporary, bundle = map(Path, lines)
+            self.assertEqual(temporary.parent, self.root)
+            self.assertTrue(temporary.name.startswith('command-tmp-'))
+            self.assertEqual(bundle.parent, temporary)
+            self.assertFalse(temporary.exists())
+            self.assertFalse(bundle.exists())
+            self.assertTrue(foreign.is_file())
+            with (self.root / 'executor.lock').open('a+') as lock:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def test_build_storage_measures_both_destinations_and_combines_shared_capacity(self):
+        temporary = self.root / 'owned JVM temp with spaces'
+        temporary.mkdir()
+        env = self.java_environment()
+        ci.owned_temporary_environment(env, temporary)
+        build = self.root / 'android/app/build'
+        module = build / 'intermediates/module_bundle/release/base.zip'
+        module.parent.mkdir(parents=True)
+        module.write_bytes(b'module input')
+        gib = 1024**3
+        for shared, temp_free, build_free, expected in (
+                (False, gib, gib, True), (False, gib - 1, 4 * gib, False),
+                (False, 4 * gib, gib - 1, False),
+                (True, 2 * gib - 1, 2 * gib - 1, False), (True, 2 * gib, 2 * gib, True)):
+            calls = []
+
+            def capacity(path):
+                calls.append(path)
+                self.assertIn(path, (temporary, build))
+                return {'device': 1 if shared or path == temporary else 2,
+                        'availableBytes': temp_free if path == temporary else build_free}
+
+            with self.subTest(shared=shared, temp_free=temp_free, build_free=build_free), \
+                    patch.object(ci, 'filesystem_capacity', side_effect=capacity):
+                if expected:
+                    report = ci.verify_build_storage(self.root, env)
+                    self.assertEqual(report['jvmTemporaryDirectory'], str(temporary))
+                    self.assertEqual(report['moduleInputBytes'], len(b'module input'))
+                    self.assertEqual(len(report['filesystems']), 1 if shared else 2)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'Insufficient Android build or JVM temporary'):
+                        ci.verify_build_storage(self.root, env)
+                self.assertEqual(calls, [temporary, build])
+
+    def test_build_storage_refuses_actual_jvm_temp_mismatch(self):
+        temporary = self.root / 'owned tmp'
+        temporary.mkdir()
+        env = self.java_environment()
+        env.update(TMPDIR=str(temporary), JAVA_TOOL_OPTIONS='-Djava.io.tmpdir="' + str(self.root) + '"')
+        with self.assertRaisesRegex(ValueError, 'JVM does not use the owned'):
+            ci.verify_build_storage(self.root, env)
+
+    def test_producer_preflight_refuses_before_execution_and_cleans_custody(self):
+        env = self.java_environment()
+        builder = self.root / 'tools/build-scripts/build-android.sh'
+        shutil.copyfile(ci.ROOT / 'tools/build-scripts/build-android.sh', builder)
+        # Execute the real build entry with a measured zero-capacity oracle;
+        # no cargo, Gradle task or release secret is needed to reach this guard.
+        launcher = self.root / 'tools/android-ci.py'
+        launcher.write_text('import importlib.util\nfrom pathlib import Path\n'
+            's=importlib.util.spec_from_file_location("ci",' + repr(str(SPEC.origin)) + ')\n'
+            'ci=importlib.util.module_from_spec(s); s.loader.exec_module(ci)\n'
+            'ci.ROOT=Path(' + repr(str(self.root)) + ')\n'
+            'ci.filesystem_capacity=lambda p: {"device":1,"availableBytes":0}\n'
+            'raise SystemExit(ci.main())\n')
+        outputs = [self.root / ('android/app/build/' + name) for name in (
+            'outputs/apk/release/app-release.apk', 'outputs/bundle/release/app-release.aab',
+            'outputs/papercusp-release-provenance.json')]
+        jni = self.root / 'android/app/src/main/jniLibs/arm64-v8a/libpapercup.so'
+        for file in [*outputs, jni]:
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(b'preceding output')
+        env['PAPERCUP_RELEASE_VERSION'] = 'fixture-release'
+        run = subprocess.run([sys.executable, str(SPEC.origin), '--exclusive-command',
+                              'bash', str(builder), 'release'], env=env,
+                             capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(run.returncode, 0, run.stdout)
+        self.assertIn('Insufficient Android build or JVM temporary', run.stderr)
+        for file in [*outputs, jni]:
+            self.assertEqual(file.read_bytes(), b'preceding output')
+        self.assertEqual(list(self.root.glob('command-tmp-*')), [])
+        with (self.root / 'executor.lock').open('a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
     def test_mutated_or_missing_artifact_refuses_old_success(self):
         self.save()
