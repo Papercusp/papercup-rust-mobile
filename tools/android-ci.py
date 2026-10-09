@@ -11,6 +11,7 @@ import re
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,79 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = 'system-images;android-36;google_apis_ps16k;x86_64'
 CI_ADMISSION = 'android/app/build/outputs/papercusp-android-checks/ci.json'
+
+
+def executor_state():
+    state = Path(os.environ.get('PAPERCUP_ANDROID_CI_STATE',
+                 str(Path.home() / '.local/state/papercusp/android-ci'))).resolve()
+    state.mkdir(parents=True, exist_ok=True)
+    state.chmod(0o700)
+    return state
+
+
+def inherited_executor(env):
+    value = env.get('PAPERCUP_ANDROID_EXECUTOR_FD')
+    if value is None:
+        return None
+    try:
+        fd = int(value)
+        expected = (Path(env['PAPERCUP_ANDROID_CI_STATE']) / 'executor.lock').stat()
+        try:
+            held = os.fstat(fd)
+        except OSError:
+            held = None
+        if held is None or (held.st_dev, held.st_ino) != (expected.st_dev, expected.st_ino):
+            # Node/private-runtime and Python subprocess adapters close extra
+            # descriptors. Permit their descendant only while the verified
+            # ancestor still owns this exact FD and the mutex remains held.
+            owner = int(env['PAPERCUP_ANDROID_EXECUTOR_PID'])
+            ancestor = os.getppid()
+            for _ in range(128):
+                if ancestor == owner:
+                    break
+                if ancestor <= 1:
+                    raise ValueError('executor owner is not an ancestor')
+                fields = Path(f'/proc/{ancestor}/stat').read_text().rsplit(')', 1)[1].split()
+                ancestor = int(fields[1])
+            else:
+                raise ValueError('executor ancestry exceeds bound')
+            owner_fd = Path(f'/proc/{owner}/fd/{fd}').stat()
+            if (owner_fd.st_dev, owner_fd.st_ino) != (expected.st_dev, expected.st_ino):
+                raise ValueError('ancestor executor descriptor differs')
+            with (Path(env['PAPERCUP_ANDROID_CI_STATE']) / 'executor.lock').open('a+') as probe:
+                try:
+                    fcntl.flock(probe.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    return None
+            raise ValueError('ancestor executor is no longer held')
+        if (not stat.S_ISREG(held.st_mode)
+                or (held.st_dev, held.st_ino) != (expected.st_dev, expected.st_ino)):
+            raise ValueError('foreign executor descriptor')
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except (KeyError, OSError, ValueError) as error:
+        raise ValueError('Invalid inherited Android executor custody') from error
+
+
+def executor_command(command):
+    if not command:
+        raise ValueError('Executor command is required')
+    state = executor_state()
+    env = dict(os.environ, PAPERCUP_ANDROID_CI_STATE=str(state))
+    fd = inherited_executor(env)
+    if 'PAPERCUP_ANDROID_EXECUTOR_FD' in env:
+        return subprocess.call(command, env=env, pass_fds=(() if fd is None else (fd,)))
+    with (state / 'executor.lock').open('a+') as lock:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print('Android executor custody is held; output writer refused', file=sys.stderr)
+            return 73
+        env['PAPERCUP_ANDROID_EXECUTOR_FD'] = str(lock.fileno())
+        env['PAPERCUP_ANDROID_EXECUTOR_PID'] = str(os.getpid())
+        # A producer must not leave a Gradle daemon holding its executor FD.
+        env['GRADLE_OPTS'] = env.get('GRADLE_OPTS', '') + ' -Dorg.gradle.daemon=false'
+        return subprocess.call(command, env=env, pass_fds=(lock.fileno(),))
 
 
 def digest(path):
@@ -80,9 +154,11 @@ def required_tools(env):
 def run_phase(name, command, root, env, attempt, phases, timeout=5400):
     log = attempt / (name + '.log')
     print(f'Android CI phase: {name}; log: {log}', flush=True)
+    executor_fd = inherited_executor(env)
     with log.open('w') as stream:
         child = subprocess.Popen(command, cwd=root, env=env, stdout=stream,
-                                 stderr=subprocess.STDOUT, start_new_session=True)
+                                 stderr=subprocess.STDOUT, start_new_session=True,
+                                 pass_fds=(() if executor_fd is None else (executor_fd,)))
         try:
             code = child.wait(timeout=timeout)
         except BaseException:
@@ -306,7 +382,17 @@ def main():
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--preflight', action='store_true')
     parser.add_argument('--pinned', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--exclusive-command', nargs=argparse.REMAINDER,
+                        help='Run a maintained output producer under the shared executor')
+    parser.add_argument('--verify-executor', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.verify_executor:
+        if 'PAPERCUP_ANDROID_EXECUTOR_FD' not in os.environ:
+            raise ValueError('Inherited Android executor custody is required')
+        inherited_executor(os.environ)
+        return 0
+    if args.exclusive_command is not None:
+        return executor_command(args.exclusive_command)
     if not args.pinned:
         # Reuse staging GC's pin protocol: resolve under its lock and re-exec
         # so the immutable physical root is visible in /proc before releasing.
@@ -320,16 +406,18 @@ def main():
         os.execve(sys.executable, [sys.executable, str(Path(__file__).resolve()), '--pinned', *sys.argv[1:]], env)
     pin = int(os.environ.pop('PAPERCUP_ANDROID_CI_PIN_FD'))
     os.close(pin)
-    state = Path(os.environ.get('PAPERCUP_ANDROID_CI_STATE', str(Path.home() / '.local/state/papercusp/android-ci'))).resolve()
-    state.mkdir(parents=True, exist_ok=True)
-    state.chmod(0o700)
+    state = executor_state()
+    os.environ['PAPERCUP_ANDROID_CI_STATE'] = str(state)
     operator = Path(os.environ['PAPERCUP_OPERATOR_DIR']).resolve()
-    with (state / 'executor.lock').open('w') as lock:
+    with (state / 'executor.lock').open('a+') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             print('Android CI is already running; overlapping execution skipped')
             return 0
+        os.environ['PAPERCUP_ANDROID_EXECUTOR_FD'] = str(lock.fileno())
+        os.environ['PAPERCUP_ANDROID_EXECUTOR_PID'] = str(os.getpid())
+        os.environ['GRADLE_OPTS'] = os.environ.get('GRADLE_OPTS', '') + ' -Dorg.gradle.daemon=false'
         prune_attempts(state)
         return execute(ROOT, operator, state, args.force, args.preflight)
 

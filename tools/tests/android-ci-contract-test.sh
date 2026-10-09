@@ -32,6 +32,15 @@ assert 'tools/android-ci.py' in service and 'KillMode=control-group' in service
 assert 'EnvironmentFile=-%h/.config/papercusp/android-ci.env' in service
 assert 'OnUnitInactiveSec=30min' in timer and 'WantedBy=timers.target' in timer
 assert 'GitHub' not in service
+assert "def inherited_executor(" in text and "--exclusive-command" in text
+for relative in ('tools/build-scripts/build-android.sh', 'tools/run-android-checks.sh',
+                 'tools/cloud-native-check.py'):
+    writer = (root / relative).read_text()
+    assert '--exclusive-command' in writer and '--verify-executor' in writer, \
+        'maintained output writer omits shared executor custody: ' + relative
+ignore = (root / '.gitignore').read_text()
+assert '__pycache__/' in ignore and '*.py[co]' in ignore, \
+    'runtime Python bytecode must not dirty the source-change CI identity'
 print('Independent Android CI trigger/ownership/admission contract: passed')
 PY
 

@@ -101,6 +101,13 @@ def pairing_stages(log):
 
 
 def main():
+    # Cloud instrumentation builds and consumes the same shared outputs as CI.
+    # Reuse the maintained executor rather than relying on emulator isolation.
+    executor = Path(__file__).resolve().with_name('android-ci.py')
+    if 'PAPERCUP_ANDROID_EXECUTOR_FD' not in os.environ:
+        os.execv(sys.executable, [sys.executable, str(executor), '--exclusive-command',
+                                 sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
+    subprocess.run([sys.executable, str(executor), '--verify-executor'], check=True)
     out, qr_file = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
     serial = os.environ.get('ANDROID_SERIAL', '')
     qr = validate_input(qr_file, serial, os.environ.get('PAPERCUP_CLOUD_BASE', ''))

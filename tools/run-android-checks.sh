@@ -6,6 +6,17 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Hold the same executor for complete check/native journeys, including their
+# shared build products and evidence. Nested build calls inherit this lease.
+case "${1:-full}" in
+    host|full|connected|sealed-native|live|isolated-native|isolated-native-pinned|isolated-native-child|cloud-native)
+        if [[ -z "${PAPERCUP_ANDROID_EXECUTOR_FD:-}" ]]; then
+            exec python3 tools/android-ci.py --exclusive-command bash "$0" "$@"
+        fi
+        python3 tools/android-ci.py --verify-executor
+        ;;
+esac
+
 verify_results() {
     python3 - "$1" "$2" <<'PY'
 import sys

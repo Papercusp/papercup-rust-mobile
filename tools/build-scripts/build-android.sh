@@ -20,6 +20,13 @@ resolve_android_sdk() {
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# Reuse CI's executor for release/debug writers; inherited custody is verified
+# before any shared JNI, APK, AAB or manifest is removed or rewritten.
+if [[ -z "${PAPERCUP_ANDROID_EXECUTOR_FD:-}" ]]; then
+    exec python3 tools/android-ci.py --exclusive-command bash "$0" "$@"
+fi
+python3 tools/android-ci.py --verify-executor
+
 BUILD_MODE="${1:-debug}"
 case "$BUILD_MODE" in
     debug|release) ;;
