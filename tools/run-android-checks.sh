@@ -13,7 +13,8 @@ case "${1:-full}" in
         if [[ -z "${PAPERCUP_ANDROID_EXECUTOR_FD:-}" ]]; then
             exec python3 tools/android-ci.py --exclusive-command bash "$0" "$@"
         fi
-        python3 tools/android-ci.py --verify-executor
+        JAVA_TOOL_OPTIONS="$(python3 tools/android-ci.py --verify-executor --java-tool-options)"
+        export JAVA_TOOL_OPTIONS
         ;;
 esac
 

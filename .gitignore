@@ -14,7 +14,7 @@
 # Android Studio / Gradle
 /android/.idea/
 /android/.gradle/
-/android/.kotlin/sessions/*.salive
+/android/.kotlin/
 /android/build/
 /android/app/build/
 /android/local.properties

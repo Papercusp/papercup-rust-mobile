@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from unittest.mock import patch
 
@@ -150,6 +151,120 @@ class AndroidCITest(unittest.TestCase):
         resolver.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ci.ROOT / 'tools/build-scripts/resolve-java-home.sh', resolver)
         return env
+
+    def test_maintained_private_runtime_reparents_actual_jvm_temp_before_build(self):
+        env = self.java_environment()
+        operator = Path(env.get('PAPERCUP_PAPERCUSP_ROOT', str(ci.ROOT.parent / 'papercusp'))).resolve()
+        wrapper = operator / 'scripts/with-test-pg.mjs'
+        self.assertTrue(wrapper.is_file(), 'Prepare the maintained operator test-runtime wrapper')
+        for relative in ('tools/android-ci.py', 'tools/build-scripts/build-android.sh'):
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ci.ROOT / relative, destination)
+        code = textwrap.dedent('''
+            import json,os,re,subprocess,sys
+            from pathlib import Path
+            root=Path(sys.argv[1]); ci=root/'tools/android-ci.py'
+            java=str(Path(os.environ['JAVA_HOME'])/'bin/java')
+            def probe(env):
+                run=subprocess.run([java,'-XshowSettings:properties','-version'],env=env,
+                                   text=True,capture_output=True,check=True)
+                return re.search(r'^\\s*java.io.tmpdir = (.+)$',run.stderr,re.MULTILINE)[1]
+            before=probe(os.environ)
+            expected=str(Path(os.environ['TMPDIR']).resolve())
+            print('ANDROID_TMP_PROBE '+json.dumps({'before':before,'expected':expected}),flush=True)
+            assert before != expected, 'maintained wrapper did not exercise reparenting'
+            refusal=subprocess.run([sys.executable,str(ci),'--verify-build-storage'],
+                cwd=root,text=True,capture_output=True)
+            assert refusal.returncode != 0
+            assert 'Selected Android JVM does not use' in refusal.stderr
+            diagnostic=next(json.loads(line)['temporaryDirectoryCheck']
+                for line in refusal.stderr.splitlines() if line.startswith('{'))
+            assert diagnostic['expectedDirectory'] == expected
+            assert diagnostic['selectedDirectory'] == before
+            assert diagnostic['javaExitCode'] == 0 and not diagnostic['matched']
+            fixed=dict(os.environ)
+            fixed['JAVA_TOOL_OPTIONS']=subprocess.check_output([sys.executable,str(ci),
+                '--verify-executor','--java-tool-options'],text=True,cwd=root).strip()
+            after=probe(fixed)
+            assert after == expected and '-Dguard.option=preserved' in fixed['JAVA_TOOL_OPTIONS']
+            # Execute the real build entry. An absent fixture SDK stops it only
+            # AFTER its actual JVM/capacity preflight, before any Cargo/Gradle.
+            build_env=dict(os.environ,ANDROID_HOME=str(root/'absent-sdk'),
+                           ANDROID_SDK_ROOT=str(root/'absent-sdk'))
+            build=subprocess.run(['bash',str(root/'tools/build-scripts/build-android.sh'),'debug'],
+                cwd=root,env=build_env,text=True,capture_output=True)
+            assert 'Android SDK not found' in build.stderr, build.stderr
+            diagnostics=[json.loads(line)['temporaryDirectoryCheck']
+                for line in build.stderr.splitlines() if line.startswith('{')
+                and 'temporaryDirectoryCheck' in line]
+            assert len(diagnostics) == 1 and diagnostics[0]['matched'], build.stderr
+            assert diagnostics[0]['selectedDirectory'] == expected
+            # An explicit JVM override is a different cause. Refuse it and
+            # retain the ACTUAL selected property, without dumping options.
+            override=dict(fixed,_JAVA_OPTIONS='-Djava.io.tmpdir="'+before+'"')
+            refusal=subprocess.run([sys.executable,str(ci),'--verify-build-storage'],
+                cwd=root,env=override,text=True,capture_output=True)
+            assert refusal.returncode != 0
+            diagnostic=next(json.loads(line)['temporaryDirectoryCheck']
+                for line in refusal.stderr.splitlines() if line.startswith('{'))
+            assert diagnostic['selectedDirectory'] == before and not diagnostic['matched']
+            print('ANDROID_TMP_PROBE '+json.dumps({'after':after,'privateTemporaryDirectory':expected,
+                              'overrideRefused':True}),flush=True)
+        ''')
+        env['JAVA_TOOL_OPTIONS'] = '-Dguard.option=preserved'
+        command = [sys.executable, str(SPEC.origin), '--exclusive-command',
+                   'node', str(wrapper), '--isolated-runtime=operator-api', '--',
+                   sys.executable, '-c', code, str(self.root)]
+        run = subprocess.run(command, cwd=ci.ROOT, env=env,
+                             capture_output=True, text=True, timeout=120)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        records = [json.loads(line.removeprefix('ANDROID_TMP_PROBE '))
+                   for line in run.stdout.splitlines() if line.startswith('ANDROID_TMP_PROBE ')]
+        self.assertEqual(len(records), 2, run.stdout)
+        self.assertEqual(records[0]['expected'], records[1]['after'])
+        self.assertTrue(records[1]['overrideRefused'])
+        self.assertFalse(Path(records[1]['privateTemporaryDirectory']).exists())
+        self.assertEqual(list(self.root.glob('command-tmp-*')), [])
+        with (self.root / 'executor.lock').open('a+') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        print(json.dumps({'privateRuntimeJvmTempGuard': records, 'cleanupVerified': True,
+                          'wrapper': str(wrapper), 'wrapperSha256': ci.digest(wrapper)}), flush=True)
+
+    def test_generated_kotlin_errors_do_not_dirty_source_identity(self):
+        subprocess.run(['git', 'init', '--quiet', str(self.root)], check=True)
+        (self.root / '.gitignore').write_bytes((ci.ROOT / '.gitignore').read_bytes())
+        # Tracked entries, rather than a commit, are enough to verify the
+        # actual ignore policy used by source_identity's untracked inventory.
+        subprocess.run(['git', 'add', '.gitignore'], cwd=self.root, check=True)
+        generated = self.root / 'android/.kotlin/errors/errors-current.log'
+        generated.parent.mkdir(parents=True)
+        generated.write_text('generated Kotlin daemon diagnostic')
+        source = self.root / 'android/app/src/main/kotlin/Meaningful.kt'
+        source.parent.mkdir(parents=True)
+        source.write_text('meaningful source')
+        untracked = subprocess.check_output(['git', 'ls-files', '-z', '--others', '--exclude-standard'],
+                                            cwd=self.root).split(b'\0')
+        self.assertNotIn(b'android/.kotlin/errors/errors-current.log', untracked)
+        self.assertIn(b'android/app/src/main/kotlin/Meaningful.kt', untracked)
+
+    def test_executor_temp_refuses_foreign_directory_and_requires_verified_custody(self):
+        with tempfile.TemporaryDirectory(dir=self.root.parent, prefix='foreign-runtime-') as name:
+            foreign = Path(name)
+            env = dict(self.executor_env(), TMPDIR=str(foreign))
+            with self.assertRaisesRegex(ValueError, 'must belong to its owned state or private runtime'):
+                ci.executor_temporary_directory(env)
+            env.update(HOME=str(foreign / 'home'), PAPERCUSP_HOME=str(foreign / 'home/.papercusp'),
+                       PAPERCUSP_WORKSPACE_ID='test-runtime-0123456789ab')
+            (foreign / 'home').mkdir()
+            (foreign / 'tmp').mkdir()
+            env['TMPDIR'] = str(foreign / 'tmp')
+            with self.assertRaisesRegex(ValueError, 'must belong to its owned state or private runtime'):
+                ci.executor_temporary_directory(env)
+        run = subprocess.run([sys.executable, str(SPEC.origin), '--verify-executor', '--java-tool-options'],
+                             env=self.executor_env(), capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn('Inherited Android executor custody is required', run.stderr)
 
     def test_real_bundletool_packaging_uses_owned_jvm_temp_and_cleans_both_exits(self):
         cache = Path(os.environ.get('GRADLE_USER_HOME', str(Path.home() / '.gradle'))) / 'caches/modules-2/files-2.1'

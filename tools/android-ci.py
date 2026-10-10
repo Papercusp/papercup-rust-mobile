@@ -107,6 +107,27 @@ def owned_temporary_environment(env, temporary):
     env['JAVA_TOOL_OPTIONS'] = env.get('JAVA_TOOL_OPTIONS', '') + ' -Djava.io.tmpdir="' + value + '"'
 
 
+def executor_temporary_directory(env):
+    temporary = Path(env['TMPDIR']).resolve(strict=True)
+    state = Path(env['PAPERCUP_ANDROID_CI_STATE']).resolve(strict=True)
+    if temporary.is_dir() and temporary.is_relative_to(state):
+        return temporary
+    # The maintained private-runtime wrapper selects a capacity-qualified
+    # volume independently of Android state. Recognize its existing isolated
+    # HOME/identity/temp namespace; never admit an arbitrary reparented TMPDIR.
+    home = Path(env.get('HOME', '')).resolve(strict=True)
+    private = home.parent
+    if (temporary.is_dir() and home.name == 'home'
+            and private.name.startswith('papercusp-test-runtime-')
+            and temporary == private / 'tmp'
+            and env.get('PAPERCUSP_HOME') == str(home / '.papercusp')
+            and re.fullmatch(r'test-runtime-[0-9a-f-]+', env.get('PAPERCUSP_WORKSPACE_ID', ''))
+            and private.stat().st_uid == os.getuid()
+            and private.stat().st_mode & 0o077 == 0):
+        return temporary
+    raise ValueError('Android executor temporary directory must belong to its owned state or private runtime')
+
+
 def filesystem_capacity(path):
     return {'device': path.stat().st_dev, 'availableBytes': shutil.disk_usage(path).free}
 
@@ -117,7 +138,12 @@ def verify_build_storage(root, env):
     probe = subprocess.run([str(Path(java_home) / 'bin/java'), '-XshowSettings:properties', '-version'],
                            env=env, text=True, capture_output=True, timeout=60)
     match = re.search(r'^\s*java.io.tmpdir = (.+)$', probe.stderr, re.MULTILINE)
-    if probe.returncode or not match or Path(match[1]).resolve() != temporary:
+    selected = str(Path(match[1]).resolve()) if match else None
+    matched = probe.returncode == 0 and selected == str(temporary)
+    print(json.dumps({'temporaryDirectoryCheck': {'expectedDirectory': str(temporary),
+          'selectedDirectory': selected, 'javaExitCode': probe.returncode, 'matched': matched}}),
+          file=sys.stderr, flush=True)
+    if not matched:
         raise ValueError('Selected Android JVM does not use the owned temporary directory')
     build = root / 'android/app/build'
     build.mkdir(parents=True, exist_ok=True)
@@ -448,6 +474,7 @@ def main():
     parser.add_argument('--exclusive-command', nargs=argparse.REMAINDER,
                         help='Run a maintained output producer under the shared executor')
     parser.add_argument('--verify-executor', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--java-tool-options', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--verify-build-storage', action='store_true', help=argparse.SUPPRESS)
     argv = sys.argv[1:]
     command_index = argv.index('--exclusive-command') if '--exclusive-command' in argv else None
@@ -455,6 +482,8 @@ def main():
     # Parse our options separately so private-runtime and producer arguments
     # arrive byte-for-byte, including their command separator.
     args = parser.parse_args(argv if command_index is None else argv[:command_index])
+    if args.java_tool_options and not args.verify_executor:
+        raise ValueError('Java options require verified inherited Android executor custody')
     if args.verify_build_storage:
         verify_build_storage(ROOT, os.environ)
         return 0
@@ -462,6 +491,14 @@ def main():
         if 'PAPERCUP_ANDROID_EXECUTOR_FD' not in os.environ:
             raise ValueError('Inherited Android executor custody is required')
         inherited_executor(os.environ)
+        if args.java_tool_options:
+            # Private-runtime adapters reparent TMPDIR and close extra FDs.
+            # Re-enter the existing verified ancestor lease, then align the
+            # JVM with this owned descendant rather than keeping its old parent.
+            temporary = executor_temporary_directory(os.environ)
+            env = os.environ.copy()
+            owned_temporary_environment(env, temporary)
+            print(env['JAVA_TOOL_OPTIONS'])
         return 0
     if command_index is not None:
         return executor_command(argv[command_index + 1:])
