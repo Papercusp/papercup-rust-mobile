@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import select
 import shutil
 import subprocess
 import sys
@@ -45,6 +46,41 @@ class AndroidCITest(unittest.TestCase):
     def test_exact_success_can_be_considered_for_revalidation(self):
         self.save()
         self.assertIsNotNone(ci.cached_proof(self.root, self.source, self.operator))
+
+    def test_fixture_suite_keeps_loaded_source_across_mid_run_edits(self):
+        project = Path(SPEC.origin).parents[1]
+        source = (project / 'tools/tests/run-android-checks-test.sh').read_text()
+        root_line = 'ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"'
+        source = source.replace(root_line, 'ROOT=' + str(project), 1)
+        source = source.replace('set -euo pipefail\n',
+                                'set -euo pipefail\nprintf "snapshot-ready\\n"\nread -r snapshot_gate\n', 1)
+        control = source.replace('run_android_fixture_suite() {\n', '', 1)
+        control = control.removesuffix('}\nrun_android_fixture_suite "$@"\n')
+        for name, code in [('loaded-suite', source), ('streaming-control', control)]:
+            with self.subTest(name=name):
+                script = self.root / (name + '.sh')
+                script.write_text(code)
+                process = subprocess.Popen(['bash', str(script), 'toolchain'],
+                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, text=True)
+                try:
+                    self.assertTrue(select.select([process.stdout], [], [], 30)[0], 'suite did not reach owned gate')
+                    self.assertEqual(process.stdout.readline(), 'snapshot-ready\n')
+                    # Preserve the inode and byte positions, like an editor's
+                    # in-place rewrite, but change a later unread shell token.
+                    needle = 'if [[ "$suite" == all || "$suite" == toolchain ]]; then'
+                    script.write_text(code.replace(needle, ')' + ' ' * (len(needle) - 1), 1))
+                    stdout, stderr = process.communicate('continue\n', timeout=30)
+                    if name == 'loaded-suite':
+                        self.assertEqual(process.returncode, 0, (stdout, stderr))
+                        self.assertIn('Android Rust toolchain preflight: six discovery and failure controls passed', stdout)
+                    else:
+                        self.assertNotEqual(process.returncode, 0, (stdout, stderr))
+                        self.assertIn('syntax error', stderr)
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                    process.communicate()
 
     def test_source_and_counterpart_changes_refuse_old_success(self):
         self.save()
