@@ -1082,6 +1082,10 @@ else:
         # asserted through PAPERCUP_LIVE_TIMEOUT_SEC=1 inside the runner.
         run = subprocess.run(['bash', selected_runner, 'live', str(evidence), 'native' if native_mode else 'rust'], env=env,
                              capture_output=True, text=True, timeout=STUB_HANG_TIMEOUT_SEC)
+        (root / (case + '-stdout.txt')).write_text(run.stdout)
+        (root / (case + '-stderr.txt')).write_text(run.stderr)
+        assert (evidence / 'result.json').is_file(), \
+            ('live fixture omitted result', case, run.returncode, run.stdout[-1500:], run.stderr[-1500:])
         result = json.loads((evidence / 'result.json').read_text())
         # The EXIT trap removes the fixture tree. Surface readiness evidence
         # before cleanup rather than losing the reason behind an early refusal.
@@ -1160,27 +1164,54 @@ else:
         server.server_close()
         thread.join()
 
-remote = subprocess.run(['bash', runner, 'live', str(root / 'remote-refused')],
-    env=dict(os.environ, PAPERCUP_LIVE_BASE='https://public.example'), capture_output=True, text=True)
-assert remote.returncode != 0 and not (root / 'remote-refused').exists()
+def refusal_fixture(name, base_url, parent_env):
+    evidence = root / name
+    env = dict(parent_env, PAPERCUP_LIVE_BASE=base_url,
+               PAPERCUP_ANDROID_CI_STATE=str(root / ('executor-' + name)))
+    env.pop('PAPERCUP_ANDROID_EXECUTOR_FD', None)
+    env.pop('PAPERCUP_ANDROID_EXECUTOR_PID', None)
+    run = subprocess.run(['bash', runner, 'live', str(evidence), 'native'],
+                         env=env, capture_output=True, text=True, timeout=STUB_HANG_TIMEOUT_SEC)
+    (root / (name + '-stdout.txt')).write_text(run.stdout)
+    (root / (name + '-stderr.txt')).write_text(run.stderr)
+    return run, evidence
 
-# A real connection refusal must retain the same structured setup failure.
-# This runs the canonical runner, and intentionally starts no fake Cargo/ADB.
-import socket
-with socket.socket() as reserved:
-    reserved.bind(('127.0.0.1', 0))
-    offline_port = reserved.getsockname()[1]
-offline = root / 'connection-refused'
-run = subprocess.run(['bash', runner, 'live', str(offline), 'native'],
-    env=dict(os.environ, PAPERCUP_LIVE_BASE=f'http://127.0.0.1:{offline_port}'),
-    capture_output=True, text=True, timeout=STUB_HANG_TIMEOUT_SEC)
-failure = json.loads((offline / 'result.json').read_text())
-assert run.returncode != 0 and failure['exitCode'] != 0
-assert failure['setupFailed'] and failure['setupFailureClass'] == 'URLError'
-assert not failure['executionStarted'] and failure['ownedWorkspace'] is None
-assert failure['ownedDeviceIds'] == [] and failure['cleanupVerified']
-assert failure['errors'] and failure['finishedAt']
-print(f'Android live fixture guards: {len(cases) + 2} passed; Rust/native ownership, executed proof and independent cleanup verified')
+# A held foreign executor and stale inherited custody must not prevent these
+# canonical-runner controls from reaching their intended network predicates.
+import fcntl
+foreign_state = root / 'foreign-executor'
+foreign_state.mkdir()
+with (foreign_state / 'executor.lock').open('a+') as foreign_lock:
+    fcntl.flock(foreign_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    parent_env = dict(os.environ, PAPERCUP_ANDROID_CI_STATE=str(foreign_state),
+                      PAPERCUP_ANDROID_EXECUTOR_FD='invalid', PAPERCUP_ANDROID_EXECUTOR_PID=str(os.getpid()))
+    remote, remote_evidence = refusal_fixture('remote-refused', 'https://public.example', parent_env)
+    assert remote.returncode != 0 and not remote_evidence.exists(), \
+        (remote.returncode, remote.stdout, remote.stderr)
+    assert 'live checks require an explicit loopback PAPERCUP_LIVE_BASE' in remote.stderr, remote.stderr
+
+    # A real connection refusal must retain the same structured setup failure.
+    # Keep the reserved socket bound but not listening, so another process
+    # cannot claim its port between selection and the request.
+    import socket
+    with socket.socket() as reserved:
+        reserved.bind(('127.0.0.1', 0))
+        offline_url = f'http://127.0.0.1:{reserved.getsockname()[1]}'
+        for suffix, inherited in [('held-executor', dict(parent_env)),
+                                  ('stale-custody', dict(parent_env))]:
+            if suffix == 'held-executor':
+                inherited.pop('PAPERCUP_ANDROID_EXECUTOR_FD')
+                inherited.pop('PAPERCUP_ANDROID_EXECUTOR_PID')
+            run, offline = refusal_fixture('connection-refused-' + suffix, offline_url, inherited)
+            diagnostic = (suffix, run.returncode, run.stdout[-1500:], run.stderr[-1500:])
+            assert (offline / 'result.json').is_file(), ('offline fixture omitted result', diagnostic)
+            failure = json.loads((offline / 'result.json').read_text())
+            assert run.returncode != 0 and failure['exitCode'] != 0, diagnostic
+            assert failure['setupFailed'] and failure['setupFailureClass'] == 'URLError', (diagnostic, failure)
+            assert not failure['executionStarted'] and failure['ownedWorkspace'] is None, failure
+            assert failure['ownedDeviceIds'] == [] and failure['cleanupVerified'], failure
+            assert failure['errors'] and failure['finishedAt'], failure
+print(f'Android live fixture guards: {len(cases) + 3} passed; Rust/native ownership, executed proof and independent cleanup verified')
 PY
 fi
 [[ "$suite" != live ]] || exit 0
@@ -1497,6 +1528,11 @@ root = Path(sys.argv[1])
 assert json.loads((root / 'boot-pass/emulator-boot.json').read_text())['bootCompleted'] is True
 assert json.loads((root / 'boot-pass/emulator-boot.json').read_text())['frameworkReady'] is True
 good = json.loads((root / 'boot-pass/emulator-boot.json').read_text())
+commands = good['frameworkCommands']
+assert commands and all(item['status'] == 'exited' and item['exitCode'] == 0 for item in commands)
+assert all(item['elapsedNs'] >= 0 and item['startedMonotonicNs'] > 0 and item['timeoutSeconds'] == 8
+           for item in commands), commands
+assert any(item['command'][-3:] == ['shell', 'pidof', 'system_server'] for item in commands), commands
 assert good['guestMemory']['sufficient'] and good['guestMemory']['totalKiB'] == 4008624
 assert json.loads((root / 'boot-memory-boundary/emulator-boot.json').read_text())['guestMemory']['sufficient']
 assert good['graphics']['missingExtensions'] == []
@@ -1531,6 +1567,9 @@ for case in ['missing', 'restart', 'settings', 'crash', 'graphics-missing', 'gra
     }[case]
     assert len(proof['frameworkErrors']) == 1 and expected in proof['frameworkErrors'][0], \
         (case, expected, proof['frameworkErrors'])
+    if case == 'missing':
+        failed = [item for item in proof['frameworkCommands'] if item.get('exitCode') == 1]
+        assert any(item['command'][-3:] == ['shell', 'pidof', 'surfaceflinger'] for item in failed), failed
 bad = json.loads((root / 'boot-fail/emulator-boot.json').read_text())
 assert bad['bootCompleted'] is False and 'device not found' in bad['adbError']
 assert (root / 'boot-fail/boot-transports.txt').is_file()
@@ -1551,6 +1590,9 @@ for case in ['late-boot', 'diagnostic-failure', 'diagnostic-timeout']:
         if case == 'diagnostic-timeout':
             assert entries['framework-system.log']['status'] == 'unavailable'
             assert 'timed out after 8 seconds' in entries['framework-system.log']['error']
+            timed_out = [item for item in proof['frameworkCommands'] if item['status'] == 'timed-out']
+            assert len(timed_out) == 1 and timed_out[0]['elapsedNs'] >= 8 * 10**9, timed_out
+            assert timed_out[0]['command'][-5:] == ['-b', 'system', '-d', '-t', '200'], timed_out
         else:
             assert 'SystemServer' in (root / f'boot-{case}/framework-system.log').read_text()
 PY
