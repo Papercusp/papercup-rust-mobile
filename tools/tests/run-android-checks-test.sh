@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
+# Parse the complete suite before it starts. Bash otherwise rereads this shared
+# file after long-running controls and can mix two valid edited versions.
+run_android_fixture_suite() {
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 suite="${1:-all}"
@@ -1691,3 +1694,5 @@ if [[ "$(grep -c 'check=True, timeout=build_timeout)' "$runner")" != 2 ]]; then
 fi
 grep -Fq 'native.wait(timeout=1800 + native_build_budget)' "$runner"
 echo 'Android native build budget: out-of-range budgets rejected; build steps and isolated wrapper use the dedicated budget'
+}
+run_android_fixture_suite "$@"
