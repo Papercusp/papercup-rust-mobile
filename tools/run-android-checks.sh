@@ -1038,9 +1038,23 @@ proof = {'serial': serial, 'bootCompleted': ready == '1', 'checks': int(count),
 proof['frameworkReady'] = False
 proof['frameworkSamples'] = []
 proof['frameworkErrors'] = []
+proof['frameworkCommands'] = []
 def adb(*args):
-    result = subprocess.run(['adb', '-s', serial, *args], capture_output=True,
-                            text=True, timeout=8)
+    command = ['adb', '-s', serial, *args]
+    started = time.monotonic_ns()
+    item = {'command': command, 'startedMonotonicNs': started, 'timeoutSeconds': 8}
+    proof['frameworkCommands'].append(item)
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=8)
+        item.update(status='exited', exitCode=result.returncode)
+    except subprocess.TimeoutExpired:
+        item['status'] = 'timed-out'
+        raise
+    except OSError:
+        item['status'] = 'unavailable'
+        raise
+    finally:
+        item['elapsedNs'] = time.monotonic_ns() - started
     if result.returncode:
         raise RuntimeError(f'{args}: exit {result.returncode}: {result.stdout}{result.stderr}')
     return result.stdout.strip()
