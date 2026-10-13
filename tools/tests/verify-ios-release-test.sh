@@ -12,6 +12,8 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 
 files=(
     tools/ios-ci.py
+    docs/BUILD.md
+    docs/TESTFLIGHT-DEVICE-CHECKLIST.md
     ios/Papercup/Info.plist
     ios/Papercup/Papercup.entitlements
     ios/Papercup/Resources/PrivacyInfo.xcprivacy
@@ -105,4 +107,17 @@ mkdir -p "$TMP_ROOT/fixture/.github/workflows"
 printf 'name: retired provider\n' > "$TMP_ROOT/fixture/.github/workflows/ci.yml"
 expect_failure "workflows must remain retired"
 
-echo "OK: native iOS release verifier rejects unsafe transport, placeholders, stale versions, transparent icons, missing execution entrypoint and restored Actions"
+copy_fixture
+rm "$TMP_ROOT/fixture/docs/TESTFLIGHT-DEVICE-CHECKLIST.md"
+expect_failure "missing release input: docs/TESTFLIGHT-DEVICE-CHECKLIST.md"
+
+for guide in docs/BUILD.md docs/TESTFLIGHT-DEVICE-CHECKLIST.md; do
+    copy_fixture
+    printf '\nRun gh workflow run testflight.yml before acceptance.\n' >> "$TMP_ROOT/fixture/$guide"
+    expect_failure "GitHub Actions execution instructions must remain retired"
+    copy_fixture
+    printf '\nGH  workflow  enable testflight.yml\n' >> "$TMP_ROOT/fixture/$guide"
+    expect_failure "GitHub Actions execution instructions must remain retired"
+done
+
+echo "OK: native iOS release verifier rejects unsafe transport, placeholders, stale versions, transparent icons, missing execution inputs and restored Actions workflows/instructions"

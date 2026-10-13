@@ -30,6 +30,8 @@ from pathlib import Path
 root = Path(sys.argv[1])
 required = [
     "tools/ios-ci.py",
+    "docs/BUILD.md",
+    "docs/TESTFLIGHT-DEVICE-CHECKLIST.md",
     "ios/Papercup/Info.plist",
     "ios/Papercup/Papercup.entitlements",
     "ios/Papercup/Resources/PrivacyInfo.xcprivacy",
@@ -145,7 +147,7 @@ swift_text = "\n".join(path.read_text() for path in swift_root.rglob("*.swift"))
 require("SentrySDK.start" not in swift_text,
         "iPhone 1.0 privacy answers declare no crash collection, so Sentry must remain absent")
 
-all_release_text = "\n".join((root / relative).read_text() for relative in required if relative.endswith((".md", ".yml")))
+all_release_text = "\n".join((root / relative).read_text() for relative in required if relative.endswith((".md", ".yml")) and not relative.startswith("docs/"))
 require("https://papercusp.com/mobile/privacy" in all_release_text,
         "release materials must contain the final public privacy URL")
 require("https://papercusp.com/mobile/support" in all_release_text,
@@ -155,6 +157,12 @@ require("https://papercusp.com/mobile/support" in all_release_text,
 markers = re.compile(r"\b(TODO|TBD|CHANGEME|YOUR_TEAM_ID|DRAFT)\b|<[^\r\n<>]+@[^\r\n<>]+>", re.IGNORECASE)
 marker = markers.search(all_release_text)
 require(marker is None, f"release materials contain placeholder marker: {marker.group(0) if marker else ''}")
+
+# Operational delivery guides must not send a native-only release back to Actions.
+for relative in ('docs/BUILD.md', 'docs/TESTFLIGHT-DEVICE-CHECKLIST.md'):
+    guide = (root / relative).read_text()
+    require(re.search(r'\bgh\s+workflow\s+(?:run|enable)\b', guide, re.IGNORECASE) is None,
+            f'{relative}: GitHub Actions execution instructions must remain retired')
 
 # Runtime SDK and native execution admission are enforced by tools/ios-ci.py.
 workflow_dir = root / '.github/workflows'

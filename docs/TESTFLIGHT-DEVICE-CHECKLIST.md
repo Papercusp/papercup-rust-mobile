@@ -1,41 +1,60 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# TestFlight device checklist (iPhone 1.0)
+# iPhone simulator acceptance and late device checks (1.0)
 
-These are the acceptance rows that only a real iPhone can close
-(iphone-public-release-2026-08-11: P-008 R-2 onboarding and access, P-005
-delivery, D-017 "device checks via TestFlight"). CI already covers the
-simulator half: the pairing UI smoke, revoked-token re-pair and fresh-install
-reset run on every iOS gate.
+P-008 R-2 runs on the maintained Mac VM iPhone simulator under
+iphone-public-release-2026-08-11#D-026. App Store credentials, TestFlight
+and a physical iPhone are not prerequisites for these simulator rows.
+D-021 retires GitHub Actions; use the native runner in `docs/BUILD.md`.
 
-Record each row as pass or fail, with the TestFlight build number and the time.
-For a failure, include a screenshot or screen recording. Use Settings → Screen
-Recording, and keep tokens and pairing codes out of the frame.
+Record each row as pass, fail or not run with the exact source fingerprint,
+Mac/Xcode/simulator versions, time, endpoint and retained result or screenshot.
+Keep tokens, pairing codes and personal workspace content out of evidence.
+A unit test or backend-free smoke alone does not close a live acceptance row.
 
 ## Before you start
 
-- The build: run `gh workflow run testflight.yml -R Papercusp/papercup-rust-mobile`
-  (see `docs/BUILD.md` → TestFlight). Wait until App Store Connect finishes
-  processing the build, then install it from the TestFlight app.
-- The phone: delete any earlier Papercusp build first, so this is a clean install.
-- The desktop: a running Papercusp desktop on the same Wi-Fi. For push rows, the
-  operator also needs the APNs key configured (`APNS_KEY_PATH`, `APNS_KEY_ID`,
-  `APNS_TEAM_ID`).
+- Build and check the exact candidate with
+  `python3 tools/ios-ci.py --mode simulator --force`. Its retained `result.json`
+  must show completed build, unit and UI phases; preflight is not a test pass.
+- Use an explicitly selected simulator and a sanitized current-build operator.
+  Delete the earlier app installation for the clean-install row. Preserve the
+  selected app and runtime identity throughout the remaining journeys.
+- Pair through the visible app choices and the desktop's current
+  Settings → Remote access screen. The paired runner's launch-payload hook is
+  test plumbing; it does not prove a new user can complete visible onboarding.
+- Use owned workspace/device fixtures and supported LAN and public HTTPS routes.
+  A simulator HTTPS journey exercises transport without claiming cellular-radio
+  behavior. BYOC P-016 requires its own accepted cloud target and custody evidence.
 
-## Rows
+## P-008 simulator rows
 
 | # | Do this | Pass when |
 |---|---|---|
-| 1 | Open the app for the first time | The pair choices appear and nothing is pre-filled from an earlier install |
-| 2 | Pair with the desktop over Wi-Fi from its Remote access screen | The workspace loads and a chat reply streams in |
-| 3 | Turn Wi-Fi off and use cellular, then send a message | The reply still arrives over HTTPS (tunnel or relay), with no LAN address in use |
-| 4 | Quit the desktop app while on cellular | The phone shows the desktop as offline (not "unpaired"), then reconnects by itself when the desktop is back |
-| 5 | Revoke this phone on the desktop | The phone asks to pair again; it does not report the desktop as offline |
-| 6 | Delete and reinstall the app from TestFlight | The old pairing is gone and the pair choices appear again |
-| 7 | Lock the phone, then make the desktop raise something that notifies (for example an agent question) | A push notification arrives, and tapping it opens the right conversation |
-| 8 | Accept, then on another run deny, the notification, microphone and camera prompts | Each prompt explains why it is asked; a denial leaves the rest of the app usable |
-| 9 | Start voice for the first time | A cloud-voice consent prompt comes before any audio leaves the phone |
-| 10 | Pair with a BYOC cloud workspace | **Pending P-015** (cloud relay transport). Skip until the release notes say cloud pairing is in the build |
+| 1 | Open a clean installation | Pair choices appear with no previous pairing; instructions name Settings → Remote access and supported desktop/cloud access |
+| 2 | Pair from Remote access using the visible manual-paste flow on LAN | The authorized workspace loads and a chat reply streams in; no developer-only onboarding instruction is needed |
+| 3 | Pair and use a supported public HTTPS route | The authorized workspace and chat work through HTTPS without a LAN endpoint; evidence names the route actually used |
+| 4 | Relaunch the paired app without reinstalling | Keychain pairing survives and the same authorized workspace opens |
+| 5 | Disconnect the owned operator, then restore it | The app reports offline rather than unpaired, retains pairing and reconnects automatically |
+| 6 | Revoke the owned phone credential, then re-pair | Heartbeat and authenticated reads reject the revoked credential; the app offers Pair again through current Remote access and the fresh pairing succeeds |
+| 7 | Exercise expired pair and device credentials | The expired credentials are rejected, the app explains recovery and a fresh Remote access pairing succeeds |
+| 8 | Attempt another workspace and switch using supported UI | Unauthorized data never appears; successful switching requires authorization for the selected workspace |
+| 9 | Delete and reinstall the app | Old Keychain pairing is cleared and the pair choices appear again |
+| 10 | Exercise each advertised hosted/account/paid mode | Supported entitlement and account behavior matches onboarding and store copy; unsupported modes are not promised |
 
-When every row except 10 passes on one build, that build is the device
-evidence for P-008 R-2. Row 10 is the device check for D-014 (cloud
-compatibility) once P-015 ships.
+Retain positive and negative controls against the same owned current-build
+operator for revocation, expiry and workspace isolation. Screenshots show the
+actual candidate UI; API receipts show the authorization outcome. Mark missing
+journeys as not run. Only executed, passing rows establish P-008 acceptance.
+
+## Late P-005 publish and physical-device residue
+
+Record real cellular radio, production APNs delivery/tap, Bluetooth and
+battery/endurance as P-005 residue under D-026. Simulator `simctl push` can
+exercise notification routing but cannot establish production APNs delivery.
+Permission accept/deny and cloud-voice consent can be checked in the simulator;
+physical microphone/camera behavior needs the later device check.
+
+Signed distribution and App Store/TestFlight delivery use the separate native
+signing/upload route in `docs/BUILD.md`, with the required toolchain, explicit
+build number and private Apple inputs. Keep those results separate from unsigned
+simulator acceptance. The remaining App Store publish is the late owner step.
