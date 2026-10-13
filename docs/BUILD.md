@@ -271,39 +271,55 @@ remain separate release requirements.
 
 GitHub Actions is disabled and the mobile workflow files are retired. Shared Rust,
 UniFFI and design-token checks remain in the independent Android executor. iPhone
-execution uses `tools/ios-ci.py` on a native Mac with Xcode26+, iPhoneOS SDK26+,
-Python3.9+, Node22+, xcodegen and an available iOS26 iPhone simulator. On Intel,
-install the universal simulator runtime. Select a side-by-side Xcode with
-`DEVELOPER_DIR`; the runner does not change another build's global Xcode selection.
+execution uses `tools/ios-ci.py` on a native Mac with Python3.9+, Node22+,
+xcodegen and the pinned Rust toolchain. The default `--mode simulator` accepts
+Xcode16.3+, iPhoneSimulator SDK17+ and an available iOS17+ iPhone simulator.
+It works with the maintained Mac VM's Xcode16.4 / SDK18.5 / iOS18.6 runtime;
+Apple credentials and physical hardware are not prerequisites for this mode.
+Select a side-by-side Xcode with `DEVELOPER_DIR` and optionally pin a device
+with `PAPERCUP_IOS_SIM_UDID`. Without a pin the newest available supported
+iPhone runtime is selected. The runner preserves the global Xcode selection.
 
 ```sh
-python3 tools/ios-ci.py --preflight
-make check-ios-ci
-python3 tools/ios-ci.py --force
+python3 tools/ios-ci.py --preflight           # simulator admission; no test pass
+make check-ios-ci                          # simulator build, unit and smoke UI
+python3 tools/ios-ci.py --mode simulator --force
 make test-ios-ci test-ios-release test-ios-signing test-rust-toolchain-pin
+# Separate public-release toolchain/archive verification:
+python3 tools/ios-ci.py --mode check --preflight
+python3 tools/ios-ci.py --mode check --force
 ```
 
-The runner reuses the Android source/submodule fingerprint and bounded phase logger,
-then runs existing unit/result guards, exactly three backend-free UI tests, screenshot
-export and archive validation. An exclusive native executor lock prevents overlap.
-Run logs, XCTest bundles, summaries, screenshots, archive and SHA256 inventory are
-retained in `~/.local/state/papercusp/ios-ci/attempts/`; `latest.json` is the verdict.
-`--preflight` does not establish a passing test result. Failed execution revokes prior
-success; changed source prevents candidate admission or upload. An unchanged source,
-toolchain and hash-verified proof may be reused for the current UTC day. Paired UI
-requires `--paired-ui --pair-payload-file /private/fresh-payload.json` and is never
-cached. The payload must be owner-only, outside the repository and sanitized for
-screenshots. Device/TestFlight acceptance and App Store review remain separate.
+Simulator mode reuses the Android source/submodule fingerprint and bounded phase
+logger, then runs the static release contract, pinned Rust setup, existing native
+build/unit/result guards, exactly three backend-free UI tests and screenshot export.
+It does not build a device archive, export an IPA or emit a candidate manifest.
+Explicit `--mode check` adds the SDK26 unsigned device archive and archive
+validation; both check and signed modes still require Xcode26+, iPhoneOS SDK26+
+and an available iOS26+ iPhone simulator (Intel hosts need the universal runtime).
+
+An exclusive native executor lock prevents overlap. Logs, XCTest bundles, summaries,
+screenshots, optional archive and SHA256 inventory are retained under
+`~/.local/state/papercusp/ios-ci/attempts/`; `latest.json` is the verdict.
+`--preflight` does not establish a passing test result. Changed source prevents
+test admission or upload. Daily success reuse requires the same source, toolchain,
+mode and hash-verified artifacts. Simulator and archive-check proofs have separate
+`success-simulator.json` and `success.json` pointers; one cannot satisfy the other.
+A failed replacement revokes that mode's proof. Paired UI requires
+`--paired-ui --pair-payload-file /private/fresh-payload.json` and is never cached.
+The payload must be owner-only, outside the repository and sanitized for screenshots.
+The selected paired smoke is only one journey; full P-008 simulator acceptance,
+device-specific capabilities, signed delivery and store review need their own evidence.
 
 After native preflight passes, install the maintained macOS launch agent with
-`python3 tools/ios-ci.py --install-launch-agent`. It checks this source checkout
-at login and every 30 minutes, preserves an explicit `DEVELOPER_DIR`, and invokes
-unsigned checks only. Inspect it with `launchctl print gui/$(id -u)/com.papercusp.ios-ci`;
-stop it with `launchctl bootout gui/$(id -u)/com.papercusp.ios-ci`. Check logs live
-beside `latest.json`. Retention keeps the newest 16 check attempts, protects current
-proof pointers, and preserves signed candidates and unrecognized directories.
+`python3 tools/ios-ci.py --install-launch-agent`. It invokes simulator checks at
+login and every 30 minutes and preserves an explicit `DEVELOPER_DIR`. Inspect it
+with `launchctl print gui/$(id -u)/com.papercusp.ios-ci`; stop it with
+`launchctl bootout gui/$(id -u)/com.papercusp.ios-ci`. Logs live beside
+`latest.json`. Retention keeps the newest 16 unsigned attempts, protects both
+success pointers and preserves signed candidates and unrecognized directories.
 Private signing and pairing inputs are redacted from retained phase logs.
-Installation checks the supported Xcode/SDK/simulator before changing launchd.
+Installation checks the simulator toolchain before changing launchd.
 
 Signed exports are explicit and require a clean source and a new positive build number:
 

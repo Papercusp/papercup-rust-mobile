@@ -125,29 +125,51 @@ def exported_profile(root, env, ipa):
                                   else 'app-store-connect')}
 
 
-def toolchain(root, env):
+def toolchain(root, env, mode='check'):
     if platform.system() != 'Darwin':
         raise ValueError('Native iPhone execution requires macOS')
-    missing = [name for name in ('git', 'make', 'node', 'python3', 'rustup', 'rustc',
-                                'xcrun', 'xcodebuild', 'xcodegen', 'security')
-               if not shutil.which(name, path=env['PATH'])]
+    if mode not in ('simulator', 'check', 'signed'):
+        raise ValueError('Unsupported native iPhone mode')
+    simulator_only = mode == 'simulator'
+    names = ('git', 'make', 'node', 'python3', 'rustup', 'rustc',
+             'xcrun', 'xcodebuild', 'xcodegen')
+    if mode == 'signed':
+        names += ('security',)
+    missing = [name for name in names if not shutil.which(name, path=env['PATH'])]
     if missing:
         raise ValueError('Missing native iPhone tools: ' + ', '.join(missing))
-    sdk = output(['xcrun', '--sdk', 'iphoneos', '--show-sdk-version'], root, env)
-    if not re.fullmatch(r'\d+(?:\.\d+)*', sdk) or int(sdk.split('.')[0]) < 26:
-        raise ValueError('iPhoneOS SDK26+ is required; found ' + sdk)
+    sdk_name = 'iphonesimulator' if simulator_only else 'iphoneos'
+    sdk = output(['xcrun', '--sdk', sdk_name, '--show-sdk-version'], root, env)
+    minimum = 17 if simulator_only else 26
+    if not re.fullmatch(r'\d+(?:\.\d+)*', sdk) or int(sdk.split('.')[0]) < minimum:
+        label = 'iPhoneSimulator SDK17+' if simulator_only else 'iPhoneOS SDK26+'
+        raise ValueError(label + ' is required; found ' + sdk)
     xcode = output(['xcodebuild', '-version'], root, env)
-    if not re.match(r'Xcode (?:2[6-9]|[3-9]\d)\.', xcode):
-        raise ValueError('Xcode26+ is required; found ' + xcode)
+    version = re.match(r'Xcode (\d+)\.(\d+)', xcode)
+    required = (16, 3) if simulator_only else (26, 0)
+    if not version or tuple(map(int, version.groups())) < required:
+        label = 'Xcode16.3+' if simulator_only else 'Xcode26+'
+        raise ValueError(label + ' is required; found ' + xcode)
     sims = json.loads(output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j'], root, env))
-    devices = [d for runtime, rows in sims['devices'].items() if 'iOS-26' in runtime
-               for d in rows if d.get('isAvailable') and d.get('name', '').startswith('iPhone')]
+    devices = []
+    for runtime, rows in sims['devices'].items():
+        version = re.fullmatch(r'com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+)((?:-\d+)*)', runtime)
+        if not version or int(version.group(1)) < minimum:
+            continue
+        runtime_version = tuple(map(int, (version.group(1) + version.group(2)).split('-')))
+        for device in rows:
+            if device.get('isAvailable') and device.get('name', '').startswith('iPhone'):
+                devices.append((runtime_version, runtime, device))
+    devices.sort(key=lambda row: row[0], reverse=True)
     selected = env.get('PAPERCUP_IOS_SIM_UDID')
-    device = next((d for d in devices if not selected or d['udid'] == selected), None)
-    if not device:
-        raise ValueError('An available iOS26 iPhone simulator is required (Intel hosts need the universal runtime)')
+    choice = next((row for row in devices if not selected or row[2]['udid'] == selected), None)
+    if not choice:
+        label = 'iOS17+' if simulator_only else 'iOS26+'
+        raise ValueError('An available ' + label + ' iPhone simulator is required (Intel hosts need the universal runtime)')
+    _, runtime, device = choice
     env['PAPERCUP_IOS_SIM_UDID'] = device['udid']
-    return {'xcode': xcode, 'iosSDK': sdk, 'simulator': device['udid'],
+    return {'xcode': xcode, 'simulatorSDK' if simulator_only else 'iosSDK': sdk,
+            'simulatorRuntime': runtime, 'simulator': device['udid'],
             'developerDir': env.get('DEVELOPER_DIR') or output(['xcode-select', '-p'], root, env)}
 
 
@@ -204,9 +226,13 @@ def release_manifest(attempt, result):
     write_json(path, manifest)
 
 
+def success_path(state, mode):
+    return state / ('success-simulator.json' if mode == 'simulator' else 'success.json')
+
+
 def prune_attempts(state, keep=16):
     protected = set()
-    for name in ('latest.json', 'success.json'):
+    for name in ('latest.json', 'success.json', 'success-simulator.json'):
         try:
             protected.add(Path(json.loads((state / name).read_text())['attempt']).resolve())
         except (OSError, ValueError, KeyError):
@@ -221,7 +247,7 @@ def prune_attempts(state, keep=16):
             continue
         try:
             result = json.loads((path / 'result.json').read_text())
-            if (result.get('executor') == 'native-mac' and result.get('mode') == 'check'
+            if (result.get('executor') == 'native-mac' and result.get('mode') in ('simulator', 'check')
                     and Path(result['attempt']).resolve() == path.resolve()):
                 shutil.rmtree(path)
         except (OSError, KeyError, ValueError):
@@ -234,9 +260,9 @@ def install_launch_agent(root, state):
     env = os.environ.copy()
     env['PATH'] = str(Path.home() / '.cargo/bin') + ':/opt/homebrew/bin:/usr/local/bin:' + env.get('PATH', '/usr/bin:/bin:/usr/sbin:/sbin')
     # Refuse before installing a recurring job that cannot execute on this Mac.
-    toolchain(root, env)
+    toolchain(root, env, 'simulator')
     template = plistlib.loads((root / 'tools/ci/com.papercusp.ios-ci.plist').read_bytes())
-    template['ProgramArguments'] = [sys.executable, str(root / 'tools/ios-ci.py'), '--mode', 'check']
+    template['ProgramArguments'] = [sys.executable, str(root / 'tools/ios-ci.py'), '--mode', 'simulator']
     template['WorkingDirectory'] = str(root)
     template['StandardOutPath'] = str(state / 'launcher.log')
     template['StandardErrorPath'] = str(state / 'launcher-error.log')
@@ -257,17 +283,22 @@ def install_launch_agent(root, state):
     print('Native iPhone checks installed: ' + str(target))
 
 
-def reuse(state, identity, tools, paired):
+def reuse(state, identity, tools, paired, mode='check'):
     try:
-        proof = json.loads((state / 'success.json').read_text())
+        proof = json.loads(success_path(state, mode).read_text())
         attempt = Path(proof['attempt']).resolve()
-        if (proof['status'] != 'passed' or proof['mode'] != 'check'
+        if (proof['status'] != 'passed' or proof['mode'] != mode
                 or proof['source'] != identity or proof['toolchain'] != tools or proof['pairedUI'] != paired
                 or proof['day'] != dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d')
                 or not attempt.is_relative_to((state / 'attempts').resolve())):
             return None
-        required = {'release-contract', 'rust-pin', 'unit', 'ui-smoke', 'ui-smoke-guard',
-                    'ui-smoke-screenshots', 'archive', 'archive-guard'}
+        required = {'release-contract', 'rust-pin', 'rust-setup', 'ios-targets',
+                    'dependencies', 'build', 'unit', 'ui-smoke', 'ui-smoke-guard',
+                    'ui-smoke-screenshots'}
+        if mode == 'check':
+            required |= {'archive', 'archive-guard'}
+        elif mode != 'simulator':
+            return None
         if required - {p['name'] for p in proof['phases'] if p['exitCode'] == 0} or not proof['artifacts']:
             return None
         for entry in proof['artifacts']:
@@ -296,7 +327,7 @@ def _execute(root, state, args):
     env.pop('PAPERCUP_PAIR_PAYLOAD', None)
     env['PAPERCUP_EXPORT_METHOD'] = args.distribution
     env['PAPERCUP_REQUIRE_UPLOAD_SECRETS'] = '1' if args.upload else '0'
-    if args.mode == 'check':
+    if args.mode != 'signed':
         for key in SIGNING_KEYS:
             env.pop(key, None)
     phases = result['phases']
@@ -325,15 +356,18 @@ def _execute(root, state, args):
         result['source'] = identity
         if args.mode == 'signed' and identity['dirty']:
             raise ValueError('Signed delivery requires clean committed source')
-        result['toolchain'] = toolchain(root, env)
+        result['toolchain'] = toolchain(root, env, args.mode)
         env['PAPERCUP_IOS_SIM_UDID'] = result['toolchain']['simulator']
-        run_phase('release-contract', ['bash', 'tools/build-scripts/verify-ios-release.sh', '--require-current-sdk'], root, env, attempt, phases)
+        contract = ['bash', 'tools/build-scripts/verify-ios-release.sh']
+        if args.mode != 'simulator':
+            contract.append('--require-current-sdk')
+        run_phase('release-contract', contract, root, env, attempt, phases)
         run_phase('rust-pin', ['make', 'test-rust-toolchain-pin'], root, env, attempt, phases)
         if args.preflight:
             result['status'] = 'preflight'
             return 0
-        if args.mode == 'check' and not args.force and not args.paired_ui:
-            cached = reuse(state, identity, result['toolchain'], False)
+        if args.mode in ('simulator', 'check') and not args.force and not args.paired_ui:
+            cached = reuse(state, identity, result['toolchain'], False, args.mode)
             if cached:
                 write_json(state / 'latest.json', cached)
                 result['status'] = 'reused'
@@ -383,16 +417,17 @@ def _execute(root, state, args):
             env['PAPERCUP_BUILD_NUMBER'] = args.build_number
             env['PAPERCUP_RELEASE_DIR'] = str(attempt)
             run_phase('signed-export', ['bash', 'tools/build-scripts/release-ios.sh', 'export'], root, env, attempt, phases)
-        else:
+        elif args.mode == 'check':
             run_phase('archive', ['xcodebuild', 'archive', '-project', 'ios/Papercup.xcodeproj',
                                  '-scheme', 'Papercup', '-configuration', 'Release',
                                  '-destination', 'generic/platform=iOS', '-archivePath', str(archive),
                                  'CODE_SIGNING_ALLOWED=NO'], root, env, attempt, phases)
-        validation = ['python3', 'tools/build-scripts/validate-ios-archive.py', str(archive),
-                      '--source-sha', identity['commit'], '--manifest', str(attempt / 'candidate-manifest.json')]
-        if args.mode == 'signed':
-            validation += ['--build', args.build_number, '--require-signed']
-        run_phase('archive-guard', validation, root, env, attempt, phases)
+        if args.mode != 'simulator':
+            validation = ['python3', 'tools/build-scripts/validate-ios-archive.py', str(archive),
+                          '--source-sha', identity['commit'], '--manifest', str(attempt / 'candidate-manifest.json')]
+            if args.mode == 'signed':
+                validation += ['--build', args.build_number, '--require-signed']
+            run_phase('archive-guard', validation, root, env, attempt, phases)
         if source_identity(root) != identity:
             raise ValueError('Source changed during execution; candidate admission refused')
         if args.mode == 'signed':
@@ -443,10 +478,10 @@ def _execute(root, state, args):
         write_json(attempt / 'result.json', result)
         if result['status'] != 'reused':
             write_json(state / 'latest.json', result)
-        if result['status'] == 'passed' and args.mode == 'check':
-            write_json(state / 'success.json', result)
+        if result['status'] == 'passed' and args.mode in ('simulator', 'check'):
+            write_json(success_path(state, args.mode), result)
         elif result['status'] == 'failed':
-            (state / 'success.json').unlink(missing_ok=True)
+            success_path(state, args.mode).unlink(missing_ok=True)
         prune_attempts(state)
         if cleanup_failed:
             raise SigningCleanupError(result['error'])
@@ -462,7 +497,8 @@ def execute(root, state, args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=('check', 'signed'), default='check')
+    parser.add_argument('--mode', choices=('simulator', 'check', 'signed'), default='simulator',
+                        help='simulator runs native tests; check adds SDK26 unsigned archive; signed exports IPA')
     parser.add_argument('--distribution', choices=('app-store-connect', 'release-testing'),
                         default='app-store-connect',
                         help='release-testing exports an Ad Hoc IPA for registered devices')
@@ -475,7 +511,7 @@ def main():
     parser.add_argument('--upload', action='store_true')
     parser.add_argument('--confirm-upload', action='store_true')
     parser.add_argument('--install-launch-agent', action='store_true',
-                        help='Install unsigned native checks every 30 minutes (macOS)')
+                        help='Install simulator native checks every 30 minutes (macOS)')
     args = parser.parse_args()
     os.umask(0o077)
     state = Path(os.environ.get('PAPERCUP_IOS_CI_STATE', str(Path.home() / '.local/state/papercusp/ios-ci'))).resolve()
