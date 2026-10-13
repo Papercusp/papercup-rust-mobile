@@ -46,9 +46,10 @@ lipo -create \
     -output target/ios-sim-fat/libpapercup.a
 
 echo "==> Generating Swift bindings"
+# Match make bindings-swift: UniFFI discovers the crate's uniffi.toml.
+# Since 0.32, --config expects a global config and ignores this flat file.
 cargo run --quiet --bin uniffi-bindgen -- generate \
     crates/papercup-bindings/src/papercup.udl \
-    --config crates/papercup-bindings/uniffi.toml \
     --language swift \
     --out-dir ios/PapercupCore
 test -f ios/PapercupCore/papercup.swift

@@ -553,6 +553,14 @@ class NativePackagingTests(unittest.TestCase):
             'cargo': r"""#!/bin/bash
 set -eu
 if [ "$1" = run ]; then
+    # UniFFI 0.32 treats --config as global config; the crate-local flat
+    # config must be discovered as in the maintained binding targets.
+    for argument in "$@"; do
+        if [ "$argument" = --config ]; then
+            echo 'retired flat config override' >&2
+            exit 2
+        fi
+    done
     mkdir -p ios/PapercupCore
     printf '// current generated Swift\n' > ios/PapercupCore/papercup.swift
     if [ "$TEST_OMIT_HEADER" = 0 ]; then
