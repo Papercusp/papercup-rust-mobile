@@ -60,8 +60,8 @@ final class PairFlowUITests: XCTestCase {
 
     /// End-to-end pair flow + paired-state navigation in one go (the
     /// pair token is one-shot, so we can only spend it once per test
-    /// run). Validates: launch-arg backdoor → DeepLinkRouter →
-    /// AppRoot.autoPair → /api/device/pair → DeviceCredentials persist
+    /// run). Validates: visible Paste manually → PairView.redeem →
+    /// /api/device/pair → DeviceCredentials persist across relaunch
     /// → PairedShell mounts → tab bar visible → Settings nav rows
     /// (Standing approvals / Voice / Diagnostics) open correctly.
     func testPairAndPairedNavigation() throws {
@@ -71,10 +71,7 @@ final class PairFlowUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
-        app.launchArguments = [
-            "-com.papercuspai.uitests.wipeCredentials", "YES",
-            "-com.papercuspai.uitests.pairPayload", payload,
-        ]
+        app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
         // WI-4984 regression rig: delay the converse SSE drain by 8s so the
         // chat leg below can prove the submitted turn renders BEFORE the
         // drain completes (the optimistic/persisted-early path). Without
@@ -82,6 +79,18 @@ final class PairFlowUITests: XCTestCase {
         // this delay pushes past the 6s assertion window.
         app.launchEnvironment["PAPERCUP_UITEST_CONVERSE_DELAY_MS"] = "8000"
         app.launch()
+
+        XCTAssertTrue(app.staticTexts["Pair with your desktop"].waitForExistence(timeout: 10))
+        let paste = app.buttons["Paste manually"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5))
+        paste.tap()
+        let editor = app.textViews.firstMatch
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "manual pairing editor should appear")
+        editor.tap()
+        editor.typeText(payload)
+        let pair = app.buttons["Pair"]
+        XCTAssertTrue(pair.isEnabled, "entered Remote access payload should enable pairing")
+        pair.tap()
 
         // Tab-bar items combine icon + label into one accessibility element and
         // the label is title-case, so an exact `app.buttons["Operator"]` query
@@ -97,7 +106,7 @@ final class PairFlowUITests: XCTestCase {
 
         let operatorTab = tabItem("Operator")
         XCTAssertTrue(operatorTab.waitForExistence(timeout: 20),
-                      "Operator tab should appear after launch-arg pair backdoor")
+                      "Operator tab should appear after visible manual pairing")
         retainScreenshot(app, named: "paired-operator")
 
         // Hop to Settings, scroll to find the new nav rows, open each.
@@ -214,6 +223,17 @@ final class PairFlowUITests: XCTestCase {
         let gone = NSPredicate(format: "exists == false")
         expectation(for: gone, evaluatedWith: working, handler: nil)
         waitForExpectations(timeout: 120)
+
+        // Normal relaunch must load Keychain credentials without re-consuming
+        // the one-shot Remote access pair token or using a credential hook.
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(operatorTab.waitForExistence(timeout: 20),
+                      "Keychain pairing should survive an ordinary relaunch")
+        XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists,
+                       "a paired relaunch must not return to onboarding")
+        retainScreenshot(app, named: "paired-keychain-relaunch")
     }
 
     /// Push deep-link routing: a notification-tap userInfo (the exact
