@@ -123,18 +123,10 @@ fun VoiceSettingsScreen(onBack: () -> Unit) {
             }
 
             SectionShell(title = "Wake word") {
-                OutlinedTextField(
-                    value = prefs.wakeWord,
-                    onValueChange = { update(prefs.copy(wakeWord = it)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                    singleLine = true,
-                    colors = outlinedFieldColors(),
-                )
-                HorizontalDivider(color = PapercupColors.StrokeSoft.copy(alpha = 0.55f))
+                val keyword = remember(ctx) { WakeWordEngine.configuredKeyword(ctx) }
                 PapercupMetaText(
-                    text = "3-syllable phrases work best. Android hot-reload still needs an app restart.",
+                    text = if (keyword == null) "Wake-word listening is unavailable. Tap Listen to start voice."
+                    else "Say \"$keyword\" to start voice.",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }

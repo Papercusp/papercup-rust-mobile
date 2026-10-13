@@ -52,7 +52,8 @@ class WakeWordService : Service() {
             this,
             android.Manifest.permission.RECORD_AUDIO,
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (!WakeWordEngine.isConfigured() || !hasRecordAudio) {
+        val keyword = WakeWordEngine.configuredKeyword(applicationContext)
+        if (keyword == null || !hasRecordAudio) {
             Log.i(TAG, "wake word inert — key=${WakeWordEngine.isConfigured()} rec=$hasRecordAudio; faking FGS to satisfy ANR contract then stopping")
             // Fallback: declare-only. Without RECORD_AUDIO we can't go
             // FGS-microphone; the only way to avoid the timer-fired
@@ -66,12 +67,12 @@ class WakeWordService : Service() {
             return
         }
         ensureChannel(applicationContext)
-        startForegroundCompat()
+        startForegroundCompat(keyword)
         engine = WakeWordEngine(applicationContext) {
             Log.i(TAG, "wake word fired — broadcasting ACTION_WAKE")
             sendBroadcast(Intent(ACTION_WAKE).setPackage(packageName))
         }
-        engine?.start()
+        if (engine?.start() != true) stopSelf()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -93,11 +94,11 @@ class WakeWordService : Service() {
         super.onDestroy()
     }
 
-    private fun startForegroundCompat() {
+    private fun startForegroundCompat(keyword: String) {
         val notif: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle(getString(R.string.wake_word_notification_title))
-            .setContentText(getString(R.string.wake_word_notification_text))
+            .setContentText(getString(R.string.wake_word_notification_text, keyword))
             .setOngoing(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()

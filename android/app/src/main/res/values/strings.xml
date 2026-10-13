@@ -46,9 +46,9 @@
 
     <!-- Wake-word service notification -->
     <string name="wake_word_notification_title">Papercusp</string>
-    <string name="wake_word_notification_text">Listening for "hey papercup"</string>
+    <string name="wake_word_notification_text">Listening for "%1$s"</string>
     <string name="wake_word_channel_name">Wake-word listener</string>
-    <string name="wake_word_channel_description">Persistent listener for the "hey papercup" wake word.</string>
+    <string name="wake_word_channel_description">Persistent listener for the configured wake phrase.</string>
 
     <!-- Biometric prompt copy -->
     <string name="biometric_title">Confirm</string>

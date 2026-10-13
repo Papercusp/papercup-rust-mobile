@@ -160,11 +160,9 @@ android {
             .getOrElse(System.getenv("PICOVOICE_ACCESS_KEY") ?: "")
         buildConfigField("String", "PICOVOICE_ACCESS_KEY", "\"$key\"")
 
-        // openWakeWord fallback. When PAPERCUP_USE_OWW=true the build
-        // uses the local-ML wake-word path (TFLite ONNX model bundled
-        // in assets) instead of Picovoice. Useful when the Picovoice
-        // AccessKey is unavailable. Off by default until the OWW model
-        // is bundled — see WakeWordEngine.kt and docs/VOICE_V1_PLAN.md.
+        // Reserved openWakeWord selection. Its detector is not implemented;
+        // setting this flag makes wake-word unavailable, even with a
+        // Picovoice key. Never advertise a no-op backend as listening.
         val useOww = providers
             .gradleProperty("PAPERCUP_USE_OWW")
             .getOrElse(System.getenv("PAPERCUP_USE_OWW") ?: "false")
