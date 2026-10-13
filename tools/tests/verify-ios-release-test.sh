@@ -14,6 +14,7 @@ files=(
     tools/ios-ci.py
     docs/BUILD.md
     docs/TESTFLIGHT-DEVICE-CHECKLIST.md
+    ios/README.md
     ios/Papercup/Info.plist
     ios/Papercup/Papercup.entitlements
     ios/Papercup/Resources/PrivacyInfo.xcprivacy
@@ -111,7 +112,7 @@ copy_fixture
 rm "$TMP_ROOT/fixture/docs/TESTFLIGHT-DEVICE-CHECKLIST.md"
 expect_failure "missing release input: docs/TESTFLIGHT-DEVICE-CHECKLIST.md"
 
-for guide in docs/BUILD.md docs/TESTFLIGHT-DEVICE-CHECKLIST.md; do
+for guide in docs/BUILD.md docs/TESTFLIGHT-DEVICE-CHECKLIST.md ios/README.md; do
     copy_fixture
     printf '\nRun gh workflow run testflight.yml before acceptance.\n' >> "$TMP_ROOT/fixture/$guide"
     expect_failure "GitHub Actions execution instructions must remain retired"

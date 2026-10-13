@@ -32,6 +32,7 @@ required = [
     "tools/ios-ci.py",
     "docs/BUILD.md",
     "docs/TESTFLIGHT-DEVICE-CHECKLIST.md",
+    "ios/README.md",
     "ios/Papercup/Info.plist",
     "ios/Papercup/Papercup.entitlements",
     "ios/Papercup/Resources/PrivacyInfo.xcprivacy",
@@ -159,7 +160,7 @@ marker = markers.search(all_release_text)
 require(marker is None, f"release materials contain placeholder marker: {marker.group(0) if marker else ''}")
 
 # Operational delivery guides must not send a native-only release back to Actions.
-for relative in ('docs/BUILD.md', 'docs/TESTFLIGHT-DEVICE-CHECKLIST.md'):
+for relative in ('docs/BUILD.md', 'docs/TESTFLIGHT-DEVICE-CHECKLIST.md', 'ios/README.md'):
     guide = (root / relative).read_text()
     require(re.search(r'\bgh\s+workflow\s+(?:run|enable)\b', guide, re.IGNORECASE) is None,
             f'{relative}: GitHub Actions execution instructions must remain retired')
