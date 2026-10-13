@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import uniffi.papercup.OperatorClient
+import java.util.concurrent.atomic.AtomicInteger
 
 /// Receives FCM tokens + delivered messages.
 ///
@@ -73,7 +74,7 @@ class PushService : FirebaseMessagingService() {
         val slug = data["slug"] ?: data["harness"]
         val toInbox = data["kind"] != null
         val eventId = data["eventId"] ?: data["plan"] ?: message.messageId
-        showNotification(applicationContext, title, body, slug, toInbox, eventId)
+        showNotification(applicationContext, title, body, slug, toInbox, eventId, data["kind"])
     }
 
     /// Best-effort: poke a refresh on the named query. The full sync
@@ -103,6 +104,8 @@ class PushService : FirebaseMessagingService() {
 const val PUSH_CHANNEL_ID = "papercup-pushes"
 const val EXTRA_DEEPLINK_SLUG = "papercup.deeplink.slug"
 const val EXTRA_DEEPLINK_INBOX = "papercup.deeplink.inbox"
+const val EXTRA_DEEPLINK_KIND = "papercup.deeplink.kind"
+private val anonymousNotificationIds = AtomicInteger(System.currentTimeMillis().toInt())
 
 fun ensureNotificationChannel(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -123,16 +126,21 @@ fun showNotification(
     slug: String?,
     toInbox: Boolean,
     eventId: String?,
+    kind: String? = null,
 ) {
     ensureNotificationChannel(context)
+    // The drawer entry and its PendingIntent must share one identity. Otherwise
+    // FLAG_UPDATE_CURRENT replaces every anonymous notification's tap extras.
+    val notificationId = eventId?.hashCode() ?: anonymousNotificationIds.incrementAndGet()
     val launch = Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         if (slug != null) putExtra(EXTRA_DEEPLINK_SLUG, slug)
         if (toInbox) putExtra(EXTRA_DEEPLINK_INBOX, true)
+        if (kind != null) putExtra(EXTRA_DEEPLINK_KIND, kind)
     }
     val pi = PendingIntent.getActivity(
         context,
-        (eventId?.hashCode() ?: 0),
+        notificationId,
         launch,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
@@ -144,5 +152,5 @@ fun showNotification(
         .setContentIntent(pi)
         .build()
     val nm = ContextCompat.getSystemService(context, NotificationManager::class.java) ?: return
-    nm.notify(eventId?.hashCode() ?: System.currentTimeMillis().toInt(), notif)
+    nm.notify(notificationId, notif)
 }
