@@ -171,6 +171,8 @@ class VoiceManager(
         sessionJob = s.launch(Dispatchers.IO) {
             val initResult = runCatching { fetchSessionInit() }
             val anyInit = initResult.getOrElse { err ->
+                if (err is CancellationException) throw err
+                if (scope !== s || !s.isActive) return@launch
                 Log.w(TAG, "session-init failed: ${err.message}")
                 _state.value = classifyInitFailure(err)
                 // Tear down so the FAB / banner Retry can start() again —
@@ -181,6 +183,7 @@ class VoiceManager(
                 teardown(reason = "session-init-failed")
                 return@launch
             }
+            if (scope !== s || !s.isActive) return@launch
             if (requiresCloudVoiceConsent(anyInit is SessionInit.El, consentStore.isGranted())) {
                 _cloudConsentRequired.value = true
                 teardown(reason = "cloud-consent-required")
@@ -199,95 +202,105 @@ class VoiceManager(
             idleTimeoutMs = init.idleTimeoutMin.coerceAtLeast(0) * 60_000L
             sessionMaxMs = init.sessionMaxMin.coerceAtLeast(0) * 60_000L
 
-            try {
-                val config = ConversationConfig(
-                    conversationToken = init.conversationToken,
-                    userId = init.dynamicVariables.deviceId,
-                    onConnect = { _ ->
-                        Log.i(TAG, "EL connected — arming timers idle=${idleTimeoutMs}ms max=${sessionMaxMs}ms")
-                        armIdleTimer()
-                        armSessionMaxTimer()
-                    },
-                    onDisconnect = { reason ->
-                        // Fully tear down so a subsequent FAB tap can
-                        // start a fresh session. Without this, `scope`
-                        // stays non-null and `start()` short-circuits.
-                        Log.i(TAG, "EL disconnected: $reason — tearing down")
-                        teardown(reason = reason.toString())
-                    },
-                    onStatusChange = { status ->
-                        when (status) {
-                            ConversationStatus.CONNECTED -> if (_state.value is State.Connecting) {
-                                _state.value = State.Listening
-                            }
-                            ConversationStatus.CONNECTING -> _state.value = State.Connecting
-                            ConversationStatus.DISCONNECTED,
-                            ConversationStatus.DISCONNECTING -> {
-                                if (_state.value !is State.Failed) _state.value = State.Idle
-                            }
-                            ConversationStatus.ERROR -> _state.value = State.Failed(
-                                "Voice error — tap to retry.",
-                                FailureKind.NetworkUnreachable,
-                            )
-                        }
-                    },
-                    onModeChange = { mode ->
-                        when (mode) {
-                            ConversationMode.SPEAKING -> {
-                                if (_state.value !is State.Speaking) {
-                                    _state.value = State.Speaking("…", "agent")
+            runCloudVoiceStartup(
+                isCurrent = { scope === s && s.isActive },
+                start = {
+                    val config = ConversationConfig(
+                        conversationToken = init.conversationToken,
+                        userId = init.dynamicVariables.deviceId,
+                        onConnect = onConnect@{ _ ->
+                            if (scope !== s || !s.isActive) return@onConnect
+                            Log.i(TAG, "EL connected — arming timers idle=${idleTimeoutMs}ms max=${sessionMaxMs}ms")
+                            armIdleTimer()
+                            armSessionMaxTimer()
+                        },
+                        onDisconnect = onDisconnect@{ reason ->
+                            if (scope !== s || !s.isActive) return@onDisconnect
+                            // Fully tear down so a subsequent FAB tap can
+                            // start a fresh session. Without this, `scope`
+                            // stays non-null and `start()` short-circuits.
+                            Log.i(TAG, "EL disconnected: $reason — tearing down")
+                            teardown(reason = reason.toString())
+                        },
+                        onStatusChange = onStatusChange@{ status ->
+                            if (scope !== s || !s.isActive) return@onStatusChange
+                            when (status) {
+                                ConversationStatus.CONNECTED -> if (_state.value is State.Connecting) {
+                                    _state.value = State.Listening
                                 }
+                                ConversationStatus.CONNECTING -> _state.value = State.Connecting
+                                ConversationStatus.DISCONNECTED,
+                                ConversationStatus.DISCONNECTING -> {
+                                    if (_state.value !is State.Failed) _state.value = State.Idle
+                                }
+                                ConversationStatus.ERROR -> _state.value = State.Failed(
+                                    "Voice error — tap to retry.",
+                                    FailureKind.NetworkUnreachable,
+                                )
                             }
-                            ConversationMode.LISTENING -> _state.value = State.Listening
-                        }
-                    },
-                    onAudioLevelChanged = { level -> _micLevel.value = level },
-                    onAgentResponse = { response ->
-                        // Record first-word latency once per session.
-                        if (!firstWordRecorded && tapAtMs > 0L) {
-                            val elapsed = System.currentTimeMillis() - tapAtMs
-                            VoiceMetrics.recordFirstWordMs(context, elapsed)
-                            firstWordRecorded = true
-                        }
-                        // Idle = USER idle. Intentionally NOT resetting
-                        // the idle timer on agent responses — matches
-                        // desktop voice-mode.ts onAssistantText behavior
-                        // (EL credit-burn audit fix #2). A chatty agent
-                        // shouldn't keep the session billable forever.
-                        _state.value = State.Speaking(response, "agent")
-                    },
-                    onUserTranscript = { transcript ->
-                        Log.d(TAG, "user: $transcript")
-                        // User said something — reset the idle clock.
-                        nudgeIdleTimer()
-                    },
-                    onUnhandledClientToolCall = { call ->
-                        Log.w(TAG, "agent invoked unhandled client tool: ${call.toolName}")
-                    },
-                    clientTools = buildClientTools(),
-                )
-                session = ConversationClient.startSession(config, context)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (t: Throwable) {
-                Log.w(TAG, "EL startSession failed", t)
-                val msg = t.message ?: t.javaClass.simpleName
-                // EL SDK surfaces quota/concurrent errors in the message
-                // body. Match conservatively — we only want to upgrade
-                // to a specific kind if we're sure.
-                val kind = when {
-                    msg.contains("quota", ignoreCase = true) ||
-                    msg.contains("limit exceeded", ignoreCase = true) ||
-                    msg.contains("1011", ignoreCase = true) ||
-                    msg.contains("1002", ignoreCase = true) -> FailureKind.QuotaExceeded
-                    msg.contains("network", ignoreCase = true) ||
-                    msg.contains("unreachable", ignoreCase = true) ||
-                    msg.contains("timeout", ignoreCase = true) -> FailureKind.NetworkUnreachable
-                    else -> FailureKind.Unknown
-                }
-                _state.value = State.Failed("Voice unavailable — $msg", kind)
-                teardown(reason = "cloud-start-failed")
-            }
+                        },
+                        onModeChange = onModeChange@{ mode ->
+                            if (scope !== s || !s.isActive) return@onModeChange
+                            when (mode) {
+                                ConversationMode.SPEAKING -> {
+                                    if (_state.value !is State.Speaking) {
+                                        _state.value = State.Speaking("…", "agent")
+                                    }
+                                }
+                                ConversationMode.LISTENING -> _state.value = State.Listening
+                            }
+                        },
+                        onAudioLevelChanged = { level -> if (scope === s && s.isActive) _micLevel.value = level },
+                        onAgentResponse = onAgentResponse@{ response ->
+                            if (scope !== s || !s.isActive) return@onAgentResponse
+                            // Record first-word latency once per session.
+                            if (!firstWordRecorded && tapAtMs > 0L) {
+                                val elapsed = System.currentTimeMillis() - tapAtMs
+                                VoiceMetrics.recordFirstWordMs(context, elapsed)
+                                firstWordRecorded = true
+                            }
+                            // Idle = USER idle. Intentionally NOT resetting
+                            // the idle timer on agent responses — matches
+                            // desktop voice-mode.ts onAssistantText behavior
+                            // (EL credit-burn audit fix #2). A chatty agent
+                            // shouldn't keep the session billable forever.
+                            _state.value = State.Speaking(response, "agent")
+                        },
+                        onUserTranscript = onUserTranscript@{ transcript ->
+                            if (scope !== s || !s.isActive) return@onUserTranscript
+                            Log.d(TAG, "user: $transcript")
+                            // User said something — reset the idle clock.
+                            nudgeIdleTimer()
+                        },
+                        onUnhandledClientToolCall = { call ->
+                            Log.w(TAG, "agent invoked unhandled client tool: ${call.toolName}")
+                        },
+                        clientTools = buildClientTools(),
+                    )
+                    ConversationClient.startSession(config, context)
+                },
+                accept = { session = it },
+                closeStale = { it.endSession() },
+                onFailure = { t ->
+                    Log.w(TAG, "EL startSession failed", t)
+                    val msg = t.message ?: t.javaClass.simpleName
+                    // EL SDK surfaces quota/concurrent errors in the message
+                    // body. Match conservatively — we only want to upgrade
+                    // to a specific kind if we're sure.
+                    val kind = when {
+                        msg.contains("quota", ignoreCase = true) ||
+                        msg.contains("limit exceeded", ignoreCase = true) ||
+                        msg.contains("1011", ignoreCase = true) ||
+                        msg.contains("1002", ignoreCase = true) -> FailureKind.QuotaExceeded
+                        msg.contains("network", ignoreCase = true) ||
+                        msg.contains("unreachable", ignoreCase = true) ||
+                        msg.contains("timeout", ignoreCase = true) -> FailureKind.NetworkUnreachable
+                        else -> FailureKind.Unknown
+                    }
+                    _state.value = State.Failed("Voice unavailable — $msg", kind)
+                },
+                release = { teardown(reason = "cloud-start-failed") },
+            )
         }
     }
 
@@ -310,7 +323,7 @@ class VoiceManager(
         consentStore.revoke()
         _cloudVoiceConsentGranted.value = false
         _cloudConsentRequired.value = false
-        if (session != null) stop()
+        if (scope != null) stop()
     }
 
     /// FAB tap while a session is active. Desktop-local PTT: a tap during
