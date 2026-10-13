@@ -526,5 +526,76 @@ class NativeRunnerTests(unittest.TestCase):
                 ci.toolchain(self.root, {'PATH': '/fixture'})
 
 
+class NativePackagingTests(unittest.TestCase):
+    """Exercise real packaging without a Mac; source headers are Xcode inputs."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        scripts = self.root / 'tools/build-scripts'
+        scripts.mkdir(parents=True)
+        self.builder = scripts / 'build-ios.sh'
+        self.builder.write_text((ROOT / 'tools/build-scripts/build-ios.sh').read_text())
+        for helper in ('check-ios-build-host-health.sh', 'ensure-swiftformat.sh'):
+            path = scripts / helper
+            path.write_text('#!/bin/bash\nexit 0\n')
+            path.chmod(0o755)
+        (self.root / 'Cargo.lock').touch()
+        config = self.root / 'crates/papercup-bindings/uniffi.toml'
+        config.parent.mkdir(parents=True)
+        config.write_text((ROOT / 'crates/papercup-bindings/uniffi.toml').read_text())
+        self.bin = self.root / 'bin'
+        self.bin.mkdir()
+        commands = {
+            'uname': '#!/bin/bash\necho Darwin\n',
+            'rustup': '#!/bin/bash\nexit 0\n',
+            'cargo': r"""#!/bin/bash
+set -eu
+if [ "$1" = run ]; then
+    mkdir -p ios/PapercupCore
+    printf '// current generated Swift\n' > ios/PapercupCore/papercup.swift
+    if [ "$TEST_OMIT_HEADER" = 0 ]; then
+        printf '// current generated header\n' > ios/PapercupCore/papercupFFI.h
+    fi
+    printf 'module papercupFFI {}\n' > ios/PapercupCore/papercupFFI.modulemap
+fi
+""",
+            'lipo': '#!/bin/bash\nexit 0\n',
+            'xcodebuild': r"""#!/bin/bash
+set -eu
+# Existing XcodeGen projects refer to the original generated source paths.
+test -f ios/PapercupCore/papercup.swift
+cmp ios/PapercupCore/papercupFFI.h ios/PapercupCore/headers/papercupFFI.h
+cmp ios/PapercupCore/papercupFFI.modulemap ios/PapercupCore/headers/module.modulemap
+mkdir -p ios/PapercupCore.xcframework
+touch ios/PapercupCore.xcframework/packaged
+""",
+        }
+        for name, script in commands.items():
+            path = self.bin / name
+            path.write_text(script)
+            path.chmod(0o755)
+
+    def build(self, omit_header=False):
+        env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
+                   TEST_OMIT_HEADER=str(int(omit_header)))
+        return subprocess.run(['bash', str(self.builder)], cwd=self.root, env=env,
+                              text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    def test_packaging_preserves_xcode_sources_and_current_headers_on_rebuild(self):
+        for attempt in range(2):
+            result = self.build()
+            self.assertEqual(result.returncode, 0, result.stdout)
+            self.assertTrue((self.root / 'ios/PapercupCore.xcframework/packaged').exists())
+            self.assertEqual((self.root / 'ios/PapercupCore/papercupFFI.h').read_text(),
+                             '// current generated header\n')
+
+    def test_missing_generated_header_cannot_admit_an_xcframework(self):
+        result = self.build(omit_header=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.root / 'ios/PapercupCore.xcframework').exists())
+
+
 if __name__ == '__main__':
     unittest.main()

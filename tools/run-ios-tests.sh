@@ -42,24 +42,33 @@ fi
 
 DEST="platform=iOS Simulator,id=$PAPERCUP_IOS_SIM_UDID"
 
+mkdir -p build
 for i in 1 2 3 4 5 6 7 8; do
+    # ios-ci retains unit-* files, including failed build attempts.
+    build_log="build/unit-build-for-testing-$i.log"
     set +e
-    out=$(xcodebuild build-for-testing \
+    xcodebuild build-for-testing \
         -project Papercup.xcodeproj -scheme Papercup \
         -destination "$DEST" -sdk iphonesimulator \
-        -derivedDataPath build/dd 2>&1)
+        -derivedDataPath build/dd > "$build_log" 2>&1
     rc=$?
     set -e
-    if [ $rc -eq 0 ] && echo "$out" | grep -q "TEST BUILD SUCCEEDED"; then
+    if [ "$rc" -eq 0 ] && grep -q "TEST BUILD SUCCEEDED" "$build_log"; then
         break
     fi
-    echo "[build retry $i: rc=$rc]"
-    sleep 6
-    if [ "$i" = "8" ]; then
-        echo "ERROR: build-for-testing failed after 8 retries (rc=$rc)" >&2
-        echo "$out" | tail -20 >&2
+    echo "[build failure $i: rc=$rc; log: $build_log]" >&2
+    tail -80 "$build_log" >&2
+    # Only the measured SDK destination-resolver race is retryable.
+    # Compile, package and missing-success failures must stop immediately.
+    if [ "$rc" -eq 0 ] || ! grep -Eq 'iOS [0-9]+(\.[0-9]+)* is not installed' "$build_log"; then
+        echo "ERROR: build-for-testing failed; not a retryable destination race (rc=$rc)" >&2
         exit 1
     fi
+    if [ "$i" = "8" ]; then
+        echo "ERROR: build-for-testing failed after 8 destination-race attempts (rc=$rc)" >&2
+        exit 1
+    fi
+    sleep 6
 done
 
 # Each attempt writes its own result bundle, and the shared guard

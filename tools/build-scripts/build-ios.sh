@@ -54,10 +54,12 @@ cargo run --quiet --bin uniffi-bindgen -- generate \
 test -f ios/PapercupCore/papercup.swift
 test -f ios/PapercupCore/papercupFFI.h
 
-# Move the modulemap into a headers/ folder so xcodebuild can find it.
+# Copy the packaging headers while preserving XcodeGen's source inputs.
+# Existing projects refer to PapercupCore/papercupFFI.h; moving it makes
+# build-for-testing fail even though xcframework packaging succeeded.
 mkdir -p ios/PapercupCore/headers
-mv -f ios/PapercupCore/papercupFFI.h ios/PapercupCore/headers/
-mv -f ios/PapercupCore/papercupFFI.modulemap ios/PapercupCore/headers/module.modulemap
+cp -f ios/PapercupCore/papercupFFI.h ios/PapercupCore/headers/
+cp -f ios/PapercupCore/papercupFFI.modulemap ios/PapercupCore/headers/module.modulemap
 test -f ios/PapercupCore/headers/papercupFFI.h
 
 echo "==> Packaging xcframework"

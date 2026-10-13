@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 mkdir -p "$TEST_ROOT/tools/build-scripts" "$TEST_ROOT/ios/Papercup.xcodeproj" "$TEST_ROOT/bin"
-cp "$REPO_ROOT/tools/run-ios-tests.sh" "$TEST_ROOT/tools/"
+cp "$REPO_ROOT/tools/run-ios-tests.sh" "$REPO_ROOT/tools/run-ios-uitests.sh" "$TEST_ROOT/tools/"
 cp "$REPO_ROOT/tools/build-scripts/check-xctest-summary.py" "$TEST_ROOT/tools/build-scripts/"
 TEST_STATE="$TEST_ROOT/state"
 
@@ -23,8 +23,15 @@ printf '#!/usr/bin/env bash\necho "xcodegen must not run" >&2\nexit 9\n' > "$TES
 cat > "$TEST_ROOT/bin/xcodebuild" <<'SH'
 #!/usr/bin/env bash
 if [ "$1" = build-for-testing ]; then
-    echo '** TEST BUILD SUCCEEDED **'
-    exit 0
+    attempt=$(( $(wc -l < "$TEST_STATE/build-attempts") + 1 ))
+    echo "$attempt" >> "$TEST_STATE/build-attempts"
+    outcome="$(sed -n "$attempt"p "$TEST_STATE/build-plan")"
+    case "$outcome" in
+        race) echo 'error: iOS 18.2 is not installed'; exit 70 ;;
+        compile) echo 'error: generated papercupFFI.h is missing'; exit 65 ;;
+        empty) echo 'no build success marker'; exit 0 ;;
+        *) echo '** TEST BUILD SUCCEEDED **'; exit 0 ;;
+    esac
 fi
 [ "$1" = test-without-building ] || { echo "unexpected xcodebuild $1" >&2; exit 2; }
 bundle=
@@ -32,6 +39,11 @@ while [ $# -gt 0 ]; do
     if [ "$1" = -resultBundlePath ]; then bundle="$2"; fi
     shift
 done
+# The UI wrapper has a separate test contract; these cases exercise only
+# its build classification. Unit tests must still request a result bundle.
+if [ -z "$bundle" ] && [ "${TEST_RUNNER_SCRIPT:-}" = run-ios-uitests.sh ]; then
+    exit 0
+fi
 [ -n "$bundle" ] || { echo 'runner must pass -resultBundlePath' >&2; exit 2; }
 attempt=$(( $(wc -l < "$TEST_STATE/attempts") + 1 ))
 echo "$bundle" >> "$TEST_STATE/attempts"
@@ -64,6 +76,12 @@ case "$1" in
     *) echo "unexpected xcrun $1" >&2; exit 2 ;;
 esac
 SH
+cat > "$TEST_ROOT/bin/mktemp" <<'SH'
+#!/usr/bin/env bash
+# Adapt macOS mktemp -t for the Linux shell fixture.
+[ "$1" = -t ] || exit 2
+exec /usr/bin/mktemp "/tmp/$2.XXXXXX"
+SH
 chmod +x "$TEST_ROOT/bin/"*
 
 PASS='{"passedTests":3,"failedTests":0,"skippedTests":0}'
@@ -78,7 +96,9 @@ run_plan() {
     rm -rf "$TEST_ROOT/ios/build" "$TEST_STATE"
     mkdir -p "$TEST_STATE"
     : > "$TEST_STATE/attempts"
+    : > "$TEST_STATE/build-attempts"
     printf '%s\n' "$@" > "$TEST_STATE/plan"
+    printf '%s\n' "${TEST_BUILD_PLAN:-pass}" > "$TEST_STATE/build-plan"
     if [ -n "${STALE_PASSING_BUNDLES:-}" ]; then
         for i in 1 2 3 4 5 6 7 8; do
             mkdir -p "$TEST_ROOT/ios/build/unit-$i.xcresult"
@@ -86,7 +106,7 @@ run_plan() {
         done
     fi
     PATH="$TEST_ROOT/bin:$PATH" PAPERCUP_IOS_SIM_UDID=test-simulator TEST_STATE="$TEST_STATE" \
-        bash "$TEST_ROOT/tools/run-ios-tests.sh" > "$TEST_ROOT/output" 2>&1
+        bash "$TEST_ROOT/tools/${TEST_RUNNER_SCRIPT:-run-ios-tests.sh}" > "$TEST_ROOT/output" 2>&1
 }
 
 attempts() { wc -l < "$TEST_STATE/attempts" | tr -d ' '; }
@@ -129,4 +149,33 @@ expect_fail 'xcodebuild success without a result bundle' 1 'no PapercupTests tes
 expect_fail 'passing bundle with failing xcodebuild' 1 'passed but xcodebuild exited 65' "65 $PASS"
 expect_fail 'persistent destination race' 8 'after 8 attempts' "${RACE8[@]}"
 STALE_PASSING_BUNDLES=1 expect_fail 'stale passing bundles from an earlier run' 8 'after 8 attempts' "${RACE8[@]}"
-echo "iOS unit runner tests: $passed passed"
+# Both maintained wrappers must classify build failures before spending tests
+# or one-shot pairing inputs, and retain the original build diagnostics.
+for runner in run-ios-tests.sh run-ios-uitests.sh; do
+    if TEST_RUNNER_SCRIPT="$runner" TEST_BUILD_PLAN=$'compile\npass' run_plan "0 $PASS"; then
+        fail "$runner accepted a deterministic build error"
+    fi
+    [ "$(wc -l < "$TEST_STATE/build-attempts" | tr -d ' ')" = 1 ] \
+        || fail "$runner retried a deterministic build error"
+    grep -F 'generated papercupFFI.h is missing' "$TEST_ROOT/output" >/dev/null \
+        || fail "$runner suppressed the failing build diagnostic"
+    grep -F 'not a retryable destination race' "$TEST_ROOT/output" >/dev/null \
+        || fail "$runner failed without classifying the build error"
+    find "$TEST_ROOT/ios/build" -name '*build-for-testing*-1.log' -exec grep -l -F 'generated papercupFFI.h is missing' {} + \
+        | grep . >/dev/null || fail "$runner did not retain the build log"
+    passed=$((passed + 1))
+
+    TEST_RUNNER_SCRIPT="$runner" TEST_BUILD_PLAN=$'race\npass' run_plan "0 $PASS" \
+        || fail "$runner rejected the known destination race"
+    [ "$(wc -l < "$TEST_STATE/build-attempts" | tr -d ' ')" = 2 ] \
+        || fail "$runner did not retry exactly one destination race"
+    passed=$((passed + 1))
+
+    if TEST_RUNNER_SCRIPT="$runner" TEST_BUILD_PLAN=$'empty\npass' run_plan "0 $PASS"; then
+        fail "$runner accepted a zero-exit build without success evidence"
+    fi
+    [ "$(wc -l < "$TEST_STATE/build-attempts" | tr -d ' ')" = 1 ] \
+        || fail "$runner retried an unverified zero-exit build"
+    passed=$((passed + 1))
+done
+echo "iOS unit/UI runner tests: $passed passed"
