@@ -1,6 +1,6 @@
 # App Store review and submission packet — iPhone 1.0
 
-_Refreshed October 6, 2026 for bundle ID `com.papercuspai.operator.mobile`. This packet is preparation, not proof of submission or public availability._
+_Refreshed October 13, 2026 for bundle ID `com.papercuspai.operator.mobile`. This packet is preparation, not proof of submission or public availability._
 
 ## Review notes
 
@@ -18,9 +18,7 @@ separate disclosure naming ElevenLabs and the configured AI provider; consent
 can be revoked in Settings.
 
 Camera access is used only for scanning the pair QR code. Microphone access is
-used for voice; configured Android builds also use it for continuous wake-word
-listening after microphone permission is granted, with a foreground-service
-notification. Notification permission is optional. Face ID is
+used for voice commands. Notification permission is optional. Face ID is
 used only to confirm high-risk actions on supported devices.
 
 The privacy policy is available before pairing and in Settings:
@@ -55,10 +53,16 @@ the complete paired flow.
 - All App Store metadata and review attachments contain final values.
 - Record the exact candidate source SHA, version/build, archive/IPA hashes,
   accepted Apple SDK, executed unit/UI cases and signed distribution identity.
-  Preserve current native CI artifacts and TestFlight/Apple processing receipts.
-- Actual paired UI, cellular, APNs, permission/Bluetooth/lifecycle and endurance
-  checks are separate from clean-install simulator smoke. Missing hardware or
-  signing capability leaves those outcomes unverified.
+  Preserve current native CI artifacts and Apple processing receipts when uploaded.
+- Device acceptance runs on the iPhone simulator in the Mac VM (plan
+  iphone-public-release-2026-08-11, D-026): actual paired UI, simulated push
+  routing, permissions, injected-audio voice/consent, background/resume, and
+  network loss/reconnect. Record the exact executed cases and candidate identity;
+  clean-install smoke alone does not establish these flows.
+- Real cellular radio, production APNs delivery, Bluetooth hardware, and battery
+  endurance remain known simulator limits in the evidence. They do not wait on
+  a reviewer or on Avi's phone, and simulated pushes do not prove Apple delivery.
+  Signing and Apple credentials remain requirements for distribution and upload.
 - Distribution rights: the repository is licensed under GPL-3.0-or-later, and
   App Store terms may add restrictions that require separate permission.
   Papercusp holds all copyright in this repository and permits App Store

@@ -24,7 +24,7 @@ MAX_LINES = 250
 EVIDENCE_HEADING = re.compile(
     r"^#{1,6} .*(source preparation|depot_tools|Retained |Pinned |"
     r"source evidence|provenance|dependency source)", re.I)
-ANDROID_HEADING = re.compile(r"^#{1,6} .*(Android|Google Play)", re.I)
+ANDROID_COPY = re.compile(r"\bAndroid\b|\bGoogle Play\b", re.I)
 
 errors = []
 if not evidence.is_file():
@@ -41,8 +41,8 @@ for relative, platform in packets.items():
     for number, line in enumerate(lines, 1):
         if EVIDENCE_HEADING.search(line):
             errors.append(f"{relative}:{number}: evidence heading in a review packet: {line}")
-        if platform == "iPhone" and ANDROID_HEADING.search(line):
-            errors.append(f"{relative}:{number}: Android section belongs in "
+        if platform == "iPhone" and ANDROID_COPY.search(line):
+            errors.append(f"{relative}:{number}: Android copy belongs in "
                           f"store/PLAY-STORE-REVIEW.md: {line}")
 if errors:
     print("\n".join(f"ERROR: {e}" for e in errors), file=sys.stderr)
@@ -81,6 +81,10 @@ printf '\n## Android / Google Play reviewer preparation\n' >> "$tmp/root/store/A
 expect_reject "Android section in the Apple packet" "$tmp/root"
 
 fixture
+printf '\nConfigured Android builds use microphone foreground services.\n' >> "$tmp/root/store/APP-STORE-REVIEW.md"
+expect_reject "Android body text in the Apple packet" "$tmp/root"
+
+fixture
 for _ in $(seq 300); do echo 'filler line'; done >> "$tmp/root/store/APP-STORE-REVIEW.md"
 expect_reject "oversized review packet" "$tmp/root"
 
@@ -88,4 +92,4 @@ fixture
 rm "$tmp/root/android/SOURCE-EVIDENCE.md"
 expect_reject "missing evidence append target" "$tmp/root"
 
-echo "store packet scope: PASS (4 rejecting controls)"
+echo "store packet scope: PASS (5 rejecting controls)"
