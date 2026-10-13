@@ -10,6 +10,7 @@ import io.elevenlabs.ConversationConfig
 import io.elevenlabs.ConversationSession
 import io.elevenlabs.models.ConversationMode
 import io.elevenlabs.models.ConversationStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -266,6 +267,8 @@ class VoiceManager(
                     clientTools = buildClientTools(),
                 )
                 session = ConversationClient.startSession(config, context)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (t: Throwable) {
                 Log.w(TAG, "EL startSession failed", t)
                 val msg = t.message ?: t.javaClass.simpleName
@@ -283,6 +286,7 @@ class VoiceManager(
                     else -> FailureKind.Unknown
                 }
                 _state.value = State.Failed("Voice unavailable — $msg", kind)
+                teardown(reason = "cloud-start-failed")
             }
         }
     }
