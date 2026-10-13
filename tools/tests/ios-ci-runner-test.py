@@ -142,6 +142,36 @@ class NativeRunnerTests(unittest.TestCase):
         self.assertEqual(self.latest()['status'], 'failed')
         self.assertFalse((self.state / 'success-simulator.json').exists())
 
+    def test_dependency_audit_failure_stops_build_and_cached_reuse(self):
+        for mode in ('simulator', 'check'):
+            with self.subTest(mode=mode):
+                self.args.mode = mode
+                self.failure_phase = 'dependency-audit'
+                self.calls.clear()
+                self.assertEqual(self.run_ci(), 1)
+                self.assertNotIn('build', self.calls)
+                self.assertNotIn('rust-setup', self.calls)
+                self.failure_phase = None
+                self.assertEqual(self.run_ci(), 0)
+                self.calls.clear()
+                self.failure_phase = 'dependency-audit'
+                self.assertEqual(self.run_ci(), 1)
+                self.assertNotIn('build', self.calls)
+                self.assertNotIn('rust-setup', self.calls)
+                self.assertEqual(self.latest()['status'], 'failed')
+                self.assertFalse((self.state / ('success-simulator.json' if mode == 'simulator'
+                                              else 'success.json')).exists())
+                self.assertEqual(self.commands['dependency-audit'][0],
+                                 ['npm', 'audit', '--package-lock-only', '--audit-level=moderate'])
+
+    def test_cached_native_proof_without_dependency_audit_is_not_reusable(self):
+        self.assertEqual(self.run_ci(), 0)
+        cached = self.state / 'success.json'
+        proof = json.loads(cached.read_text())
+        proof['phases'] = [p for p in proof['phases'] if p['name'] != 'dependency-audit']
+        cached.write_text(json.dumps(proof))
+        self.assertIsNone(ci.reuse(self.state, self.identity, self.native, False))
+
     def test_simulator_preflight_and_failure_do_not_admit_test_proof(self):
         self.args.mode = 'simulator'
         self.args.preflight = True

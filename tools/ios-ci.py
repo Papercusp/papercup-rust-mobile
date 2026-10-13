@@ -293,7 +293,7 @@ def reuse(state, identity, tools, paired, mode='check'):
                 or not attempt.is_relative_to((state / 'attempts').resolve())):
             return None
         required = {'release-contract', 'rust-pin', 'rust-setup', 'ios-targets',
-                    'dependencies', 'build', 'unit', 'ui-smoke', 'ui-smoke-guard',
+                    'dependencies', 'dependency-audit', 'build', 'unit', 'ui-smoke', 'ui-smoke-guard',
                     'ui-smoke-screenshots'}
         if mode == 'check':
             required |= {'archive', 'archive-guard'}
@@ -366,6 +366,10 @@ def _execute(root, state, args):
         if args.preflight:
             result['status'] = 'preflight'
             return 0
+        # Recheck the locked dependency graph before both execution and reuse:
+        # advisory data can change without a source or lockfile change.
+        run_phase('dependency-audit', ['npm', 'audit', '--package-lock-only',
+                                     '--audit-level=moderate'], root, env, attempt, phases)
         if args.mode in ('simulator', 'check') and not args.force and not args.paired_ui:
             cached = reuse(state, identity, result['toolchain'], False, args.mode)
             if cached:
