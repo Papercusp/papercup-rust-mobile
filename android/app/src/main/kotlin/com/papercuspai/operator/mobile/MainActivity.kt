@@ -62,35 +62,38 @@ import java.time.Instant
 import java.time.format.DateTimeParseException
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
-    private val deepLinkSlug = mutableStateOf<String?>(null)
-    // Attention/inbox push tap → open the Inbox tab (D-004 deep-link target).
-    private val deepLinkInbox = mutableStateOf(false)
+    private val pushDestination = mutableStateOf<PushDestination?>(null)
+
+    private fun destinationForIntent(intent: Intent?): PushDestination? {
+        val incoming = intent ?: return null
+        val slug = incoming.getStringExtra(EXTRA_DEEPLINK_SLUG)
+        val kind = incoming.getStringExtra(EXTRA_DEEPLINK_KIND)
+        if (slug == null && kind == null && !incoming.getBooleanExtra(EXTRA_DEEPLINK_INBOX, false)) return null
+        return resolvePushDestination(kind, slug)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val store = CredentialStore(applicationContext)
         ensureNotificationChannel(applicationContext)
-        deepLinkSlug.value = intent?.getStringExtra(EXTRA_DEEPLINK_SLUG)
-        deepLinkInbox.value = intent?.getBooleanExtra(EXTRA_DEEPLINK_INBOX, false) ?: false
+        pushDestination.value = destinationForIntent(intent)
         setContent {
             PapercupTheme {
-                AppRoot(store, deepLinkSlug, deepLinkInbox)
+                AppRoot(store, pushDestination)
             }
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.getStringExtra(EXTRA_DEEPLINK_SLUG)?.let { deepLinkSlug.value = it }
-        if (intent.getBooleanExtra(EXTRA_DEEPLINK_INBOX, false)) deepLinkInbox.value = true
+        pushDestination.value = destinationForIntent(intent)
     }
 }
 
 @Composable
 private fun AppRoot(
     store: CredentialStore,
-    deepLinkSlug: androidx.compose.runtime.MutableState<String?>,
-    deepLinkInbox: androidx.compose.runtime.MutableState<Boolean>,
+    pushDestination: androidx.compose.runtime.MutableState<PushDestination?>,
 ) {
     val context = LocalContext.current
     var creds by remember { mutableStateOf(store.load()) }
@@ -126,20 +129,17 @@ private fun AppRoot(
         }
     }
 
-    // Deep-link from a tapped notification → harness detail. Cleared
-    // immediately so a back-press doesn't re-navigate on recomposition.
-    LaunchedEffect(deepLinkSlug.value) {
-        val slug = deepLinkSlug.value ?: return@LaunchedEffect
-        if (creds != null) route = Route.Detail(slug)
-        deepLinkSlug.value = null
-    }
-
-    // Attention/inbox push tap → open the Inbox tab (D-004). Slug deep-link
-    // (above) wins when both are present (a harness-scoped push).
-    LaunchedEffect(deepLinkInbox.value) {
-        if (!deepLinkInbox.value) return@LaunchedEffect
-        if (creds != null && deepLinkSlug.value == null) route = Route.Inbox
-        deepLinkInbox.value = false
+    // Consume one destination so an inbox effect cannot overwrite a harness
+    // route after the slug has been cleared. Cold and warm taps use this path.
+    LaunchedEffect(pushDestination.value) {
+        val destination = pushDestination.value ?: return@LaunchedEffect
+        if (creds != null) route = when (destination) {
+            is PushDestination.HarnessDetail -> Route.Detail(destination.slug)
+            is PushDestination.RunLog -> Route.RunLog(destination.slug)
+            PushDestination.Operator -> Route.Operator
+            PushDestination.Inbox -> Route.Inbox
+        }
+        pushDestination.value = null
     }
 
     // System back walks the route hierarchy instead of exiting the activity

@@ -213,16 +213,10 @@ private fun routePushTapSample(
     onOpenOperator: () -> Unit,
     onOpenInbox: () -> Unit,
 ) {
-    when (sample.kind) {
-        "intervention", "plan-review" -> {
-            val harness = sample.harness
-            if (harness.isNullOrBlank()) onOpenInbox() else onOpenHarnessDetail(harness)
-        }
-        "smoke-fail" -> {
-            val harness = sample.harness
-            if (harness.isNullOrBlank()) onOpenInbox() else onOpenRunLog(harness)
-        }
-        "operator-suggestion" -> onOpenOperator()
-        else -> onOpenInbox()
+    when (val destination = resolvePushDestination(sample.kind, sample.harness)) {
+        is PushDestination.HarnessDetail -> onOpenHarnessDetail(destination.slug)
+        is PushDestination.RunLog -> onOpenRunLog(destination.slug)
+        PushDestination.Operator -> onOpenOperator()
+        PushDestination.Inbox -> onOpenInbox()
     }
 }
