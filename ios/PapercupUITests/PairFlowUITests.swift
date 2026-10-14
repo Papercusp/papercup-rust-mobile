@@ -30,6 +30,23 @@ final class PairFlowUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Accessibility keeps the full label even when SwiftUI truncates it.
+    /// Check the rendered bounds against the space needed for the full text.
+    @MainActor
+    private func assertUnclippedText(_ element: XCUIElement, font: UIFont,
+                                    file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(element.exists, file: file, line: line)
+        let bounds = element.frame
+        XCTAssertGreaterThan(bounds.width, 0, file: file, line: line)
+        let required = (element.label as NSString).boundingRect(
+            with: CGSize(width: bounds.width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font], context: nil).height
+        XCTAssertGreaterThanOrEqual(bounds.height + 1, ceil(required),
+                                    "Full guidance must fit its rendered text bounds",
+                                    file: file, line: line)
+    }
+
     @MainActor
     private func pastePairPayload(_ app: XCUIApplication, payload: String) throws {
         let manual = try XCTUnwrap(app.buttons["Paste manually"].waitForExistence(timeout: 10)
@@ -104,6 +121,12 @@ final class PairFlowUITests: XCTestCase {
         UIPasteboard.general.string = nil
         XCTAssertFalse(app.textViews.firstMatch.exists)
         XCTAssertTrue(guidance.exists)
+        assertUnclippedText(guidance, font: .monospacedSystemFont(
+            ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .regular))
+        let instructions = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Remote access")).firstMatch
+        assertUnclippedText(instructions, font: .preferredFont(forTextStyle: .callout))
+        XCTAssertTrue(app.buttons["Try again"].isHittable)
         retainScreenshot(app, named: "expired-pair-fresh-code-guidance")
         app.terminate()
         app.launchArguments = []
@@ -240,6 +263,7 @@ final class PairFlowUITests: XCTestCase {
     /// Smoke test: a fresh-install app launches into PairView with the
     /// expected affordances visible. No backend needed; covers the
     /// SceneManifest fix + CredentialStore + PairView wiring.
+    @MainActor
     func testFreshLaunchShowsPairChoices() {
         let app = XCUIApplication()
         app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
@@ -258,6 +282,9 @@ final class PairFlowUITests: XCTestCase {
         // Settings → Remote access, so the instructions must name them too.
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "cloud workspace")).firstMatch.exists,
                       "Pairing instructions should tell cloud-workspace users where to pair")
+        assertUnclippedText(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Remote access")).firstMatch,
+                           font: .preferredFont(forTextStyle: .callout))
         XCTAssertTrue(app.buttons["Paste manually"].exists, "Paste pairing should remain available without camera access")
 
         // Retain a real candidate image for the review packet after the
