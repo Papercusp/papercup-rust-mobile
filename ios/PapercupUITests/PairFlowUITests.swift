@@ -116,6 +116,14 @@ final class PairFlowUITests: XCTestCase {
         wait(for: [recovered], timeout: 180)
         XCTAssertFalse(app.buttons["pairAgainButton"].exists)
         XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+        let recoveredInbox = app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "awaiting you", "All clear"
+        )).firstMatch
+        XCTAssertTrue(recoveredInbox.waitForExistence(timeout: 30),
+                      "Recovery must restore authorized inbox content before any relaunch")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS[c] %@", "HTTP 502"
+        )).firstMatch.exists, "The outage error must clear when inbox content recovers")
         retainScreenshot(app, named: "owned-operator-recovered-without-repairing")
         app.terminate()
         app.launchArguments = []
