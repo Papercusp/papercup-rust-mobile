@@ -289,38 +289,48 @@ final class PairFlowUITests: XCTestCase {
             return try XCTUnwrap(response["devices"] as? [[String: Any]])
                 .filter { ($0["workspace_id"] as? String) == workspace }
         }
-        func visiblePair(_ app: XCUIApplication, payload: String) {
-            XCTAssertTrue(app.buttons["Paste manually"].waitForExistence(timeout: 10))
-            app.buttons["Paste manually"].tap()
+        func visiblePair(_ app: XCUIApplication, payload: String) throws {
+            let manual = try XCTUnwrap(app.buttons["Paste manually"].waitForExistence(timeout: 10)
+                                       ? app.buttons["Paste manually"] : nil)
+            manual.tap()
             let editor = app.textViews.firstMatch
-            XCTAssertTrue(editor.waitForExistence(timeout: 5))
+            _ = try XCTUnwrap(editor.waitForExistence(timeout: 5) ? editor : nil)
             // typeText logs its argument in XCTest. Use the actual Paste menu
             // so a newly minted token never enters retained diagnostic output.
             UIPasteboard.general.string = payload
             editor.tap()
             editor.press(forDuration: 1)
-            let paste = app.buttons["Paste"].firstMatch
-            XCTAssertTrue(paste.waitForExistence(timeout: 5), "Manual editor must offer Paste")
+            // iOS 18 exposes the edit-menu action as MenuItem, not Button.
+            // Throw on failure: async XCTest assertions can otherwise continue
+            // through Pair and obscure this first failed precondition.
+            let paste = app.menuItems["Paste"].firstMatch
+            let pasteExists = paste.waitForExistence(timeout: 5)
+            if !pasteExists { retainScreenshot(app, named: "manual-paste-menu-missing") }
+            _ = try XCTUnwrap(pasteExists ? paste : nil, "Manual editor must offer Paste")
             paste.tap()
             let allowPaste = app.buttons["Allow Paste"].firstMatch
             if allowPaste.waitForExistence(timeout: 2) { allowPaste.tap() }
             let pair = app.buttons["Pair"]
-            XCTAssertTrue(pair.isEnabled)
+            _ = try XCTUnwrap(pair.isEnabled ? pair : nil, "Pasted payload must enable pairing")
             pair.tap()
             let loaded = app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@",
                             "awaiting you", "All clear")
             ).firstMatch
-            XCTAssertTrue(loaded.waitForExistence(timeout: 30),
-                          "A real authorized attention read must complete after pairing")
+            _ = try XCTUnwrap(loaded.waitForExistence(timeout: 30) ? loaded : nil,
+                              "A real authorized attention read must complete after pairing")
         }
 
         let initialDevices = try await ownedDevices()
         XCTAssertEqual(initialDevices.count, 0, "Fixture must start without paired devices")
         let app = XCUIApplication()
+        defer {
+            UIPasteboard.general.string = nil
+            app.terminate()
+        }
         app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
         app.launch()
-        visiblePair(app, payload: raw)
+        try visiblePair(app, payload: raw)
         let originalDevices = try await ownedDevices()
         XCTAssertEqual(originalDevices.count, 1)
         let original = try XCTUnwrap(originalDevices.first?["device_id"] as? String)
@@ -348,7 +358,7 @@ final class PairFlowUITests: XCTestCase {
         XCTAssertEqual(fresh["workspaceId"] as? String, workspace)
         fresh["server"] = server // same owned loopback forwarding route
         let freshJSON = try JSONSerialization.data(withJSONObject: fresh)
-        visiblePair(app, payload: try XCTUnwrap(String(data: freshJSON, encoding: .utf8)))
+        try visiblePair(app, payload: try XCTUnwrap(String(data: freshJSON, encoding: .utf8)))
         let repairedDevices = try await ownedDevices()
         XCTAssertEqual(repairedDevices.count, 1)
         let repaired = try XCTUnwrap(repairedDevices.first?["device_id"] as? String)
@@ -356,8 +366,6 @@ final class PairFlowUITests: XCTestCase {
         XCTAssertFalse(app.buttons["pairAgainButton"].exists)
         retainScreenshot(app, named: "live-repaired-authorized-workspace")
         _ = try await control("devices/" + repaired, method: "DELETE")
-        UIPasteboard.general.string = nil
-        app.terminate()
     }
 
     /// Push deep-link routing: a notification-tap userInfo (the exact
