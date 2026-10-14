@@ -42,4 +42,36 @@ final class DesktopRouteTests: XCTestCase {
         XCTAssertEqual(DesktopVoiceSession.Route(kind: "mesh", url: "http://10.10.0.2:3070").label, "mesh")
         XCTAssertEqual(DesktopVoiceSession.Route(kind: "tunnel", url: "https://t").label, "tunnel")
     }
+
+    func testPairingNamesCloudWorkspaceWhenAnyAdvertisedRouteIsRelay() {
+        let creds = DeviceCredentials(
+            server: "https://portal.example.com/w/acme/device",
+            deviceToken: "test-token",
+            deviceId: "test-device",
+            workspaceId: "acme",
+            baseUrlsJson: """
+                [{"kind":"lan","url":"http://192.168.1.20:3070"},
+                 {"kind":"relay","url":"https://portal.example.com/w/acme/device"}]
+                """
+        )
+        XCTAssertTrue(creds.isCloudRelay)
+        XCTAssertEqual(creds.pairedOperatorLabel, "Cloud workspace")
+    }
+
+    func testPairingKeepsDesktopLabelWithoutAnAdvertisedRelay() {
+        for routes in [nil, "", "not-json", "{}", "[]",
+                       "[{\"kind\":\"tunnel\",\"url\":\"https://desk.example.com\"}]",
+                       "[{\"kind\":\"satellite\",\"url\":\"https://future.example.com\"}]"] as [String?] {
+            let creds = DeviceCredentials(
+                server: "https://desk.example.com",
+                deviceToken: "test-token",
+                deviceId: "test-device",
+                workspaceId: "acme",
+                baseUrlsJson: routes
+            )
+            XCTAssertFalse(creds.isCloudRelay, "routes: \(String(describing: routes))")
+            XCTAssertEqual(creds.pairedOperatorLabel, "Desktop",
+                           "routes: \(String(describing: routes))")
+        }
+    }
 }

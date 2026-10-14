@@ -60,7 +60,7 @@ struct SettingsView: View {
 
     private var pairingSection: some View {
         sectionShell("Pairing") {
-            infoRow("Desktop", value: creds.server)
+            infoRow(creds.pairedOperatorLabel, value: creds.server)
             infoRow("Workspace", value: creds.workspaceId)
             infoRow("Device ID", value: creds.deviceId, mono: true)
             // Mesh = Defguard self-enrollment (D-005): if the pair response

@@ -22,6 +22,9 @@ struct DeviceCredentials: Equatable {
     /// True when the stored route list advertises a hosted relay route.
     var isCloudRelay: Bool { DeviceCredentials.routesIncludeRelay(baseUrlsJson) }
 
+    /// Settings names the paired operator using the same advertised route mode.
+    var pairedOperatorLabel: String { isCloudRelay ? "Cloud workspace" : "Desktop" }
+
     static func routesIncludeRelay(_ json: String?) -> Bool {
         guard let json, let data = json.data(using: .utf8),
               let routes = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
