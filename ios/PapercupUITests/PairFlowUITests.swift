@@ -199,7 +199,8 @@ final class PairFlowUITests: XCTestCase {
         // send a marker message, then assert the persisted thread re-read
         // brings it back as a turn (proves device→server→PG→device).
         tabButton("Operator").tap()
-        let marker = "Live iOS sim E2E (su-e7a83) — reply with one short sentence."
+        let expectedReply = "Paired iOS reply \(UUID().uuidString)"
+        let marker = "Live iOS sim E2E (su-e7a83). Reply with exactly this text and no other words: \(expectedReply)"
         let field = app.textFields["Message the operator…"]
         XCTAssertTrue(field.waitForExistence(timeout: 10), "chat composer should render")
         field.tap()
@@ -216,13 +217,17 @@ final class PairFlowUITests: XCTestCase {
                       "submitted message should render before the converse SSE completes (WI-4984)")
         XCTAssertTrue(app.staticTexts["Operator is working…"].exists,
                       "converse should still be draining while the user's turn is already visible")
-        // And the operator's reply lands once the converse completes (the
-        // thinking bubble clears; a fresh assistant turn renders under our
-        // marker). 120s budget — a real operator turn burns a model call.
+        // A failed backend also clears the thinking bubble. Require a unique
+        // assistant reply: the user's longer prompt cannot match this exact
+        // static-text label, and an earlier conversation cannot supply it.
+        // 120s budget — a real operator turn burns a model call.
         let working = app.staticTexts["Operator is working…"]
         let gone = NSPredicate(format: "exists == false")
         expectation(for: gone, evaluatedWith: working, handler: nil)
         waitForExpectations(timeout: 120)
+        XCTAssertTrue(app.staticTexts[expectedReply].waitForExistence(timeout: 10),
+                      "a completed send must render the actual assistant reply, not just dismiss its spinner")
+        retainScreenshot(app, named: "paired-chat-reply")
 
         // Normal relaunch must load Keychain credentials without re-consuming
         // the one-shot Remote access pair token or using a credential hook.
@@ -233,6 +238,8 @@ final class PairFlowUITests: XCTestCase {
                       "Keychain pairing should survive an ordinary relaunch")
         XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists,
                        "a paired relaunch must not return to onboarding")
+        XCTAssertTrue(app.staticTexts[expectedReply].waitForExistence(timeout: 20),
+                      "the assistant reply must survive a fresh persisted conversation read after relaunch")
         retainScreenshot(app, named: "paired-keychain-relaunch")
     }
 
