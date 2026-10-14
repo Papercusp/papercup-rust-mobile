@@ -96,7 +96,8 @@ final class PairFlowUITests: XCTestCase {
         let guidance = app.staticTexts["That pairing code was already used or expired. Mint a fresh one from your desktop."]
         XCTAssertTrue(guidance.waitForExistence(timeout: 30))
         XCTAssertTrue(app.buttons["Try again"].exists)
-        XCTAssertFalse(app.tabBars.buttons["Operator"].exists)
+        let operatorTab = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Operator")).firstMatch
+        XCTAssertFalse(operatorTab.exists)
         // Hide private input before retaining the recovery screen.
         let back = try XCTUnwrap(app.buttons["Back"].exists ? app.buttons["Back"] : nil)
         back.tap()
@@ -111,7 +112,8 @@ final class PairFlowUITests: XCTestCase {
                       "Failed pairing must not leave an authorized Keychain credential")
         retainScreenshot(app, named: "expired-pair-ordinary-relaunch-unpaired")
         try visiblePair(app, payload: raw)
-        XCTAssertTrue(app.tabBars.buttons["Operator"].exists)
+        XCTAssertTrue(operatorTab.waitForExistence(timeout: 10),
+                      "Fresh pairing must show the authorized Operator tab")
         retainScreenshot(app, named: "expired-pair-fresh-code-authorized")
         app.terminate()
         app.launch()
