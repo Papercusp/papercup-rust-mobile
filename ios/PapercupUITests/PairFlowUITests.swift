@@ -42,7 +42,9 @@ final class PairFlowUITests: XCTestCase {
             with: CGSize(width: bounds.width, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: font], context: nil).height
-        XCTAssertGreaterThanOrEqual(bounds.height + 1, ceil(required),
+        // UIKit typographic leading and SwiftUI pixel-snapped baselines differ
+        // by less than two points here; a missing line is much taller.
+        XCTAssertGreaterThanOrEqual(bounds.height + 2, ceil(required),
                                     "Full guidance must fit its rendered text bounds",
                                     file: file, line: line)
     }
