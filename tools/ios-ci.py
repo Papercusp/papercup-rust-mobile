@@ -35,6 +35,8 @@ SMOKE_TESTS = (
     'PapercupUITests/PairFlowUITests/testFreshLaunchShowsPairChoices',
     'PapercupUITests/CloudWorkspaceOfflineUITests/testCloudWorkspaceOfflineThenRecoversWithoutRepairing',
     'PapercupUITests/CloudWorkspaceOfflineUITests/testCloudWorkspaceShowsRelayLabelInSettings',
+    'PapercupUITests/CloudWorkspaceOfflineUITests/testTransportFailureRecoversWithoutRepairing',
+    'PapercupUITests/CloudWorkspaceOfflineUITests/testAuthorizationRefusalOffersPairAgainAndClearsKeychain',
 )
 
 

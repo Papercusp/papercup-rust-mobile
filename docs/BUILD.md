@@ -292,7 +292,11 @@ python3 tools/ios-ci.py --mode check --force
 
 Simulator mode reuses the Android source/submodule fingerprint and bounded phase
 logger, then runs the static release contract, pinned Rust setup, existing native
-build/unit/result guards, exactly three backend-free UI tests and screenshot export.
+build/unit/result guards, exactly five backend-free UI tests and screenshot export.
+The controlled relay tests cover cloud and transport outage recovery plus HTTP
+401/403 re-pair guidance and Keychain clearing across ordinary relaunch. They
+verify native client behavior; real token expiry/revocation, workspace isolation
+and LAN/public HTTPS routing still require the private/live integration journeys.
 It does not build a device archive, export an IPA or emit a candidate manifest.
 Explicit `--mode check` adds the SDK26 unsigned device archive and archive
 validation; both check and signed modes still require Xcode26+, iPhoneOS SDK26+

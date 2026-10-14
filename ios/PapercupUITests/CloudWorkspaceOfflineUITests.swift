@@ -20,15 +20,16 @@ import XCTest
 /// Minimal HTTP/1.1 stand-in for the hosted relay: one request per
 /// connection, answered and closed (`Connection: close`).
 final class RelayStub {
-    enum Mode { case workspaceOffline, online }
+    enum Mode { case workspaceOffline, online, transportFailure, unauthorized, forbidden }
 
     private let queue = DispatchQueue(label: "com.papercuspai.uitests.relay-stub")
     private let listener: NWListener
     private let lock = NSLock()
-    private var mode: Mode = .workspaceOffline
+    private var mode: Mode
     private var heartbeats: [Mode: Int] = [:]
 
-    init() throws {
+    init(initialMode: Mode = .workspaceOffline) throws {
+        mode = initialMode
         let params = NWParameters.tcp
         params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         listener = try NWListener(using: params)
@@ -119,10 +120,23 @@ final class RelayStub {
         if isHeartbeat { heartbeats[current, default: 0] += 1 }
         lock.unlock()
 
+        if current == .transportFailure {
+            conn.cancel()
+            return
+        }
+
         let status: String
         let body: String
         var extraHeaders = ""
         switch current {
+        case .unauthorized:
+            status = "401 Unauthorized"
+            body = #"{"error":"invalid_or_expired_token"}"#
+        case .forbidden:
+            status = "403 Forbidden"
+            body = #"{"error":"device_revoked"}"#
+        case .transportFailure:
+            return // Handled by closing the transport above, without an HTTP response.
         case .workspaceOffline:
             // The relay's exact refusal for a stopped or starting workspace.
             status = "503 Service Unavailable"
@@ -159,6 +173,105 @@ final class CloudWorkspaceOfflineUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func launchPairedApp(port: UInt16) throws -> XCUIApplication {
+        let creds = ["server": "http://127.0.0.1:\(port)",
+                     "deviceToken": "uitest-recovery-token", "deviceId": "uitest-recovery-device",
+                     "workspaceId": "uitest-recovery-workspace"]
+        let json = try XCTUnwrap(String(data: JSONSerialization.data(withJSONObject: creds), encoding: .utf8))
+        let app = XCUIApplication()
+        app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES",
+                               "-com.papercuspai.uitests.seedCredentials", json]
+        app.launch()
+        return app
+    }
+
+    private func waitForHeartbeat(_ relay: RelayStub, mode: RelayStub.Mode, after count: Int = 0) {
+        let received = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            relay.heartbeatCount(in: mode) > count
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [received], timeout: 30), .completed,
+                       "the actual native heartbeat must reach the selected backend state")
+    }
+
+    /// P-008 native UI contract: an actual transport failure preserves pairing,
+    /// and a successful heartbeat recovers without writing credentials again.
+    /// This controlled responder proves client behavior, not public/LAN routing.
+    func testTransportFailureRecoversWithoutRepairing() throws {
+        let relay = try RelayStub(initialMode: .online)
+        let port = try relay.start()
+        defer { relay.stop() }
+        let app = try launchPairedApp(port: port)
+        waitForHeartbeat(relay, mode: .online)
+
+        relay.setMode(.transportFailure)
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let title = app.staticTexts["offline-banner-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 30))
+        XCTAssertEqual(title.label, "Desktop offline")
+        XCTAssertGreaterThan(relay.heartbeatCount(in: .transportFailure), 0)
+        XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+        XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+        retainScreenshot(app, named: "transport-offline-keeps-pairing")
+
+        let before = relay.heartbeatCount(in: .online)
+        relay.setMode(.online)
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let cleared = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: title)
+        wait(for: [cleared], timeout: 45)
+        waitForHeartbeat(relay, mode: .online, after: before)
+        XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+        XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+        retainScreenshot(app, named: "transport-recovered-without-repairing")
+
+        // An ordinary launch must still load the saved pairing. A seed hook
+        // on this launch would hide accidental credential deletion on failure.
+        let beforeRelaunch = relay.heartbeatCount(in: .online)
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        waitForHeartbeat(relay, mode: .online, after: beforeRelaunch)
+        XCTAssertTrue(app.staticTexts["Needs you"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+    }
+
+    /// Both HTTP refusal shapes must offer Pair again, rather than an offline
+    /// loop. The real backend's expiry/signature/revocation enforcement is a
+    /// separate integration contract; this responder only controls its reply.
+    func testAuthorizationRefusalOffersPairAgainAndClearsKeychain() throws {
+        for (mode, label) in [(RelayStub.Mode.unauthorized, "unauthorized"), (.forbidden, "forbidden")] {
+            let relay = try RelayStub(initialMode: .online)
+            let port = try relay.start()
+            defer { relay.stop() }
+            let app = try launchPairedApp(port: port)
+            waitForHeartbeat(relay, mode: .online)
+            XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+
+            relay.setMode(mode)
+            XCUIDevice.shared.press(.home)
+            app.activate()
+            let pairAgain = app.buttons["pairAgainButton"]
+            XCTAssertTrue(pairAgain.waitForExistence(timeout: 30), "\(label) must offer re-pairing")
+            XCTAssertGreaterThan(relay.heartbeatCount(in: mode), 0)
+            XCTAssertFalse(app.staticTexts["offline-banner-title"].exists,
+                           "an answered authorization refusal is not a transport outage")
+            XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+            retainScreenshot(app, named: "\(label)-offers-pair-again")
+
+            pairAgain.tap()
+            XCTAssertTrue(app.staticTexts["Pair with your desktop"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons["Paste manually"].exists)
+            retainScreenshot(app, named: "\(label)-returned-to-remote-access-pairing")
+            app.terminate()
+            app.launchArguments = []
+            app.launch()
+            XCTAssertTrue(app.staticTexts["Pair with your desktop"].waitForExistence(timeout: 10),
+                          "Pair again must clear Keychain credentials across an ordinary relaunch")
+            app.terminate()
+        }
     }
 
     /// Spec clauses BYOC-P-015-offline-message and

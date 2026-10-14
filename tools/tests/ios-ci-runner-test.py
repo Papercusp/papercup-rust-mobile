@@ -36,7 +36,7 @@ class NativeRunnerTests(unittest.TestCase):
         self.calls = []
         self.commands = {}
         self.failure_phase = None
-        self.counts = {'passedTests': 3, 'failedTests': 0, 'skippedTests': 0}
+        self.counts = {'passedTests': len(ci.SMOKE_TESTS), 'failedTests': 0, 'skippedTests': 0}
         self.args = argparse.Namespace(mode='check', distribution='app-store-connect', preflight=False, force=False,
                                        paired_ui=False, pair_payload_file=None,
                                        build_number=None, secrets_file=None,
@@ -134,6 +134,13 @@ class NativeRunnerTests(unittest.TestCase):
         self.assertIn('--require-current-sdk', self.commands['release-contract'][0])
         self.assertTrue((self.state / 'success.json').exists())
         self.assertTrue((self.state / 'success-simulator.json').exists())
+
+    def test_old_three_test_summary_cannot_admit_recovery_coverage(self):
+        self.args.mode = 'simulator'
+        self.counts = {'passedTests': 3, 'failedTests': 0, 'skippedTests': 0}
+        self.assertEqual(self.run_ci(), 1)
+        self.assertEqual(self.latest()['status'], 'failed')
+        self.assertFalse((self.state / 'success-simulator.json').exists())
 
     def test_simulator_source_drift_prevents_success(self):
         self.args.mode = 'simulator'
@@ -257,7 +264,7 @@ class NativeRunnerTests(unittest.TestCase):
         real_summary = self.summary
 
         def summary(command, **kwargs):
-            self.counts['passedTests'] = 1 if 'paired-ui.xcresult' in ' '.join(command) else 3
+            self.counts['passedTests'] = 1 if 'paired-ui.xcresult' in ' '.join(command) else len(ci.SMOKE_TESTS)
             return real_summary(command, **kwargs)
 
         with patch.object(self, 'summary', side_effect=summary):
@@ -431,7 +438,7 @@ class NativeRunnerTests(unittest.TestCase):
         self.counts = {'passedTests': 1, 'failedTests': 0, 'skippedTests': 0}
         real_summary = self.summary
         def summary(command, **kwargs):
-            self.counts['passedTests'] = 1 if 'paired-ui.xcresult' in ' '.join(command) else 3
+            self.counts['passedTests'] = 1 if 'paired-ui.xcresult' in ' '.join(command) else len(ci.SMOKE_TESTS)
             return real_summary(command, **kwargs)
         with patch.object(self, 'summary', side_effect=summary):
             self.assertEqual(self.run_ci(), 0)
