@@ -39,7 +39,7 @@ class NativeRunnerTests(unittest.TestCase):
         self.failure_phase = None
         self.counts = {'passedTests': len(ci.SMOKE_TESTS), 'failedTests': 0, 'skippedTests': 0}
         self.args = argparse.Namespace(mode='check', distribution='app-store-connect', preflight=False, force=False,
-                                       paired_ui=False, reinstall_ui=False, pair_payload_file=None,
+                                       paired_ui=False, reinstall_ui=False, offline_recovery_ui=False, pair_payload_file=None,
                                        expired_pair_payload_file=None,
                                        build_number=None, secrets_file=None,
                                        upload=False, confirm_upload=False)
@@ -132,6 +132,34 @@ class NativeRunnerTests(unittest.TestCase):
         self.args.paired_ui = False
         self.assertEqual(self.run_ci(), 1)
         self.assertIn('requires --paired-ui', self.latest()['error'])
+
+    def test_owned_operator_recovery_selects_only_its_fresh_token_case(self):
+        self.args.mode = 'simulator'
+        self.args.paired_ui = True
+        self.args.offline_recovery_ui = True
+        pair_path = self.base / 'fresh.json'
+        pair_path.write_text(json.dumps({'server': 'https://native-iphone-test.example.org',
+                                        'workspaceId': 'test-runtime-native-test', 'pairToken': 'private-token'}))
+        pair_path.chmod(0o600)
+        self.args.pair_payload_file = str(pair_path)
+        original_summary = self.summary
+        def summary(command, **kwargs):
+            if 'paired-ui.xcresult' in ' '.join(command):
+                kwargs['stdout'].write(json.dumps({'passedTests': 1, 'failedTests': 0, 'skippedTests': 0}))
+                return subprocess.CompletedProcess(command, 0)
+            return original_summary(command, **kwargs)
+        self.summary = summary
+        self.assertEqual(self.run_ci(), 0)
+        command, env = self.commands['paired-ui']
+        self.assertIn('-only-testing:PapercupUITests/PairFlowUITests/testOwnedOperatorOfflineThenRecoversWithoutRepairing', command)
+        self.assertNotIn('TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD', env)
+        for changes in ({'paired_ui': False}, {'mode': 'signed'},
+                        {'expired_pair_payload_file': str(pair_path)}, {'reinstall_ui': True}):
+            self.calls.clear()
+            with patch.multiple(self.args, **changes):
+                self.assertEqual(self.run_ci(), 1)
+                self.assertNotIn('build', self.calls)
+                self.assertIn('--offline-recovery-ui requires', self.latest()['error'])
 
     def test_simulator_pass_keeps_test_proof_without_archive_or_signing(self):
         self.args.mode = 'simulator'

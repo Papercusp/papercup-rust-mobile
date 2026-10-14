@@ -84,6 +84,51 @@ final class PairFlowUITests: XCTestCase {
                           "A real authorized attention read must complete after pairing")
     }
 
+    /// The maintained disposable fixture terminates its actual operator after
+    /// the first authorized heartbeat, then starts a new PID with the same
+    /// private database and signing identity. No controlled responder or seed.
+    @MainActor
+    func testOwnedOperatorOfflineThenRecoversWithoutRepairing() throws {
+        guard let raw = ProcessInfo.processInfo.environment["PAPERCUP_PAIR_PAYLOAD"], !raw.isEmpty else {
+            throw XCTSkip("A fresh owned public HTTPS fixture payload is required.")
+        }
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+        let workspace = try XCTUnwrap(payload["workspaceId"] as? String)
+        let server = try XCTUnwrap(payload["server"] as? String)
+        let base = try XCTUnwrap(URL(string: server))
+        _ = try XCTUnwrap(workspace.hasPrefix("test-runtime-") && base.scheme == "https" &&
+                          base.host?.hasPrefix("native-iphone-") == true ? base : nil,
+                          "Use only the owned interruptible fixture")
+        let app = XCUIApplication()
+        defer { UIPasteboard.general.string = nil; app.terminate() }
+        app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
+        app.launch()
+        try visiblePair(app, payload: raw)
+        UIPasteboard.general.string = nil
+        retainScreenshot(app, named: "owned-operator-authorized-before-stop")
+        let title = app.staticTexts["offline-banner-title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 90), "Stopping the real operator must show offline recovery")
+        XCTAssertEqual(title.label, "Desktop offline")
+        XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+        XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+        retainScreenshot(app, named: "owned-operator-stopped-keeps-pairing")
+        let recovered = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: title)
+        wait(for: [recovered], timeout: 180)
+        XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+        XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+        retainScreenshot(app, named: "owned-operator-recovered-without-repairing")
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        let loaded = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@",
+                                                        "awaiting you", "All clear")).firstMatch
+        XCTAssertTrue(loaded.waitForExistence(timeout: 30), "Ordinary relaunch must still authorize the original pairing")
+        XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+        XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+        XCTAssertFalse(title.exists)
+        retainScreenshot(app, named: "owned-operator-recovered-keychain-relaunch")
+    }
+
     /// Real expired-token refusal followed by fresh pairing on the same owned
     /// public backend. No credential seed or controlled HTTP responder.
     @MainActor

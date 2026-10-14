@@ -427,6 +427,10 @@ def _execute(root, state, args):
         if args.upload and args.distribution != 'app-store-connect':
             raise ValueError('Registered-device IPA export cannot be uploaded to App Store Connect')
         paired_env = None
+        offline_recovery = getattr(args, 'offline_recovery_ui', False)
+        if offline_recovery and (not args.paired_ui or args.mode != 'simulator'
+                                 or args.expired_pair_payload_file or args.reinstall_ui):
+            raise ValueError('--offline-recovery-ui requires simulator --paired-ui and a separate one-shot token')
         if args.expired_pair_payload_file and not args.paired_ui:
             raise ValueError('--expired-pair-payload-file requires --paired-ui')
         if args.reinstall_ui and (args.paired_ui or args.mode != 'simulator'):
@@ -505,9 +509,11 @@ def _execute(root, state, args):
         ui_test(root, env, attempt, phases, 'ui-smoke', SMOKE_TESTS)
         if args.paired_ui:
             paired_env.update(env)
+            paired_case = ('testOwnedOperatorOfflineThenRecoversWithoutRepairing' if offline_recovery else
+                           'testPublicExpiredPairThenFreshPair' if args.expired_pair_payload_file else
+                           'testPairAndPairedNavigation')
             ui_test(root, paired_env, attempt, phases, 'paired-ui',
-                    ('PapercupUITests/PairFlowUITests/' + ('testPublicExpiredPairThenFreshPair'
-                     if args.expired_pair_payload_file else 'testPairAndPairedNavigation'),))
+                    ('PapercupUITests/PairFlowUITests/' + paired_case,))
         if args.reinstall_ui:
             paired_env.update(env)
             reinstall_ui(root, paired_env, attempt, phases)
@@ -615,6 +621,8 @@ def main():
     parser.add_argument('--preflight', action='store_true')
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--paired-ui', action='store_true')
+    parser.add_argument('--offline-recovery-ui', action='store_true',
+                        help='With simulator --paired-ui, verify the owned fixture operator stops and recovers')
     parser.add_argument('--reinstall-ui', action='store_true',
                         help='Pair, prove ordinary relaunch, uninstall/reinstall and verify cleared pairing')
     parser.add_argument('--pair-payload-file')
