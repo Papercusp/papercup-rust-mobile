@@ -711,12 +711,15 @@ class NativeRunnerTests(unittest.TestCase):
         attempt.mkdir()
         phases = []
         payload = '{"token":"private-token","server":"https://private.example"}'
+        expired_payload = '{"pairToken":"expired-private-token","server":"https://private.example"}'
         env = {'TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD': payload,
+               'TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD': expired_payload,
                'IOS_DIST_CERT_PASSWORD': 'private-password'}
 
         def noisy_failure(name, command, root, env, attempt, phases):
             log = attempt / (name + '.log')
-            log.write_text(payload + '\nprivate-token\nprivate-password\n')
+            log.write_text(payload + '\n' + expired_payload +
+                           '\nprivate-token\nexpired-private-token\nprivate-password\n')
             phases.append({'name': name, 'sha256': ci.digest(log)})
             raise RuntimeError('fixture failed')
 
@@ -724,6 +727,9 @@ class NativeRunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'fixture failed'):
                 ci.run_phase('paired-ui', [], self.root, env, attempt, phases)
         text = (attempt / 'paired-ui.log').read_text()
+        self.assertNotIn(payload, text)
+        self.assertNotIn(expired_payload, text)
+        self.assertNotIn('expired-private-token', text)
         self.assertNotIn('private-token', text)
         self.assertNotIn('private-password', text)
         self.assertEqual(phases[0]['sha256'], ci.digest(attempt / 'paired-ui.log'))

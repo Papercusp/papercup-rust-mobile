@@ -84,8 +84,10 @@ final class PairFlowUITests: XCTestCase {
                           "Use only the owned public HTTPS fixture")
         XCTAssertEqual(expired["server"] as? String, server)
         XCTAssertEqual(expired["workspaceId"] as? String, workspace)
-        XCTAssertNotEqual(try XCTUnwrap(expired["pairToken"] as? String),
-                          try XCTUnwrap(fresh["pairToken"] as? String))
+        let expiredToken = try XCTUnwrap(expired["pairToken"] as? String)
+        let freshToken = try XCTUnwrap(fresh["pairToken"] as? String)
+        XCTAssertFalse(expiredToken == freshToken,
+                       "Expired and fresh fixture tokens must be distinct")
         let app = XCUIApplication()
         defer { UIPasteboard.general.string = nil; app.terminate() }
         app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
