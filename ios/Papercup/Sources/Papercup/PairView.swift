@@ -24,7 +24,8 @@ struct PairView: View {
         ZStack {
             PapercupTheme.screenGradient.ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            ScrollView {
+              VStack(spacing: 24) {
                 VStack(spacing: 6) {
                     PapercuspWordmark()
                         .frame(width: 256, height: 84)
@@ -47,6 +48,7 @@ struct PairView: View {
                     Text("On your desktop or cloud workspace: Settings → Remote access → Pair a phone, then scan the QR code shown.")
                         .font(.callout)
                         .foregroundStyle(PapercupTheme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: 320)
 
                     PrimaryPairButton(title: redeeming ? "Pairing…" : "Scan QR", disabled: redeeming) {
@@ -106,6 +108,7 @@ struct PairView: View {
                         Text(error)
                             .font(.footnote.monospaced())
                             .foregroundStyle(PapercupTheme.error)
+                            .fixedSize(horizontal: false, vertical: true)
                         Button(redeeming ? "Retrying…" : "Try again") {
                             if mode == .paste {
                                 redeem(raw: pasteText)
@@ -129,7 +132,9 @@ struct PairView: View {
                 .foregroundStyle(PapercupTheme.accentStrong)
             }
             .padding(.horizontal, 32)
+            .padding(.vertical, 24)
             .multilineTextAlignment(.center)
+            }
         }
         .tint(PapercupTheme.accent)
     }
