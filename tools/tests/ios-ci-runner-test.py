@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -141,6 +142,66 @@ class NativeRunnerTests(unittest.TestCase):
         self.assertEqual(self.run_ci(), 1)
         self.assertEqual(self.latest()['status'], 'failed')
         self.assertFalse((self.state / 'success-simulator.json').exists())
+
+    def test_copied_derived_data_rebuilds_compiled_state_and_keeps_packages(self):
+        ci.prepare_derived_data(self.root, self.native)
+        directory = self.root / 'ios/build/dd'
+        for name in ('ModuleCache.noindex/old.pch', 'Build/old.o',
+                     'SourcePackages/checkouts/package/source.swift'):
+            path = directory / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('old checkout')
+        copied = self.base / 'copied-repo'
+        shutil.copytree(self.root, copied)
+        proof = ci.prepare_derived_data(copied, self.native)
+        self.assertTrue(proof['reset'])
+        self.assertEqual(proof['previousOwner']['checkout'], str(self.root.resolve()))
+        self.assertFalse((copied / 'ios/build/dd/ModuleCache.noindex').exists())
+        self.assertFalse((copied / 'ios/build/dd/Build').exists())
+        self.assertTrue((copied / 'ios/build/dd/SourcePackages/checkouts/package/source.swift').exists())
+        self.assertTrue((directory / 'ModuleCache.noindex/old.pch').exists())
+
+    def test_native_execution_clears_unowned_cache_before_unit_build(self):
+        directory = self.root / 'ios/build/dd'
+        directory.mkdir(parents=True)
+        stale = directory / 'ModuleCache.noindex'
+        stale.mkdir()
+        (stale / 'old.pch').write_text('copied cache without ownership')
+        original_phase = self.phase
+
+        def phase(name, *args):
+            if name == 'unit':
+                self.assertFalse(stale.exists())
+            return original_phase(name, *args)
+
+        self.phase = phase
+        self.assertEqual(self.run_ci(), 0)
+        proof = json.loads((Path(self.latest()['attempt']) / 'derived-data.json').read_text())
+        self.assertTrue(proof['reset'])
+        self.assertIn('ModuleCache.noindex', proof['removed'])
+
+    def test_derived_data_reuses_same_path_and_resets_changed_toolchain(self):
+        ci.prepare_derived_data(self.root, self.native)
+        compiled = self.root / 'ios/build/dd/Build/keep.o'
+        compiled.parent.mkdir()
+        compiled.write_text('compiled')
+        self.assertFalse(ci.prepare_derived_data(self.root, self.native)['reset'])
+        self.assertTrue(compiled.exists())
+        changed = dict(self.native, xcode='Xcode 27.0')
+        self.assertTrue(ci.prepare_derived_data(self.root, changed)['reset'])
+        self.assertFalse(compiled.exists())
+
+    def test_derived_data_rejects_link_without_touching_external_cache(self):
+        external = self.base / 'external-cache'
+        external.mkdir()
+        sentinel = external / 'keep.pch'
+        sentinel.write_text('external')
+        directory = self.root / 'ios/build/dd'
+        directory.parent.mkdir(parents=True)
+        directory.symlink_to(external, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'symlink'):
+            ci.prepare_derived_data(self.root, self.native)
+        self.assertTrue(sentinel.exists())
 
     def test_simulator_source_drift_prevents_success(self):
         self.args.mode = 'simulator'

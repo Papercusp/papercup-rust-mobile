@@ -305,6 +305,11 @@ and an available iOS26+ iPhone simulator (Intel hosts need the universal runtime
 An exclusive native executor lock prevents overlap. Logs, XCTest bundles, summaries,
 screenshots, optional archive and SHA256 inventory are retained under
 `~/.local/state/papercusp/ios-ci/attempts/`; `latest.json` is the verdict.
+Before the unit build, the runner verifies DerivedData's absolute checkout and
+Xcode/SDK identity. Copied, unmarked or changed-toolchain caches lose compiled
+state while retaining SwiftPM downloads; `derived-data.json` records the reset.
+Matching ownership preserves incremental builds. Prior retained test attempts
+are separate from this build cache and remain intact.
 `--preflight` does not establish a passing test result. Changed source prevents
 test admission or upload. Daily success reuse requires the same source, toolchain,
 mode and hash-verified artifacts. Simulator and archive-check proofs have separate

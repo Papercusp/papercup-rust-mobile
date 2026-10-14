@@ -200,6 +200,39 @@ def ui_test(root, env, attempt, phases, name, tests):
         raise ValueError(name + ' did not retain a candidate screenshot')
 
 
+def prepare_derived_data(root, tools):
+    """Compiled Xcode state is bound to its absolute checkout and toolchain."""
+    directory = root / 'ios/build/dd'
+    if directory.is_symlink():
+        raise ValueError('Native DerivedData must not be a symlink')
+    owner = {'schemaVersion': 1, 'checkout': str(root.resolve()),
+             'derivedData': str(directory.resolve()),
+             'toolchain': {key: tools.get(key) for key in
+                           ('xcode', 'developerDir', 'iosSDK', 'simulatorSDK')}}
+    marker = directory / 'papercup-native-owner.json'
+    try:
+        previous = json.loads(marker.read_text())
+    except (OSError, ValueError):
+        previous = None
+    reset = previous != owner
+    removed = []
+    if reset and directory.exists():
+        # SwiftPM downloads can be reused after a copy. PCH/module caches,
+        # build databases and products embed absolute paths and cannot.
+        for path in directory.iterdir():
+            if path.name == 'SourcePackages' and not path.is_symlink():
+                continue
+            removed.append(path.name)
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+    directory.mkdir(parents=True, exist_ok=True)
+    write_json(marker, owner)
+    return {'owner': owner, 'previousOwner': previous, 'reset': reset,
+            'removed': sorted(removed)}
+
+
 def artifacts(attempt):
     # Signing keys/keychains live in a separate TemporaryDirectory, never here.
     return [{'path': str(p.relative_to(attempt)), 'size': p.stat().st_size, 'sha256': digest(p)}
@@ -387,6 +420,8 @@ def _execute(root, state, args):
             raise ValueError('Effective Rust version does not match rust-toolchain.toml')
         run_phase('dependencies', ['npm', 'ci'], root, env, attempt, phases)
         run_phase('build', ['make', 'build-ios'], root, env, attempt, phases)
+        write_json(attempt / 'derived-data.json',
+                   prepare_derived_data(root, result['toolchain']))
         # The result guard must see this attempt's evidence, never an old bundle.
         for path in (root / 'ios/build').glob('unit-*'):
             if path.is_dir():
