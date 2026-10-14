@@ -238,6 +238,11 @@ final class PairFlowUITests: XCTestCase {
                       "Keychain pairing should survive an ordinary relaunch")
         XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists,
                        "a paired relaunch must not return to onboarding")
+        XCTAssertTrue(app.staticTexts["Needs you"].waitForExistence(timeout: 10),
+                      "an ordinary paired relaunch should open the default Inbox tab")
+        // AppRoot starts on Inbox. Open Operator so the reply assertion
+        // exercises a new persisted conversation read after the relaunch.
+        operatorTab.tap()
         XCTAssertTrue(app.staticTexts[expectedReply].waitForExistence(timeout: 20),
                       "the assistant reply must survive a fresh persisted conversation read after relaunch")
         retainScreenshot(app, named: "paired-keychain-relaunch")
