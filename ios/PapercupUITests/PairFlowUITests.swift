@@ -248,6 +248,118 @@ final class PairFlowUITests: XCTestCase {
         retainScreenshot(app, named: "paired-keychain-relaunch")
     }
 
+    /// P-008 live authorization acceptance against an owned disposable operator.
+    /// Desktop controls travel over its private loopback forwarding route; no
+    /// production workspace, credential seed or controlled HTTP responder is used.
+    @MainActor
+    func testLiveRevocationAndRepairing() async throws {
+        guard let raw = ProcessInfo.processInfo.environment["PAPERCUP_PAIR_PAYLOAD"],
+              !raw.isEmpty else {
+            throw XCTSkip("A fresh private operator pairing payload is required.")
+        }
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+        let workspace = try XCTUnwrap(payload["workspaceId"] as? String)
+        let server = try XCTUnwrap(payload["server"] as? String)
+        let base = try XCTUnwrap(URL(string: server))
+        // Loopback controls are safe only in the isolated operator-api fixture.
+        // Refuse an arbitrary live desktop before listing or revoking anything.
+        XCTAssertTrue(workspace.hasPrefix("test-runtime-"), "Use an owned disposable workspace")
+        XCTAssertTrue(base.scheme == "http" && ["127.0.0.1", "localhost"].contains(base.host ?? ""),
+                      "Desktop controls require the private loopback route")
+        guard workspace.hasPrefix("test-runtime-"), base.scheme == "http",
+              ["127.0.0.1", "localhost"].contains(base.host ?? "") else { return }
+
+        func control(_ path: String, method: String = "GET", body: [String: String]? = nil) async throws -> [String: Any] {
+            var request = URLRequest(url: base.appendingPathComponent("api/device/desktop/" + path))
+            request.httpMethod = method
+            request.timeoutInterval = 15
+            if let body {
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let status = try XCTUnwrap(response as? HTTPURLResponse).statusCode
+            XCTAssertEqual(status, 200, "Owned desktop control must succeed")
+            guard status == 200 else { throw NSError(domain: "OwnedOperatorControl", code: status) }
+            // Do not put response bytes or pairing tokens in an assertion/log.
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        }
+        func ownedDevices() async throws -> [[String: Any]] {
+            let response = try await control("devices")
+            return try XCTUnwrap(response["devices"] as? [[String: Any]])
+                .filter { ($0["workspace_id"] as? String) == workspace }
+        }
+        func visiblePair(_ app: XCUIApplication, payload: String) {
+            XCTAssertTrue(app.buttons["Paste manually"].waitForExistence(timeout: 10))
+            app.buttons["Paste manually"].tap()
+            let editor = app.textViews.firstMatch
+            XCTAssertTrue(editor.waitForExistence(timeout: 5))
+            // typeText logs its argument in XCTest. Use the actual Paste menu
+            // so a newly minted token never enters retained diagnostic output.
+            UIPasteboard.general.string = payload
+            editor.tap()
+            editor.press(forDuration: 1)
+            let paste = app.buttons["Paste"].firstMatch
+            XCTAssertTrue(paste.waitForExistence(timeout: 5), "Manual editor must offer Paste")
+            paste.tap()
+            let allowPaste = app.buttons["Allow Paste"].firstMatch
+            if allowPaste.waitForExistence(timeout: 2) { allowPaste.tap() }
+            let pair = app.buttons["Pair"]
+            XCTAssertTrue(pair.isEnabled)
+            pair.tap()
+            let loaded = app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@",
+                            "awaiting you", "All clear")
+            ).firstMatch
+            XCTAssertTrue(loaded.waitForExistence(timeout: 30),
+                          "A real authorized attention read must complete after pairing")
+        }
+
+        let initialDevices = try await ownedDevices()
+        XCTAssertEqual(initialDevices.count, 0, "Fixture must start without paired devices")
+        let app = XCUIApplication()
+        app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
+        app.launch()
+        visiblePair(app, payload: raw)
+        let originalDevices = try await ownedDevices()
+        XCTAssertEqual(originalDevices.count, 1)
+        let original = try XCTUnwrap(originalDevices.first?["device_id"] as? String)
+        retainScreenshot(app, named: "live-authorized-before-revocation")
+
+        _ = try await control("devices/" + original, method: "DELETE")
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let pairAgain = app.buttons["pairAgainButton"]
+        XCTAssertTrue(pairAgain.waitForExistence(timeout: 30),
+                      "Real backend revocation must produce native re-pair guidance")
+        XCTAssertFalse(app.staticTexts["offline-banner-title"].exists)
+        retainScreenshot(app, named: "live-revoked-offers-pair-again")
+        pairAgain.tap()
+        XCTAssertTrue(app.staticTexts["Pair with your desktop"].waitForExistence(timeout: 10))
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Pair with your desktop"].waitForExistence(timeout: 10),
+                      "Revoked credentials must stay cleared across ordinary relaunch")
+        retainScreenshot(app, named: "live-revoked-keychain-cleared")
+
+        let minted = try await control("mint-pair-token", method: "POST", body: ["workspaceId": workspace])
+        var fresh = try XCTUnwrap(minted["qrPayload"] as? [String: Any])
+        XCTAssertEqual(fresh["workspaceId"] as? String, workspace)
+        fresh["server"] = server // same owned loopback forwarding route
+        let freshJSON = try JSONSerialization.data(withJSONObject: fresh)
+        visiblePair(app, payload: try XCTUnwrap(String(data: freshJSON, encoding: .utf8)))
+        let repairedDevices = try await ownedDevices()
+        XCTAssertEqual(repairedDevices.count, 1)
+        let repaired = try XCTUnwrap(repairedDevices.first?["device_id"] as? String)
+        XCTAssertNotEqual(repaired, original, "Re-pairing must issue a fresh device identity")
+        XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+        retainScreenshot(app, named: "live-repaired-authorized-workspace")
+        _ = try await control("devices/" + repaired, method: "DELETE")
+        UIPasteboard.general.string = nil
+        app.terminate()
+    }
+
     /// Push deep-link routing: a notification-tap userInfo (the exact
     /// shape attention-notify.ts sends — `kind: needs-human`) routes a
     /// cold-launched app to the Inbox tab (D-004). Driven through the
