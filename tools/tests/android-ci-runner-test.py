@@ -130,6 +130,25 @@ class AndroidCITest(unittest.TestCase):
                     self.assertIsNone(ci.cached_proof(self.root, changed, self.operator))
                     file.write_text('original source\n')
 
+    def test_uninitialized_submodule_refuses_before_inheriting_parent_inventory(self):
+        def git(*args):
+            return subprocess.check_output(['git', '-c', 'user.name=CI',
+                '-c', 'user.email=ci@example.test', *args], cwd=self.root,
+                stderr=subprocess.STDOUT).decode().strip()
+        git('init', '-q')
+        (self.root / '.gitmodules').write_text(
+            '[submodule "libs/token-kit"]\n\tpath = libs/token-kit\n\turl = ./unused\n')
+        git('add', '.gitmodules')
+        git('commit', '-qm', 'source')
+        git('update-index', '--add', '--cacheinfo', '160000',
+            git('rev-parse', 'HEAD'), 'libs/token-kit')
+        child = self.root / 'libs/token-kit'
+        child.mkdir(parents=True)
+        self.assertEqual(Path(ci.output(['git', 'rev-parse', '--show-toplevel'], child)),
+                         self.root)
+        with self.assertRaisesRegex(ValueError, 'Uninitialized or mismatched submodule'):
+            ci.source_identity(self.root)
+
     def executor_env(self):
         env = dict(os.environ, PAPERCUP_ANDROID_CI_STATE=str(self.root))
         env.pop('PAPERCUP_ANDROID_EXECUTOR_FD', None)
