@@ -31,7 +31,7 @@ final class PairFlowUITests: XCTestCase {
     }
 
     @MainActor
-    private func visiblePair(_ app: XCUIApplication, payload: String) throws {
+    private func pastePairPayload(_ app: XCUIApplication, payload: String) throws {
         let manual = try XCTUnwrap(app.buttons["Paste manually"].waitForExistence(timeout: 10)
                                    ? app.buttons["Paste manually"] : nil)
         manual.tap()
@@ -52,12 +52,72 @@ final class PairFlowUITests: XCTestCase {
         let pair = app.buttons["Pair"]
         _ = try XCTUnwrap(pair.isEnabled ? pair : nil, "Pasted payload must enable pairing")
         pair.tap()
+    }
+
+    @MainActor
+    private func visiblePair(_ app: XCUIApplication, payload: String) throws {
+        try pastePairPayload(app, payload: payload)
         let loaded = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@",
                         "awaiting you", "All clear")
         ).firstMatch
         _ = try XCTUnwrap(loaded.waitForExistence(timeout: 30) ? loaded : nil,
                           "A real authorized attention read must complete after pairing")
+    }
+
+    /// Real expired-token refusal followed by fresh pairing on the same owned
+    /// public backend. No credential seed or controlled HTTP responder.
+    @MainActor
+    func testPublicExpiredPairThenFreshPair() async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let raw = env["PAPERCUP_PAIR_PAYLOAD"], !raw.isEmpty,
+              let expiredRaw = env["PAPERCUP_EXPIRED_PAIR_PAYLOAD"], !expiredRaw.isEmpty else {
+            throw XCTSkip("Fresh and expired private fixture payloads are required.")
+        }
+        let fresh = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+        let expired = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(expiredRaw.utf8)) as? [String: Any])
+        let server = try XCTUnwrap(fresh["server"] as? String)
+        let workspace = try XCTUnwrap(fresh["workspaceId"] as? String)
+        let base = try XCTUnwrap(URL(string: server))
+        _ = try XCTUnwrap(workspace.hasPrefix("test-runtime-") && base.scheme == "https" &&
+                          base.host?.hasPrefix("native-iphone-") == true ? base : nil,
+                          "Use only the owned public HTTPS fixture")
+        XCTAssertEqual(expired["server"] as? String, server)
+        XCTAssertEqual(expired["workspaceId"] as? String, workspace)
+        XCTAssertNotEqual(try XCTUnwrap(expired["pairToken"] as? String),
+                          try XCTUnwrap(fresh["pairToken"] as? String))
+        let app = XCUIApplication()
+        defer { UIPasteboard.general.string = nil; app.terminate() }
+        app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
+        app.launch()
+        try pastePairPayload(app, payload: expiredRaw)
+        let guidance = app.staticTexts["That pairing code was already used or expired. Mint a fresh one from your desktop."]
+        XCTAssertTrue(guidance.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["Try again"].exists)
+        XCTAssertFalse(app.tabBars.buttons["Operator"].exists)
+        // Hide private input before retaining the recovery screen.
+        let back = try XCTUnwrap(app.buttons["Back"].exists ? app.buttons["Back"] : nil)
+        back.tap()
+        UIPasteboard.general.string = nil
+        XCTAssertFalse(app.textViews.firstMatch.exists)
+        XCTAssertTrue(guidance.exists)
+        retainScreenshot(app, named: "expired-pair-fresh-code-guidance")
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Pair with your desktop"].waitForExistence(timeout: 10),
+                      "Failed pairing must not leave an authorized Keychain credential")
+        retainScreenshot(app, named: "expired-pair-ordinary-relaunch-unpaired")
+        try visiblePair(app, payload: raw)
+        XCTAssertTrue(app.tabBars.buttons["Operator"].exists)
+        retainScreenshot(app, named: "expired-pair-fresh-code-authorized")
+        app.terminate()
+        app.launch()
+        let loaded = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@",
+                                                        "awaiting you", "All clear")).firstMatch
+        XCTAssertTrue(loaded.waitForExistence(timeout: 30))
+        XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+        retainScreenshot(app, named: "expired-pair-fresh-keychain-relaunch")
     }
 
     /// P-008 public-network acceptance uses the real protected HTTPS listener,

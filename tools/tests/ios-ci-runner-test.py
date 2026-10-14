@@ -40,6 +40,7 @@ class NativeRunnerTests(unittest.TestCase):
         self.counts = {'passedTests': len(ci.SMOKE_TESTS), 'failedTests': 0, 'skippedTests': 0}
         self.args = argparse.Namespace(mode='check', distribution='app-store-connect', preflight=False, force=False,
                                        paired_ui=False, reinstall_ui=False, pair_payload_file=None,
+                                       expired_pair_payload_file=None,
                                        build_number=None, secrets_file=None,
                                        upload=False, confirm_upload=False)
 
@@ -98,6 +99,39 @@ class NativeRunnerTests(unittest.TestCase):
 
     def latest(self):
         return json.loads((self.state / 'latest.json').read_text())
+
+    def test_expiry_ui_admission_and_selected_case(self):
+        self.args.mode = 'simulator'
+        self.args.paired_ui = True
+        fresh = {'server': 'https://native-iphone-test.example.org',
+                 'workspaceId': 'test-runtime-native-test', 'pairToken': 'fresh-private-token'}
+        pair_path, expired_path = self.base / 'fresh.json', self.base / 'expired.json'
+        pair_path.write_text(json.dumps(fresh))
+        pair_path.chmod(0o600)
+        expired_path.write_text(json.dumps(dict(fresh, pairToken='expired-private-token')))
+        expired_path.chmod(0o600)
+        self.args.pair_payload_file = str(pair_path)
+        self.args.expired_pair_payload_file = str(expired_path)
+        original_summary = self.summary
+        def summary(command, **kwargs):
+            if 'paired-ui.xcresult' in ' '.join(command):
+                kwargs['stdout'].write(json.dumps({'passedTests': 1, 'failedTests': 0, 'skippedTests': 0}))
+                return subprocess.CompletedProcess(command, 0)
+            return original_summary(command, **kwargs)
+        self.summary = summary
+        self.assertEqual(self.run_ci(), 0)
+        command, env = self.commands['paired-ui']
+        self.assertIn('-only-testing:PapercupUITests/PairFlowUITests/testPublicExpiredPairThenFreshPair', command)
+        self.assertIn('expired-private-token', env['TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD'])
+        self.assertNotIn('TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD', self.commands['unit'][1])
+        self.calls.clear()
+        expired_path.write_text(json.dumps(fresh))
+        self.assertEqual(self.run_ci(), 1)
+        self.assertNotIn('build', self.calls)
+        self.assertIn('distinct token', self.latest()['error'])
+        self.args.paired_ui = False
+        self.assertEqual(self.run_ci(), 1)
+        self.assertIn('requires --paired-ui', self.latest()['error'])
 
     def test_simulator_pass_keeps_test_proof_without_archive_or_signing(self):
         self.args.mode = 'simulator'

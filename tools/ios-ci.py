@@ -54,15 +54,16 @@ def run_phase(name, command, root, env, attempt, phases, **kwargs):
         if log.is_file():
             text = log.read_text(errors='replace')
             secrets = [env.get(key, '') for key in SIGNING_KEYS[1:]]
-            payload = env.get('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', '')
-            if payload:
-                secrets.append(payload)
-                try:
-                    values = json.loads(payload)
-                    if isinstance(values, dict):
-                        secrets.extend(v for v in values.values() if isinstance(v, str))
-                except ValueError:
-                    pass
+            for key in ('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', 'TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD'):
+                payload = env.get(key, '')
+                if payload:
+                    secrets.append(payload)
+                    try:
+                        values = json.loads(payload)
+                        if isinstance(values, dict):
+                            secrets.extend(v for v in values.values() if isinstance(v, str))
+                    except ValueError:
+                        pass
             for value in sorted(set(secrets), key=len, reverse=True):
                 if value:
                     text = text.replace(value, '[REDACTED]')
@@ -408,6 +409,8 @@ def _execute(root, state, args):
     env.pop('GITHUB_ENV', None)
     env.pop('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', None)
     env.pop('PAPERCUP_PAIR_PAYLOAD', None)
+    env.pop('TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD', None)
+    env.pop('PAPERCUP_EXPIRED_PAIR_PAYLOAD', None)
     env['PAPERCUP_EXPORT_METHOD'] = args.distribution
     env['PAPERCUP_REQUIRE_UPLOAD_SECRETS'] = '1' if args.upload else '0'
     if args.mode != 'signed':
@@ -424,6 +427,8 @@ def _execute(root, state, args):
         if args.upload and args.distribution != 'app-store-connect':
             raise ValueError('Registered-device IPA export cannot be uploaded to App Store Connect')
         paired_env = None
+        if args.expired_pair_payload_file and not args.paired_ui:
+            raise ValueError('--expired-pair-payload-file requires --paired-ui')
         if args.reinstall_ui and (args.paired_ui or args.mode != 'simulator'):
             raise ValueError('--reinstall-ui requires simulator mode and cannot share a one-shot token with --paired-ui')
         if args.paired_ui or args.reinstall_ui:
@@ -433,6 +438,16 @@ def _execute(root, state, args):
             if not payload or not isinstance(json.loads(payload), dict) or not json.loads(payload):
                 raise ValueError('Paired UI input must be a nonempty JSON object')
             paired_env = dict(env, TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD=payload)
+            if args.expired_pair_payload_file:
+                expired = private_input(args.expired_pair_payload_file, root).read_text().strip()
+                fresh_data, expired_data = json.loads(payload), json.loads(expired)
+                if (not isinstance(expired_data, dict)
+                        or not all(isinstance(expired_data.get(k), str) and expired_data[k]
+                                   for k in ('server', 'workspaceId', 'pairToken'))
+                        or any(expired_data[k] != fresh_data.get(k) for k in ('server', 'workspaceId'))
+                        or expired_data['pairToken'] == fresh_data.get('pairToken')):
+                    raise ValueError('Expiry UI requires a distinct token for the same owned endpoint/workspace')
+                paired_env['TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD'] = expired
         if args.mode == 'signed':
             if not args.build_number or not re.fullmatch(r'[1-9]\d*', args.build_number):
                 raise ValueError('Signed delivery requires an explicit positive --build-number')
@@ -491,7 +506,8 @@ def _execute(root, state, args):
         if args.paired_ui:
             paired_env.update(env)
             ui_test(root, paired_env, attempt, phases, 'paired-ui',
-                    ('PapercupUITests/PairFlowUITests/testPairAndPairedNavigation',))
+                    ('PapercupUITests/PairFlowUITests/' + ('testPublicExpiredPairThenFreshPair'
+                     if args.expired_pair_payload_file else 'testPairAndPairedNavigation'),))
         if args.reinstall_ui:
             paired_env.update(env)
             reinstall_ui(root, paired_env, attempt, phases)
@@ -602,6 +618,8 @@ def main():
     parser.add_argument('--reinstall-ui', action='store_true',
                         help='Pair, prove ordinary relaunch, uninstall/reinstall and verify cleared pairing')
     parser.add_argument('--pair-payload-file')
+    parser.add_argument('--expired-pair-payload-file',
+                        help='With --paired-ui, exercise real expired-code guidance then fresh pairing')
     parser.add_argument('--build-number')
     parser.add_argument('--secrets-file')
     parser.add_argument('--upload', action='store_true')
