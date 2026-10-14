@@ -30,6 +30,85 @@ final class PairFlowUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    @MainActor
+    private func visiblePair(_ app: XCUIApplication, payload: String) throws {
+        let manual = try XCTUnwrap(app.buttons["Paste manually"].waitForExistence(timeout: 10)
+                                   ? app.buttons["Paste manually"] : nil)
+        manual.tap()
+        let editor = app.textViews.firstMatch
+        _ = try XCTUnwrap(editor.waitForExistence(timeout: 5) ? editor : nil)
+        // typeText logs its argument. Use the real edit menu to keep tokens
+        // out of retained XCTest output.
+        UIPasteboard.general.string = payload
+        editor.tap()
+        editor.press(forDuration: 1)
+        let paste = app.menuItems["Paste"].firstMatch
+        let pasteExists = paste.waitForExistence(timeout: 5)
+        if !pasteExists { retainScreenshot(app, named: "manual-paste-menu-missing") }
+        _ = try XCTUnwrap(pasteExists ? paste : nil, "Manual editor must offer Paste")
+        paste.tap()
+        let allowPaste = app.buttons["Allow Paste"].firstMatch
+        if allowPaste.waitForExistence(timeout: 2) { allowPaste.tap() }
+        let pair = app.buttons["Pair"]
+        _ = try XCTUnwrap(pair.isEnabled ? pair : nil, "Pasted payload must enable pairing")
+        pair.tap()
+        let loaded = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@",
+                        "awaiting you", "All clear")
+        ).firstMatch
+        _ = try XCTUnwrap(loaded.waitForExistence(timeout: 30) ? loaded : nil,
+                          "A real authorized attention read must complete after pairing")
+    }
+
+    /// P-008 public-network acceptance uses the real protected HTTPS listener,
+    /// with no local forwarding route or controlled HTTP responder.
+    @MainActor
+    func testPublicHTTPSPairAndAuthorizedAttention() async throws {
+        guard let raw = ProcessInfo.processInfo.environment["PAPERCUP_PAIR_PAYLOAD"],
+              !raw.isEmpty else {
+            throw XCTSkip("A fresh owned public HTTPS pairing payload is required.")
+        }
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+        let workspace = try XCTUnwrap(payload["workspaceId"] as? String)
+        let server = try XCTUnwrap(payload["server"] as? String)
+        let base = try XCTUnwrap(URL(string: server))
+        _ = try XCTUnwrap(workspace.hasPrefix("test-runtime-") ? workspace : nil,
+                          "Use an owned disposable workspace")
+        _ = try XCTUnwrap(base.scheme == "https" && base.host?.hasPrefix("native-iphone-") == true
+                          ? base : nil, "Acceptance requires the owned public HTTPS fixture")
+        XCTAssertNil(base.user)
+        XCTAssertNil(base.password)
+
+        // Probe from the actual iOS URLSession stack, before spending the token.
+        // A Cloudflare rejection cannot satisfy the heartbeat's exact 401.
+        for (path, method, expected) in [
+            ("api/health", "GET", 404),
+            ("api/workspaces", "GET", 404),
+            ("api/device/desktop/mint-pair-token", "POST", 404),
+            ("api/device/heartbeat", "POST", 401),
+        ] {
+            var request = URLRequest(url: base.appendingPathComponent(path))
+            request.httpMethod = method
+            request.timeoutInterval = 15
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let status = try XCTUnwrap(response as? HTTPURLResponse).statusCode
+            XCTAssertEqual(status, expected, "Protected public route \(path) must retain its boundary")
+            guard status == expected else { throw NSError(domain: "PublicHTTPSBoundary", code: status) }
+        }
+
+        let app = XCUIApplication()
+        defer {
+            UIPasteboard.general.string = nil
+            app.terminate()
+        }
+        app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
+        app.launch()
+        try visiblePair(app, payload: raw)
+        XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+        XCTAssertFalse(app.staticTexts["offline-banner-title"].exists)
+        retainScreenshot(app, named: "public-https-authorized-attention")
+    }
+
     /// Smoke test: a fresh-install app launches into PairView with the
     /// expected affordances visible. No backend needed; covers the
     /// SceneManifest fix + CredentialStore + PairView wiring.
@@ -289,38 +368,6 @@ final class PairFlowUITests: XCTestCase {
             return try XCTUnwrap(response["devices"] as? [[String: Any]])
                 .filter { ($0["workspace_id"] as? String) == workspace }
         }
-        func visiblePair(_ app: XCUIApplication, payload: String) throws {
-            let manual = try XCTUnwrap(app.buttons["Paste manually"].waitForExistence(timeout: 10)
-                                       ? app.buttons["Paste manually"] : nil)
-            manual.tap()
-            let editor = app.textViews.firstMatch
-            _ = try XCTUnwrap(editor.waitForExistence(timeout: 5) ? editor : nil)
-            // typeText logs its argument in XCTest. Use the actual Paste menu
-            // so a newly minted token never enters retained diagnostic output.
-            UIPasteboard.general.string = payload
-            editor.tap()
-            editor.press(forDuration: 1)
-            // iOS 18 exposes the edit-menu action as MenuItem, not Button.
-            // Throw on failure: async XCTest assertions can otherwise continue
-            // through Pair and obscure this first failed precondition.
-            let paste = app.menuItems["Paste"].firstMatch
-            let pasteExists = paste.waitForExistence(timeout: 5)
-            if !pasteExists { retainScreenshot(app, named: "manual-paste-menu-missing") }
-            _ = try XCTUnwrap(pasteExists ? paste : nil, "Manual editor must offer Paste")
-            paste.tap()
-            let allowPaste = app.buttons["Allow Paste"].firstMatch
-            if allowPaste.waitForExistence(timeout: 2) { allowPaste.tap() }
-            let pair = app.buttons["Pair"]
-            _ = try XCTUnwrap(pair.isEnabled ? pair : nil, "Pasted payload must enable pairing")
-            pair.tap()
-            let loaded = app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@",
-                            "awaiting you", "All clear")
-            ).firstMatch
-            _ = try XCTUnwrap(loaded.waitForExistence(timeout: 30) ? loaded : nil,
-                              "A real authorized attention read must complete after pairing")
-        }
-
         let initialDevices = try await ownedDevices()
         XCTAssertEqual(initialDevices.count, 0, "Fixture must start without paired devices")
         let app = XCUIApplication()
