@@ -317,6 +317,17 @@ mode and hash-verified artifacts. Simulator and archive-check proofs have separa
 A failed replacement revokes that mode's proof. Paired UI requires
 `--paired-ui --pair-payload-file /private/fresh-payload.json` and is never cached.
 The payload must be owner-only, outside the repository and sanitized for screenshots.
+For actual uninstall/reinstall acceptance, use simulator mode with
+`--reinstall-ui --pair-payload-file /private/fresh-payload.json` instead of
+`--paired-ui`. The owned disposable loopback operator must stay available through
+all three native test phases. The runner pairs, proves an authorized ordinary
+relaunch without reusing the token, then uses `simctl uninstall` and `simctl install`.
+It requires the old data container to disappear and a different container to be
+created, then verifies onboarding on two launches without any credential-wipe
+argument. Parallel test cloning is disabled for these phases so `simctl` and
+XCUITest use the same device. Result guards reject failures, skips or missing
+screenshots; `reinstall.json` is emitted only after all stages pass. This journey
+is never satisfied by cached smoke or paired results.
 The selected paired smoke is only one journey; full P-008 simulator acceptance,
 device-specific capabilities, signed delivery and store review need their own evidence.
 

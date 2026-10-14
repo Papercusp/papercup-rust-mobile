@@ -175,11 +175,15 @@ def toolchain(root, env, mode='check'):
             'developerDir': env.get('DEVELOPER_DIR') or output(['xcode-select', '-p'], root, env)}
 
 
-def ui_test(root, env, attempt, phases, name, tests):
+def ui_test(root, env, attempt, phases, name, tests, shared_simulator=False):
     bundle = attempt / (name + '.xcresult')
     command = ['xcodebuild', 'test-without-building', '-project', 'ios/Papercup.xcodeproj',
                '-scheme', 'Papercup', '-destination', 'platform=iOS Simulator,id=' + env['PAPERCUP_IOS_SIM_UDID'],
                '-derivedDataPath', 'ios/build/dd', '-resultBundlePath', str(bundle)]
+    if shared_simulator:
+        # simctl uninstall must target the same device that executed the UI test,
+        # not an Xcode-created parallel-test clone.
+        command.extend(['-parallel-testing-enabled', 'NO'])
     command.extend('-only-testing:' + test for test in tests)
     run_phase(name, command, root, env, attempt, phases)
     summary = attempt / (name + '-summary.json')
@@ -198,6 +202,49 @@ def ui_test(root, env, attempt, phases, name, tests):
               root, env, attempt, phases)
     if not list(attachments.rglob('*.png')):
         raise ValueError(name + ' did not retain a candidate screenshot')
+
+
+def reinstall_ui(root, env, attempt, phases):
+    """Exercise OS uninstall/reinstall between native positive and negative controls."""
+    bundle_id = 'com.papercuspai.operator.mobile'
+    app = root / 'ios/build/dd/Build/Products/Debug-iphonesimulator/Papercup.app'
+    info = plistlib.loads((app / 'Info.plist').read_bytes())
+    if info.get('CFBundleIdentifier') != bundle_id:
+        raise ValueError('Reinstall requires the built Papercup simulator app')
+    ui_test(root, env, attempt, phases, 'reinstall-pair',
+            ('PapercupUITests/PairFlowUITests/testPairBeforeActualReinstall',), True)
+    # Only the first test receives the one-shot pairing token. Subsequent
+    # launches must use persisted Keychain credentials or fresh-install reset.
+    ordinary_env = dict(env)
+    ordinary_env.pop('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', None)
+    ordinary_env['TEST_RUNNER_PAPERCUP_REINSTALL_PHASE'] = 'before-uninstall'
+    ui_test(root, ordinary_env, attempt, phases, 'reinstall-relaunch',
+            ('PapercupUITests/PairFlowUITests/testAuthorizedRelaunchBeforeActualReinstall',), True)
+    simulator = env['PAPERCUP_IOS_SIM_UDID']
+    original_data = Path(output(['xcrun', 'simctl', 'get_app_container', simulator,
+                                 bundle_id, 'data'], root, env))
+    if not original_data.is_absolute() or not original_data.is_dir():
+        raise ValueError('Installed app must have an existing simulator data container')
+    run_phase('reinstall-uninstall', ['xcrun', 'simctl', 'uninstall', simulator, bundle_id],
+              root, ordinary_env, attempt, phases)
+    absent = subprocess.run(['xcrun', 'simctl', 'get_app_container', simulator, bundle_id, 'data'],
+                            cwd=root, env=ordinary_env, capture_output=True, text=True)
+    if absent.returncode == 0 or original_data.exists():
+        raise ValueError('Uninstall did not remove the installed app and its data container')
+    run_phase('reinstall-install', ['xcrun', 'simctl', 'install', simulator, str(app)],
+              root, ordinary_env, attempt, phases)
+    installed_data = Path(output(['xcrun', 'simctl', 'get_app_container', simulator,
+                                  bundle_id, 'data'], root, env))
+    if not installed_data.is_dir() or installed_data == original_data:
+        raise ValueError('Reinstall must create a different app data container')
+    ordinary_env['TEST_RUNNER_PAPERCUP_REINSTALL_PHASE'] = 'after-uninstall'
+    ui_test(root, ordinary_env, attempt, phases, 'reinstall-onboarding',
+            ('PapercupUITests/PairFlowUITests/testActualReinstallClearsOldPairing',), True)
+    write_json(attempt / 'reinstall.json', {
+        'schemaVersion': 1, 'bundleId': bundle_id, 'simulator': simulator,
+        'originalDataContainer': str(original_data), 'uninstallVerified': True,
+        'installedDataContainer': str(installed_data), 'newDataContainerVerified': True,
+        'ordinaryRelaunchAuthorized': True, 'reinstalledOnboardingVerified': True})
 
 
 def prepare_derived_data(root, tools):
@@ -353,7 +400,8 @@ def _execute(root, state, args):
     result = {'schemaVersion': 1, 'executor': 'native-mac', 'attempt': str(attempt),
               'startedAt': dt.datetime.now(dt.timezone.utc).isoformat(), 'status': 'failed',
               'mode': args.mode, 'distributionMethod': args.distribution,
-              'pairedUI': args.paired_ui, 'phases': [],
+              'pairedUI': args.paired_ui or args.reinstall_ui,
+              'reinstallUI': args.reinstall_ui, 'phases': [],
               'day': dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d')}
     env = os.environ.copy()
     env['PATH'] = str(Path.home() / '.cargo/bin') + ':/opt/homebrew/bin:/usr/local/bin:' + env.get('PATH', '/usr/bin:/bin:/usr/sbin:/sbin')
@@ -376,9 +424,11 @@ def _execute(root, state, args):
         if args.upload and args.distribution != 'app-store-connect':
             raise ValueError('Registered-device IPA export cannot be uploaded to App Store Connect')
         paired_env = None
-        if args.paired_ui:
+        if args.reinstall_ui and (args.paired_ui or args.mode != 'simulator'):
+            raise ValueError('--reinstall-ui requires simulator mode and cannot share a one-shot token with --paired-ui')
+        if args.paired_ui or args.reinstall_ui:
             if not args.pair_payload_file:
-                raise ValueError('--paired-ui requires an owner-only --pair-payload-file')
+                raise ValueError('Live UI requires an owner-only --pair-payload-file')
             payload = private_input(args.pair_payload_file, root).read_text().strip()
             if not payload or not isinstance(json.loads(payload), dict) or not json.loads(payload):
                 raise ValueError('Paired UI input must be a nonempty JSON object')
@@ -405,7 +455,7 @@ def _execute(root, state, args):
         # advisory data can change without a source or lockfile change.
         run_phase('dependency-audit', ['npm', 'audit', '--package-lock-only',
                                      '--audit-level=moderate'], root, env, attempt, phases)
-        if args.mode in ('simulator', 'check') and not args.force and not args.paired_ui:
+        if args.mode in ('simulator', 'check') and not args.force and not (args.paired_ui or args.reinstall_ui):
             cached = reuse(state, identity, result['toolchain'], False, args.mode)
             if cached:
                 write_json(state / 'latest.json', cached)
@@ -442,6 +492,9 @@ def _execute(root, state, args):
             paired_env.update(env)
             ui_test(root, paired_env, attempt, phases, 'paired-ui',
                     ('PapercupUITests/PairFlowUITests/testPairAndPairedNavigation',))
+        if args.reinstall_ui:
+            paired_env.update(env)
+            reinstall_ui(root, paired_env, attempt, phases)
         archive = attempt / 'Papercusp.xcarchive'
         if args.mode == 'signed':
             last = state / 'last-build-number.json'
@@ -546,6 +599,8 @@ def main():
     parser.add_argument('--preflight', action='store_true')
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--paired-ui', action='store_true')
+    parser.add_argument('--reinstall-ui', action='store_true',
+                        help='Pair, prove ordinary relaunch, uninstall/reinstall and verify cleared pairing')
     parser.add_argument('--pair-payload-file')
     parser.add_argument('--build-number')
     parser.add_argument('--secrets-file')

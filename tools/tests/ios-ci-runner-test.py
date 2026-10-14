@@ -39,7 +39,7 @@ class NativeRunnerTests(unittest.TestCase):
         self.failure_phase = None
         self.counts = {'passedTests': len(ci.SMOKE_TESTS), 'failedTests': 0, 'skippedTests': 0}
         self.args = argparse.Namespace(mode='check', distribution='app-store-connect', preflight=False, force=False,
-                                       paired_ui=False, pair_payload_file=None,
+                                       paired_ui=False, reinstall_ui=False, pair_payload_file=None,
                                        build_number=None, secrets_file=None,
                                        upload=False, confirm_upload=False)
 
@@ -333,6 +333,153 @@ class NativeRunnerTests(unittest.TestCase):
         self.assertIn('paired-ui-guard', self.calls)
         self.assertIn('paired-ui-screenshots', self.calls)
         self.assertNotIn('archive', self.calls)
+        self.assertIsNone(ci.reuse(self.state, self.identity, self.native, False, 'simulator'))
+
+    def reinstall_fixture(self):
+        app = self.root / 'ios/build/dd/Build/Products/Debug-iphonesimulator/Papercup.app'
+        app.mkdir(parents=True)
+        (app / 'Info.plist').write_bytes(plistlib.dumps({
+            'CFBundleIdentifier': 'com.papercuspai.operator.mobile'}))
+        original = self.base / 'original-data'
+        original.mkdir()
+        installed = self.base / 'new-data'
+        attempt = self.state / 'reinstall'
+        attempt.mkdir()
+        env = {'PAPERCUP_IOS_SIM_UDID': 'SIM', 'TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD': 'private-one-shot'}
+        return app, original, installed, attempt, env
+
+    def test_reinstall_requires_positive_relaunch_then_removes_os_container_without_reusing_token(self):
+        app, original, installed, attempt, env = self.reinstall_fixture()
+        observed = []
+
+        def ui(root, environment, dest, phases, name, tests, shared_simulator):
+            observed.append((name, dict(environment), shared_simulator))
+
+        def phase(name, command, *unused):
+            observed.append((name, command))
+            if name == 'reinstall-uninstall':
+                original.rmdir()
+            if name == 'reinstall-install':
+                installed.mkdir()
+
+        with patch.object(ci, 'ui_test', side_effect=ui), \
+                patch.object(ci, 'output', side_effect=[str(original), str(installed)]), \
+                patch.object(ci, 'run_phase', side_effect=phase), \
+                patch.object(ci.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1)):
+            ci.reinstall_ui(self.root, env, attempt, [])
+        self.assertEqual([row[0] for row in observed], [
+            'reinstall-pair', 'reinstall-relaunch', 'reinstall-uninstall',
+            'reinstall-install', 'reinstall-onboarding'])
+        self.assertEqual(observed[0][1]['TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD'], 'private-one-shot')
+        for row in (observed[1], observed[4]):
+            self.assertNotIn('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', row[1])
+            self.assertTrue(row[2], 'UI must use the exact simctl device, never a clone')
+        self.assertEqual(observed[2][1], [
+            'xcrun', 'simctl', 'uninstall', 'SIM', 'com.papercuspai.operator.mobile'])
+        self.assertEqual(observed[3][1], ['xcrun', 'simctl', 'install', 'SIM', str(app)])
+        proof = json.loads((attempt / 'reinstall.json').read_text())
+        self.assertTrue(proof['uninstallVerified'])
+        self.assertTrue(proof['newDataContainerVerified'])
+        self.assertNotIn('private-one-shot', (attempt / 'reinstall.json').read_text())
+
+    def test_reinstall_stops_before_install_if_os_container_survives_or_app_is_still_installed(self):
+        for returncode, remove in ((1, False), (0, True)):
+            with self.subTest(returncode=returncode, remove=remove):
+                app, original, installed, attempt, env = self.reinstall_fixture()
+
+                def phase(name, command, *unused):
+                    if remove:
+                        original.rmdir()
+
+                with patch.object(ci, 'ui_test'), \
+                        patch.object(ci, 'output', return_value=str(original)), \
+                        patch.object(ci, 'run_phase', side_effect=phase) as native, \
+                        patch.object(ci.subprocess, 'run', return_value=subprocess.CompletedProcess([], returncode)):
+                    with self.assertRaisesRegex(ValueError, 'Uninstall did not remove'):
+                        ci.reinstall_ui(self.root, env, attempt, [])
+                self.assertEqual([call.args[0] for call in native.call_args_list], ['reinstall-uninstall'])
+                self.assertFalse((attempt / 'reinstall.json').exists())
+                shutil.rmtree(app)
+                shutil.rmtree(attempt)
+                if original.exists():
+                    original.rmdir()
+
+    def test_reinstall_refuses_reused_container_and_never_publishes_success(self):
+        app, original, installed, attempt, env = self.reinstall_fixture()
+
+        def phase(name, command, *unused):
+            if name == 'reinstall-uninstall':
+                original.rmdir()
+            else:
+                original.mkdir()
+
+        with patch.object(ci, 'ui_test') as ui, \
+                patch.object(ci, 'output', return_value=str(original)), \
+                patch.object(ci, 'run_phase', side_effect=phase), \
+                patch.object(ci.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1)):
+            with self.assertRaisesRegex(ValueError, 'different app data container'):
+                ci.reinstall_ui(self.root, env, attempt, [])
+        self.assertEqual(ui.call_count, 2)
+        self.assertFalse((attempt / 'reinstall.json').exists())
+
+    def test_reinstall_cannot_uninstall_before_positive_pairing_and_relaunch_pass(self):
+        app, original, installed, attempt, env = self.reinstall_fixture()
+        with patch.object(ci, 'ui_test', side_effect=[None, RuntimeError('positive control failed')]), \
+                patch.object(ci, 'run_phase') as native:
+            with self.assertRaisesRegex(RuntimeError, 'positive control failed'):
+                ci.reinstall_ui(self.root, env, attempt, [])
+        native.assert_not_called()
+        self.assertTrue(original.exists())
+
+    def test_reinstall_refuses_wrong_app_and_incompatible_or_missing_private_input_before_build(self):
+        app, original, installed, attempt, env = self.reinstall_fixture()
+        (app / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'another.app'}))
+        with patch.object(ci, 'ui_test') as ui:
+            with self.assertRaisesRegex(ValueError, 'built Papercup simulator app'):
+                ci.reinstall_ui(self.root, env, attempt, [])
+        ui.assert_not_called()
+        self.args.reinstall_ui = True
+        for mode, paired in (('signed', False), ('simulator', True), ('simulator', False)):
+            self.args.mode, self.args.paired_ui = mode, paired
+            with self.subTest(mode=mode, paired=paired):
+                self.assertEqual(self.run_ci(), 1)
+                self.assertNotIn('build', self.calls)
+
+    def test_shared_simulator_selection_disables_cloning_and_keeps_result_guard(self):
+        self.counts = {'passedTests': 1, 'failedTests': 0, 'skippedTests': 0}
+        real_run = subprocess.run
+
+        def native_run(command, **kwargs):
+            if command[0] == 'xcrun':
+                return self.summary(command, **kwargs)
+            return real_run(command, **kwargs)
+
+        with patch.object(ci, 'run_phase', side_effect=self.phase), \
+                patch.object(ci.subprocess, 'run', side_effect=native_run):
+            ci.ui_test(self.root, {'PAPERCUP_IOS_SIM_UDID': 'SIM'}, self.state, [],
+                       'reinstall-onboarding', ('PapercupUITests/PairFlowUITests/testActualReinstallClearsOldPairing',), True)
+        command = self.commands['reinstall-onboarding'][0]
+        self.assertEqual(command[command.index('-parallel-testing-enabled') + 1], 'NO')
+        self.assertIn('reinstall-onboarding-guard', self.calls)
+        self.assertIn('reinstall-onboarding-screenshots', self.calls)
+
+    def test_reinstall_option_executes_with_private_payload_instead_of_reusing_cached_success(self):
+        self.args.mode = 'simulator'
+        self.assertEqual(self.run_ci(), 0)
+        self.calls.clear()
+        self.args.reinstall_ui = True
+        payload = self.base / 'pair.json'
+        payload.write_text('{"token":"private-reinstall"}')
+        payload.chmod(0o600)
+        self.args.pair_payload_file = str(payload)
+        with patch.object(ci, 'reinstall_ui') as reinstall:
+            self.assertEqual(self.run_ci(), 0)
+        self.assertIn('build', self.calls)
+        reinstall.assert_called_once()
+        self.assertEqual(reinstall.call_args.args[1]['TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD'], payload.read_text())
+        self.assertTrue(self.latest()['reinstallUI'])
+        self.assertTrue(self.latest()['pairedUI'])
+        self.assertEqual(self.latest()['status'], 'passed')
         self.assertIsNone(ci.reuse(self.state, self.identity, self.native, False, 'simulator'))
 
     def test_release_modes_still_require_current_device_sdk_and_xcode(self):
