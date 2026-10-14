@@ -8,7 +8,7 @@
 // /api/device/rest-query` (libs/sync's polling-fetcher design — push
 // notifications cover interrupt latency, D-004). The cache owns that
 // loop: `start_polling(interval)` refetches every registered query and
-// notifies subscribers ONLY when the payload actually changed (the
+// notifies subscribers when the payload changed or an outage recovered (the
 // rest-query `version` field is a timestamp, useless for diffing — we
 // diff the raw JSON instead). `refresh()` keeps always-notify semantics
 // for explicit pull-to-refresh.
@@ -160,8 +160,8 @@ impl Cache {
     }
 
     /// Start the polling loop: every `interval`, refetch every registered
-    /// query and notify subscribers ONLY on actual payload change (or on
-    /// the success→failure transition). Replaces the retired SSE
+    /// query and notify subscribers on payload change or an outage
+    /// transition. Replaces the retired SSE
     /// invalidation stream. Idempotent — restarting replaces the loop.
     pub fn start_polling(&self, interval: std::time::Duration) {
         let weak = Arc::downgrade(&self.inner);
@@ -174,7 +174,7 @@ impl Cache {
                     let result = inner.fetcher.fetch(&name).await;
                     match result {
                         Ok(json) => {
-                            inner.poll_failed.lock().unwrap().remove(&name);
+                            let recovered = inner.poll_failed.lock().unwrap().remove(&name);
                             let update = {
                                 let mut entries = inner.entries.lock().unwrap();
                                 let entry = entries.entry(name.clone()).or_insert(CacheEntry {
@@ -182,9 +182,11 @@ impl Cache {
                                     value_json: None,
                                     generation: 0,
                                 });
-                                if entry.value_json.as_deref() == Some(json.as_str()) {
+                                if !recovered && entry.value_json.as_deref() == Some(json.as_str()) {
                                     None // unchanged — stay quiet
                                 } else {
+                                    // Failed makes subscribers display an error. Recovery
+                                    // must invalidate that state even if the data is identical.
                                     entry.value_json = Some(json.clone());
                                     entry.generation += 1;
                                     Some(CacheUpdate::Updated {
@@ -374,7 +376,7 @@ mod tests {
             Ok(r#"1"#.into()),      // initial refresh
             Err("net down".into()), // poll: failure → Failed
             Err("net down".into()), // poll: still down → quiet
-            Ok(r#"1"#.into()),      // poll: recovered, unchanged → quiet
+            Ok(r#"1"#.into()),      // poll: recovered, unchanged → Updated
             Err("net down".into()), // poll: new outage → Failed again (repeats)
         ]);
         let cache = Cache::new(f.clone());
@@ -390,6 +392,35 @@ mod tests {
             .filter(|u| matches!(u, CacheUpdate::Failed { .. }))
             .count();
         assert_eq!(failures, 2, "one Failed per outage, got {got:?}");
+    }
+
+    #[tokio::test]
+    async fn polling_notifies_recovery_when_payload_is_unchanged() {
+        let f = StubFetcher::new(vec![
+            Ok(r#"{"v":1}"#.into()),
+            Err("net down".into()),
+            Err("net down".into()),
+            Ok(r#"{"v":1}"#.into()),
+        ]);
+        let cache = Cache::new(f);
+        let mut rx = cache.inner.tx.subscribe();
+        cache.refresh("k").await;
+        assert!(matches!(rx.recv().await.unwrap(), CacheUpdate::Updated { generation: 1, .. }));
+        cache.start_polling(std::time::Duration::from_millis(10));
+        assert!(matches!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await.unwrap().unwrap(),
+            CacheUpdate::Failed { .. }
+        ));
+        let recovered = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await;
+        let stayed_quiet = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await.is_err();
+        cache.stop_polling();
+        assert!(matches!(
+            recovered,
+            Ok(Ok(CacheUpdate::Updated { ref value_json, generation: 2, .. }))
+                if value_json == r#"{"v":1}"#
+        ), "unchanged data must notify subscribers once after an outage, got {recovered:?}");
+        assert!(stayed_quiet, "later unchanged successful polls must remain quiet");
+        assert_eq!(cache.get("k").unwrap().generation, 2);
     }
 
     #[tokio::test]
