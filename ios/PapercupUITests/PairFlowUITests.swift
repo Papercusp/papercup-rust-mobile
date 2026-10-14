@@ -109,6 +109,70 @@ final class PairFlowUITests: XCTestCase {
         retainScreenshot(app, named: "public-https-authorized-attention")
     }
 
+    /// First stage of the runner's actual simctl uninstall/reinstall journey.
+    @MainActor
+    func testPairBeforeActualReinstall() throws {
+        guard let raw = ProcessInfo.processInfo.environment["PAPERCUP_PAIR_PAYLOAD"], !raw.isEmpty else {
+            throw XCTSkip("An owned pairing payload is required for reinstall acceptance.")
+        }
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+        let workspace = try XCTUnwrap(payload["workspaceId"] as? String)
+        let base = try XCTUnwrap(URL(string: try XCTUnwrap(payload["server"] as? String)))
+        _ = try XCTUnwrap(workspace.hasPrefix("test-runtime-") ? workspace : nil)
+        _ = try XCTUnwrap(base.scheme == "http" && ["127.0.0.1", "localhost"].contains(base.host ?? "")
+                          ? base : nil, "Reinstall acceptance uses the owned private operator fixture")
+        let app = XCUIApplication()
+        defer { UIPasteboard.general.string = nil; app.terminate() }
+        app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
+        app.launch()
+        try visiblePair(app, payload: raw)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Operator")).firstMatch.exists)
+        retainScreenshot(app, named: "reinstall-original-authorized")
+    }
+
+    /// Positive control: this process receives no payload or credential seed.
+    @MainActor
+    func testAuthorizedRelaunchBeforeActualReinstall() throws {
+        guard ProcessInfo.processInfo.environment["PAPERCUP_REINSTALL_PHASE"] == "before-uninstall" else {
+            throw XCTSkip("Run through the maintained reinstall journey.")
+        }
+        let app = XCUIApplication()
+        defer { app.terminate() }
+        app.launchArguments = []
+        app.launch()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Operator"))
+            .firstMatch.waitForExistence(timeout: 15))
+        let loaded = app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "awaiting you", "All clear")).firstMatch
+        XCTAssertTrue(loaded.waitForExistence(timeout: 30), "Persisted credentials must authorize a real read")
+        XCTAssertFalse(app.buttons["Paste manually"].exists)
+        XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+        retainScreenshot(app, named: "reinstall-positive-ordinary-relaunch")
+    }
+
+    /// Negative control follows successful OS uninstall and a new data container.
+    /// Neither launch uses the wipe-credentials backdoor.
+    @MainActor
+    func testActualReinstallClearsOldPairing() throws {
+        guard ProcessInfo.processInfo.environment["PAPERCUP_REINSTALL_PHASE"] == "after-uninstall" else {
+            throw XCTSkip("Actual uninstall/reinstall must precede this test.")
+        }
+        let app = XCUIApplication()
+        defer { app.terminate() }
+        app.launchArguments = []
+        for launch in 1...2 {
+            app.launch()
+            XCTAssertTrue(app.staticTexts["Pair with your desktop"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.buttons["Paste manually"].exists)
+            XCTAssertTrue(app.buttons["Scan QR"].exists)
+            XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Operator"))
+                .firstMatch.exists, "Reinstall must not resume old pairing")
+            XCTAssertFalse(app.buttons["pairAgainButton"].exists)
+            retainScreenshot(app, named: "actual-reinstall-onboarding-\(launch)")
+            app.terminate()
+        }
+    }
+
     /// Smoke test: a fresh-install app launches into PairView with the
     /// expected affordances visible. No backend needed; covers the
     /// SceneManifest fix + CredentialStore + PairView wiring.
