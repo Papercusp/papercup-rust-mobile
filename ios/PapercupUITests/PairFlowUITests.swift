@@ -17,6 +17,20 @@
 
 import XCTest
 import UIKit
+import Darwin
+
+@_silgen_name("notify_register_check")
+private func notify_register_check(_ name: UnsafePointer<CChar>, _ token: UnsafeMutablePointer<Int32>) -> Int32
+@_silgen_name("notify_get_state")
+private func notify_get_state(_ token: Int32, _ state: UnsafeMutablePointer<UInt64>) -> Int32
+@_silgen_name("notify_set_state")
+private func notify_set_state(_ token: Int32, _ state: UInt64) -> Int32
+@_silgen_name("notify_post")
+private func notify_post(_ name: UnsafePointer<CChar>) -> Int32
+@_silgen_name("notify_cancel")
+private func notify_cancel(_ token: Int32) -> Int32
+
+private let notifyOK: Int32 = 0
 
 final class PairFlowUITests: XCTestCase {
     private func retainScreenshot(_ app: XCUIApplication, named name: String) {
@@ -99,6 +113,26 @@ final class PairFlowUITests: XCTestCase {
                           "Use only the owned public HTTPS fixture")
         let app = XCUIApplication()
         defer { UIPasteboard.general.string = nil; app.terminate() }
+        #if targetEnvironment(simulator)
+        // The Simulator Hardware > Face ID controls use these notifications.
+        // Enroll the simulated sensor, then provide a match only after the
+        // real LocalAuthentication UI opens. Keep the production gate intact.
+        var enrollment: Int32 = 0
+        XCTAssertEqual("com.apple.BiometricKit.enrollmentChanged".withCString {
+            notify_register_check($0, &enrollment)
+        }, notifyOK)
+        var priorEnrollment: UInt64 = 0
+        XCTAssertEqual(notify_get_state(enrollment, &priorEnrollment), notifyOK)
+        XCTAssertEqual(notify_set_state(enrollment, 1), notifyOK)
+        XCTAssertEqual("com.apple.BiometricKit.enrollmentChanged".withCString {
+            notify_post($0)
+        }, notifyOK)
+        defer {
+            notify_set_state(enrollment, priorEnrollment)
+            "com.apple.BiometricKit.enrollmentChanged".withCString { notify_post($0) }
+            notify_cancel(enrollment)
+        }
+        #endif
         func settings() throws {
             let tab = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Settings")).firstMatch
             _ = try XCTUnwrap(tab.waitForExistence(timeout: 15) ? tab : nil)
@@ -127,6 +161,13 @@ final class PairFlowUITests: XCTestCase {
             let choice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
             _ = try XCTUnwrap(choice.waitForExistence(timeout: 15) && choice.isEnabled ? choice : nil)
             choice.tap()
+            #if targetEnvironment(simulator)
+            XCTAssertFalse(app.buttons["Current Pot: \(name). Tap to switch."].exists,
+                           "Workspace must not change before authentication approves")
+            XCTAssertEqual("com.apple.BiometricKit_Sim.pearl.match".withCString {
+                notify_post($0)
+            }, notifyOK)
+            #endif
             XCTAssertTrue(app.buttons["Current Pot: \(name). Tap to switch."].waitForExistence(timeout: 30),
                           "Workspace switch must update the paired shell")
             // The new token rebuilds PairedShell and its Settings navigation.
