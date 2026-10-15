@@ -162,6 +162,15 @@ final class PairFlowUITests: XCTestCase {
             _ = try XCTUnwrap(choice.waitForExistence(timeout: 15) && choice.isEnabled ? choice : nil)
             choice.tap()
             #if targetEnvironment(simulator)
+            // iOS asks for Face ID permission the first time this app uses
+            // LocalAuthentication. XCTest cannot approve the biometric match
+            // while that privacy alert is still on screen, so accept the
+            // simulator-only consent before posting the simulated match.
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let faceIDPermission = springboard.alerts.buttons["Allow"].firstMatch
+            if faceIDPermission.waitForExistence(timeout: 5) {
+                faceIDPermission.tap()
+            }
             XCTAssertFalse(app.buttons["Current Pot: \(name). Tap to switch."].exists,
                            "Workspace must not change before authentication approves")
             XCTAssertEqual("com.apple.BiometricKit_Sim.pearl.match".withCString {

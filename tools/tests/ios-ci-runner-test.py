@@ -537,6 +537,34 @@ class NativeRunnerTests(unittest.TestCase):
                 self.assertEqual(self.run_ci(), 1)
                 self.assertNotIn('build', self.calls)
 
+    def test_failed_ui_retains_native_summary_and_attachments_without_admitting_success(self):
+        self.args.mode = 'simulator'
+        self.failure_phase = 'ui-smoke'
+        self.counts = {'passedTests': 4, 'failedTests': 1, 'skippedTests': 0}
+        self.assertEqual(self.run_ci(), 1)
+        result = self.latest()
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['error'], 'fixture failure: ui-smoke')
+        self.assertIn('ui-smoke-screenshots', self.calls)
+        retained = {entry['path'] for entry in result['artifacts']}
+        self.assertIn('ui-smoke-summary.json', retained)
+        self.assertIn('ui-smoke-attachments/candidate.png', retained)
+        self.assertIn('ui-smoke-diagnostic-errors.json', retained)
+        self.assertFalse((self.state / 'success-simulator.json').exists())
+
+    def test_failed_summary_export_still_retains_attachments_and_original_ui_failure(self):
+        self.args.mode = 'simulator'
+        self.failure_phase = 'ui-smoke'
+        def unavailable_summary(command, **kwargs):
+            raise subprocess.CalledProcessError(1, command)
+        self.summary = unavailable_summary
+        self.assertEqual(self.run_ci(), 1)
+        result = self.latest()
+        self.assertEqual(result['error'], 'fixture failure: ui-smoke')
+        self.assertIn('ui-smoke-screenshots', self.calls)
+        errors = json.loads((Path(result['attempt']) / 'ui-smoke-diagnostic-errors.json').read_text())
+        self.assertEqual(errors, [{'stage': 'summary', 'errorType': 'CalledProcessError'}])
+
     def test_shared_simulator_selection_disables_cloning_and_keeps_result_guard(self):
         self.counts = {'passedTests': 1, 'failedTests': 0, 'skippedTests': 0}
         real_run = subprocess.run

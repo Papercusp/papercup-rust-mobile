@@ -186,23 +186,46 @@ def ui_test(root, env, attempt, phases, name, tests, shared_simulator=False):
         # not an Xcode-created parallel-test clone.
         command.extend(['-parallel-testing-enabled', 'NO'])
     command.extend('-only-testing:' + test for test in tests)
-    run_phase(name, command, root, env, attempt, phases)
+    test_error = None
+    try:
+        run_phase(name, command, root, env, attempt, phases)
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        test_error = error
+    # A failed XCTest is exactly when its native summary and attachments are
+    # needed. Collect both before returning the original execution failure.
+    diagnostic_errors = []
     summary = attempt / (name + '-summary.json')
-    with summary.open('w') as stream:
-        subprocess.run(['xcrun', 'xcresulttool', 'get', 'test-results', 'summary',
-                        '--path', str(bundle), '--format', 'json'], cwd=root, env=env,
-                       stdout=stream, check=True)
-    run_phase(name + '-guard', ['python3', 'tools/build-scripts/check-xctest-summary.py',
-                              str(summary), name], root, env, attempt, phases)
-    result = json.loads(summary.read_text())
-    if result['passedTests'] != len(tests):
-        raise ValueError(name + ' must execute exactly the selected tests')
+    try:
+        with summary.open('w') as stream:
+            subprocess.run(['xcrun', 'xcresulttool', 'get', 'test-results', 'summary',
+                            '--path', str(bundle), '--format', 'json'], cwd=root, env=env,
+                           stdout=stream, check=True)
+        run_phase(name + '-guard', ['python3', 'tools/build-scripts/check-xctest-summary.py',
+                                  str(summary), name], root, env, attempt, phases)
+        result = json.loads(summary.read_text())
+        if result['passedTests'] != len(tests):
+            raise ValueError(name + ' must execute exactly the selected tests')
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        diagnostic_errors.append(('summary', error))
     attachments = attempt / (name + '-attachments')
-    run_phase(name + '-screenshots', ['xcrun', 'xcresulttool', 'export', 'attachments',
-                                    '--path', str(bundle), '--output-path', str(attachments)],
-              root, env, attempt, phases)
-    if not list(attachments.rglob('*.png')):
-        raise ValueError(name + ' did not retain a candidate screenshot')
+    try:
+        run_phase(name + '-screenshots', ['xcrun', 'xcresulttool', 'export', 'attachments',
+                                        '--path', str(bundle), '--output-path', str(attachments)],
+                  root, env, attempt, phases)
+        if not list(attachments.rglob('*.png')):
+            raise ValueError(name + ' did not retain a candidate screenshot')
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        diagnostic_errors.append(('attachments', error))
+    if diagnostic_errors:
+        # Retain secondary failures without allowing their messages to echo
+        # private test inputs or conceal the original XCTest verdict.
+        (attempt / (name + '-diagnostic-errors.json')).write_text(json.dumps([
+            {'stage': stage, 'errorType': type(error).__name__}
+            for stage, error in diagnostic_errors], indent=2) + '\n')
+    if test_error:
+        raise test_error
+    if diagnostic_errors:
+        raise diagnostic_errors[0][1]
 
 
 def reinstall_ui(root, env, attempt, phases):
