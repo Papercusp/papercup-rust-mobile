@@ -759,9 +759,11 @@ final class PairFlowUITests: XCTestCase {
         XCTAssertTrue(workspace.hasPrefix("test-runtime-"), "Use an owned disposable workspace")
         XCTAssertTrue(base.scheme == "http" && base.host == "127.0.0.1" && base.port != nil,
                       "Desktop controls require the owned private loopback route")
-        guard workspace.hasPrefix("test-runtime-"), base.scheme == "http", base.host == "127.0.0.1",
-              let port = base.port, ![3070, 3170, 3055].contains(port),
-              base.path.isEmpty || base.path == "/" else { return }
+        let ownedRoute = workspace.hasPrefix("test-runtime-") && base.scheme == "http" &&
+            base.host == "127.0.0.1" && base.port != nil && ![3070, 3170, 3055].contains(base.port ?? 0) &&
+            (base.path.isEmpty || base.path == "/") && base.query == nil && base.fragment == nil &&
+            base.user == nil && base.password == nil
+        _ = try XCTUnwrap(ownedRoute ? true : nil, "Expiry controls require the exact owned loopback fixture")
         func control(_ path: String, method: String = "GET", body: [String: String]? = nil) async throws -> [String: Any] {
             var request = URLRequest(url: base.appendingPathComponent("api/device/desktop/" + path))
             request.httpMethod = method
