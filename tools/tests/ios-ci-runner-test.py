@@ -40,7 +40,7 @@ class NativeRunnerTests(unittest.TestCase):
         self.counts = {'passedTests': len(ci.SMOKE_TESTS), 'failedTests': 0, 'skippedTests': 0}
         self.args = argparse.Namespace(mode='check', distribution='app-store-connect', preflight=False, force=False,
                                        paired_ui=False, reinstall_ui=False, offline_recovery_ui=False,
-                                       workspace_switch_ui=False, pair_payload_file=None,
+                                       workspace_switch_ui=False, device_expiry_ui=False, pair_payload_file=None,
                                        expired_pair_payload_file=None,
                                        build_number=None, secrets_file=None,
                                        upload=False, confirm_upload=False)
@@ -190,6 +190,45 @@ class NativeRunnerTests(unittest.TestCase):
                 self.assertEqual(self.run_ci(), 1)
                 self.assertNotIn('build', self.calls)
                 self.assertIn('--workspace-switch-ui requires', self.latest()['error'])
+
+    def test_device_expiry_selects_its_case_and_rejects_public_or_shared_journeys(self):
+        self.args.mode = 'simulator'
+        self.args.paired_ui = True
+        self.args.device_expiry_ui = True
+        pair_path = self.base / 'fresh.json'
+        payload = {'server': 'http://127.0.0.1:48991',
+                   'workspaceId': 'test-runtime-native-test', 'pairToken': 'private-device-expiry-token'}
+        pair_path.write_text(json.dumps(payload))
+        pair_path.chmod(0o600)
+        self.args.pair_payload_file = str(pair_path)
+        original_summary = self.summary
+        def summary(command, **kwargs):
+            if 'paired-ui.xcresult' in ' '.join(command):
+                kwargs['stdout'].write(json.dumps({'passedTests': 1, 'failedTests': 0, 'skippedTests': 0}))
+                return subprocess.CompletedProcess(command, 0)
+            return original_summary(command, **kwargs)
+        self.summary = summary
+        self.assertEqual(self.run_ci(), 0)
+        self.assertIn('-only-testing:PapercupUITests/PairFlowUITests/testLiveDeviceExpiryAndRepairing',
+                      self.commands['paired-ui'][0])
+        self.assertNotIn('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', self.commands['unit'][1])
+        for changes in ({'paired_ui': False}, {'mode': 'signed'}, {'offline_recovery_ui': True},
+                        {'workspace_switch_ui': True}, {'expired_pair_payload_file': str(pair_path)},
+                        {'reinstall_ui': True}):
+            with patch.multiple(self.args, **changes):
+                self.calls.clear()
+                self.assertEqual(self.run_ci(), 1)
+                self.assertNotIn('build', self.calls)
+                self.assertIn('--device-expiry-ui requires', self.latest()['error'])
+        for change in ({'server': 'https://public.example.org'}, {'workspaceId': 'production'},
+                       {'server': 'http://127.0.0.1:3070'}, {'server': 'http://127.0.0.1:3170'},
+                       {'server': 'http://127.0.0.1:48991/admin'}, {'server': 'http://127.0.0.1:48991/?x=y'},
+                       {'server': 'http://private@127.0.0.1:48991'}, {'pairToken': ''}):
+            pair_path.write_text(json.dumps(dict(payload, **change)))
+            self.calls.clear()
+            self.assertEqual(self.run_ci(), 1)
+            self.assertNotIn('build', self.calls)
+            self.assertIn('owned private loopback', self.latest()['error'])
 
     def test_simulator_pass_keeps_test_proof_without_archive_or_signing(self):
         self.args.mode = 'simulator'

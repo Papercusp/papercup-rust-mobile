@@ -452,6 +452,10 @@ def _execute(root, state, args):
         paired_env = None
         offline_recovery = getattr(args, 'offline_recovery_ui', False)
         workspace_switch = getattr(args, 'workspace_switch_ui', False)
+        device_expiry = getattr(args, 'device_expiry_ui', False)
+        if device_expiry and (not args.paired_ui or args.mode != 'simulator' or workspace_switch
+                              or offline_recovery or args.expired_pair_payload_file or args.reinstall_ui):
+            raise ValueError('--device-expiry-ui requires simulator --paired-ui and a separate one-shot token')
         if workspace_switch and (not args.paired_ui or args.mode != 'simulator'
                                  or args.expired_pair_payload_file or args.reinstall_ui or offline_recovery):
             raise ValueError('--workspace-switch-ui requires simulator --paired-ui and a separate one-shot token')
@@ -469,6 +473,16 @@ def _execute(root, state, args):
             if not payload or not isinstance(json.loads(payload), dict) or not json.loads(payload):
                 raise ValueError('Paired UI input must be a nonempty JSON object')
             paired_env = dict(env, TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD=payload)
+            if device_expiry:
+                from urllib.parse import urlparse
+                data = json.loads(payload)
+                base = urlparse(data.get('server', ''))
+                if (base.scheme != 'http' or base.hostname != '127.0.0.1' or not base.port
+                        or base.port in (3070, 3170, 3055) or base.path not in ('', '/')
+                        or base.query or base.fragment or base.username or base.password
+                        or not str(data.get('workspaceId', '')).startswith('test-runtime-')
+                        or not isinstance(data.get('pairToken'), str) or not data['pairToken']):
+                    raise ValueError('Device expiry requires the owned private loopback fixture payload')
             if args.expired_pair_payload_file:
                 expired = private_input(args.expired_pair_payload_file, root).read_text().strip()
                 fresh_data, expired_data = json.loads(payload), json.loads(expired)
@@ -536,7 +550,8 @@ def _execute(root, state, args):
         ui_test(root, env, attempt, phases, 'ui-smoke', SMOKE_TESTS)
         if args.paired_ui:
             paired_env.update(env)
-            paired_case = ('testOwnedWorkspaceSwitchAndKeychainRelaunch' if workspace_switch else
+            paired_case = ('testLiveDeviceExpiryAndRepairing' if device_expiry else
+                           'testOwnedWorkspaceSwitchAndKeychainRelaunch' if workspace_switch else
                            'testOwnedOperatorOfflineThenRecoversWithoutRepairing' if offline_recovery else
                            'testPublicExpiredPairThenFreshPair' if args.expired_pair_payload_file else
                            'testPairAndPairedNavigation')
@@ -649,6 +664,8 @@ def main():
     parser.add_argument('--preflight', action='store_true')
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--paired-ui', action='store_true')
+    parser.add_argument('--device-expiry-ui', action='store_true',
+                        help='With simulator --paired-ui, verify real device JWT expiry and fresh pairing in the private fixture')
     parser.add_argument('--workspace-switch-ui', action='store_true',
                         help='With simulator --paired-ui, verify distinct owned workspaces and persisted switching')
     parser.add_argument('--offline-recovery-ui', action='store_true',
