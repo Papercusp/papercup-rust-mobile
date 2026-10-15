@@ -438,6 +438,38 @@ deletes it. `release-ios.sh` signs manually in this mode
 `make release-ios` keeps automatic signing through the Mac's Xcode account.
 `make test-ios-signing` covers all of this with fixtures.
 
+### Source refresh without deleting native build caches
+
+Use `tools/source-sync.py` for a local prepared source/destination pair. It
+derives the transfer set from Git's tracked source inventory,
+admits byte/file budgets before writing, copies only admitted files, removes
+only stale tracked destination files, and verifies the existing native runner's
+exact commit, recursive fingerprint and clean status after copying. Existing
+ignored `target/`, Gradle, Xcode and other generated caches are preserved.
+
+```sh
+python3 tools/source-sync.py /prepared/source /prepared/native-checkout --dry-run
+python3 tools/source-sync.py /prepared/source /prepared/native-checkout \
+  --max-bytes 5368709120 --max-files 250000 --timeout 600
+make test-source-sync
+```
+
+Both locations must be disjoint, clean Git checkouts with the same initialized
+submodule paths. Visible untracked files, ignored destination collisions and
+different private Firebase configuration are refused before source mutation.
+The byte budget includes Git bundles for the root and submodules. Objects,
+index and HEAD are updated without a checkout/reset that might delete caches;
+the stable Git-local source-lock inode is preserved. Native iPhone execution
+holds shared source custody for its complete run, while sync holds exclusive
+destination custody from preflight through identity verification. An interrupted
+copy must be repaired and verified before any acceptance run.
+
+This helper operates on local prepared checkouts: prepare the incoming checkout
+on the Mac first, then refresh its existing native checkout with this command.
+It does not implement an SSH transport. Git subprocesses and file-copy loops use
+the supplied time budget. Do not substitute whole-tree `rsync --delete`. Complete
+source refresh and cache prewarming before starting a short-lived pairing fixture.
+
 ## Known issues
 
 - **Xcode 16.2 destination race**: `xcodebuild` occasionally fails first-try with "iOS 18.2 is not installed" because the SDK and the only-installed 18.3.1 runtime mismatch on the destination resolver. The `make test-ios` wrapper retries 8x. Switching to Xcode 16.3 resolves it.

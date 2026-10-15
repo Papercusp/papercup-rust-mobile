@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Independent Android CI, reusing the maintained host and native gates."""
 import argparse
+from contextlib import contextmanager
 import datetime as dt
 import fcntl
 import hashlib
@@ -20,6 +21,28 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = 'system-images;android-36;google_apis_ps16k;x86_64'
 CI_ADMISSION = 'android/app/build/outputs/papercusp-android-checks/ci.json'
+
+def status(message):
+    """Emit progress without turning a closed observer pipe into a failed run."""
+    try:
+        print(message, flush=True)
+    except BrokenPipeError:
+        # Replace the underlying descriptor too: Python's shutdown flush must
+        # not turn a completed child and retained verdict into exit status 120.
+        with open(os.devnull, 'w') as sink:
+            os.dup2(sink.fileno(), sys.stdout.fileno())
+
+
+@contextmanager
+def source_custody(root, exclusive=False):
+    """One stable Git-local inode shared by source transfer and native runs."""
+    gitdir = Path(output(['git', 'rev-parse', '--absolute-git-dir'], root))
+    with (gitdir / 'papercup-source.lock').open('a+') as lock:
+        try:
+            fcntl.flock(lock, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ValueError('Native source custody is held; source sync/execution refused') from error
+        yield
 
 
 def executor_state():
@@ -231,7 +254,7 @@ def required_tools(env):
 
 def run_phase(name, command, root, env, attempt, phases, timeout=5400):
     log = attempt / (name + '.log')
-    print(f'Android CI phase: {name}; log: {log}', flush=True)
+    status(f'Android CI phase: {name}; log: {log}')
     executor_fd = inherited_executor(env)
     with log.open('w') as stream:
         child = subprocess.Popen(command, cwd=root, env=env, stdout=stream,
@@ -442,7 +465,7 @@ def execute(root, operator, state, force=False, preflight_only=False):
         return 0
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         result['error'] = str(error)
-        print(result['error'], flush=True)
+        status(result['error'])
         (state / 'success.json').unlink(missing_ok=True)
         (root / CI_ADMISSION).unlink(missing_ok=True)
         return 1
@@ -466,7 +489,7 @@ def execute(root, operator, state, force=False, preflight_only=False):
         write_json(state / 'latest.json', result)
         if result['status'] == 'passed':
             write_json(state / 'success.json', result)
-        print(json.dumps({'status': result['status'], 'evidence': str(attempt / 'result.json')}), flush=True)
+        status(json.dumps({'status': result['status'], 'evidence': str(attempt / 'result.json')}))
 
 
 def main():

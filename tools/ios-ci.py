@@ -648,8 +648,9 @@ def _execute(root, state, args):
 
 def execute(root, state, args):
     try:
-        return _execute(root, state, args)
-    except SigningCleanupError as error:
+        with mobile_ci.source_custody(root):
+            return _execute(root, state, args)
+    except (SigningCleanupError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
 

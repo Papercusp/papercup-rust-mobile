@@ -8,7 +8,8 @@
         bindings-kotlin bindings-swift test test-ios test-ios-ui \
         verify-ios-release test-ios-release release-ios check \
         fmt fmt-check clippy lint-android test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-cloud-pending \
-        test-ios-host-health test-ios-template-runner test-ios-unit-runner bindings-smoke install-hooks clean tokens tokens-check
+        test-ios-host-health test-ios-template-runner test-ios-unit-runner bindings-smoke install-hooks clean tokens tokens-check \
+        test-source-sync
 
 help:
 	@echo "Targets:"
@@ -46,7 +47,7 @@ help:
 
 # Shared local gates; Android automation uses tools/android-ci.py independently
 # of GitHub Actions. iPhone execution uses tools/ios-ci.py on a native Mac.
-check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-store-cloud-pending test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-ios-unit-runner test-git-hooks test-rust-toolchain-pin test-ios-signing test-ios-ci test-ios-release lint-workflows lint-shell
+check: fmt-check clippy test bindings-smoke tokens-check test-android-java test-android-launch-lifecycle test-android-release-provenance test-android-signing test-android-library-notices test-store-packet-scope test-store-cloud-pending test-android-runner test-android-ci test-ios-host-health test-ios-template-runner test-ios-unit-runner test-git-hooks test-rust-toolchain-pin test-ios-signing test-ios-ci test-ios-release test-source-sync lint-workflows lint-shell
 
 # Regenerate design-token outputs and fail if the working tree differs.
 # Catches the drift case where someone edits *.tokens.json but forgets
@@ -201,6 +202,9 @@ test-ios-release:
 .PHONY: test-ios-ci check-ios-ci
 test-ios-ci:
 	python3 tools/tests/ios-ci-runner-test.py
+
+test-source-sync:
+	python3 tools/tests/source-sync-test.py
 
 check-ios-ci:
 	python3 tools/ios-ci.py

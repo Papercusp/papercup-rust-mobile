@@ -29,6 +29,7 @@ class NativeRunnerTests(unittest.TestCase):
         self.base = Path(self.tmp.name)
         self.root = self.base / 'repo'
         self.root.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
         (self.root / 'rust-toolchain.toml').write_text('[toolchain]\nchannel = "1.99.0"\n')
         self.state = self.base / 'state'
         self.state.mkdir()
