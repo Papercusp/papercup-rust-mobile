@@ -84,6 +84,76 @@ final class PairFlowUITests: XCTestCase {
                           "A real authorized attention read must complete after pairing")
     }
 
+    /// Actual Settings switching against the owned two-workspace backend.
+    /// Distinct device rows prove the new token changes reads, beyond the header label.
+    @MainActor
+    func testOwnedWorkspaceSwitchAndKeychainRelaunch() throws {
+        guard let raw = ProcessInfo.processInfo.environment["PAPERCUP_PAIR_PAYLOAD"], !raw.isEmpty else {
+            throw XCTSkip("A fresh owned two-workspace fixture payload is required.")
+        }
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
+        let workspace = try XCTUnwrap(payload["workspaceId"] as? String)
+        let base = try XCTUnwrap(URL(string: try XCTUnwrap(payload["server"] as? String)))
+        _ = try XCTUnwrap(workspace.hasPrefix("test-runtime-") && base.scheme == "https" &&
+                          base.host?.hasPrefix("native-iphone-") == true ? base : nil,
+                          "Use only the owned public HTTPS fixture")
+        let app = XCUIApplication()
+        defer { UIPasteboard.general.string = nil; app.terminate() }
+        func settings() throws {
+            let tab = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Settings")).firstMatch
+            _ = try XCTUnwrap(tab.waitForExistence(timeout: 15) ? tab : nil)
+            tab.tap()
+        }
+        func assertWorkspace(_ name: String, marker: String, absentMarker: String) throws {
+            XCTAssertTrue(app.buttons["Current Pot: \(name). Tap to switch."].waitForExistence(timeout: 20),
+                          "Selected workspace must render")
+            let row = app.staticTexts[marker]
+            XCTAssertTrue(row.waitForExistence(timeout: 20), "Authorized device data must come from the selected workspace")
+            XCTAssertFalse(app.staticTexts[absentMarker].exists, "Other-workspace data must stay isolated")
+            for _ in 0..<8 {
+                if row.isHittable { break }
+                app.swipeUp()
+            }
+            XCTAssertTrue(row.isHittable, "Retained screenshot must show the selected workspace marker")
+        }
+        func switchTo(_ name: String) throws {
+            let link = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Switch workspace")).firstMatch
+            for _ in 0..<8 {
+                if link.isHittable { break }
+                app.swipeDown()
+            }
+            _ = try XCTUnwrap(link.isHittable ? link : nil)
+            link.tap()
+            let choice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+            _ = try XCTUnwrap(choice.waitForExistence(timeout: 15) && choice.isEnabled ? choice : nil)
+            choice.tap()
+            XCTAssertTrue(app.buttons["Current Pot: \(name). Tap to switch."].waitForExistence(timeout: 30),
+                          "Workspace switch must update the paired shell")
+            // The new token rebuilds PairedShell and its Settings navigation.
+            try settings()
+        }
+        app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
+        app.launch()
+        try visiblePair(app, payload: raw)
+        UIPasteboard.general.string = nil
+        try settings()
+        try assertWorkspace("Native workspace A", marker: "Native workspace A marker", absentMarker: "Native workspace B marker")
+        retainScreenshot(app, named: "workspace-switch-original-A-data")
+        try switchTo("Native workspace B")
+        try assertWorkspace("Native workspace B", marker: "Native workspace B marker", absentMarker: "Native workspace A marker")
+        retainScreenshot(app, named: "workspace-switch-B-isolated-data")
+        app.terminate()
+        app.launchArguments = []
+        app.launch()
+        XCTAssertFalse(app.staticTexts["Pair with your desktop"].exists)
+        try settings()
+        try assertWorkspace("Native workspace B", marker: "Native workspace B marker", absentMarker: "Native workspace A marker")
+        retainScreenshot(app, named: "workspace-switch-B-keychain-relaunch")
+        try switchTo("Native workspace A")
+        try assertWorkspace("Native workspace A", marker: "Native workspace A marker", absentMarker: "Native workspace B marker")
+        retainScreenshot(app, named: "workspace-switch-return-A-data")
+    }
+
     /// The maintained disposable fixture terminates its actual operator after
     /// the first authorized heartbeat, then starts a new PID with the same
     /// private database and signing identity. No controlled responder or seed.

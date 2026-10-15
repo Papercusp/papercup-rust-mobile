@@ -39,7 +39,8 @@ class NativeRunnerTests(unittest.TestCase):
         self.failure_phase = None
         self.counts = {'passedTests': len(ci.SMOKE_TESTS), 'failedTests': 0, 'skippedTests': 0}
         self.args = argparse.Namespace(mode='check', distribution='app-store-connect', preflight=False, force=False,
-                                       paired_ui=False, reinstall_ui=False, offline_recovery_ui=False, pair_payload_file=None,
+                                       paired_ui=False, reinstall_ui=False, offline_recovery_ui=False,
+                                       workspace_switch_ui=False, pair_payload_file=None,
                                        expired_pair_payload_file=None,
                                        build_number=None, secrets_file=None,
                                        upload=False, confirm_upload=False)
@@ -160,6 +161,35 @@ class NativeRunnerTests(unittest.TestCase):
                 self.assertEqual(self.run_ci(), 1)
                 self.assertNotIn('build', self.calls)
                 self.assertIn('--offline-recovery-ui requires', self.latest()['error'])
+
+    def test_workspace_switch_selects_its_case_and_refuses_shared_token_journeys(self):
+        self.args.mode = 'simulator'
+        self.args.paired_ui = True
+        self.args.workspace_switch_ui = True
+        pair_path = self.base / 'fresh.json'
+        pair_path.write_text(json.dumps({'server': 'https://native-iphone-test.example.org',
+                                        'workspaceId': 'test-runtime-native-test', 'pairToken': 'private-token'}))
+        pair_path.chmod(0o600)
+        self.args.pair_payload_file = str(pair_path)
+        original_summary = self.summary
+        def summary(command, **kwargs):
+            if 'paired-ui.xcresult' in ' '.join(command):
+                kwargs['stdout'].write(json.dumps({'passedTests': 1, 'failedTests': 0, 'skippedTests': 0}))
+                return subprocess.CompletedProcess(command, 0)
+            return original_summary(command, **kwargs)
+        self.summary = summary
+        self.assertEqual(self.run_ci(), 0)
+        command, env = self.commands['paired-ui']
+        self.assertIn('-only-testing:PapercupUITests/PairFlowUITests/testOwnedWorkspaceSwitchAndKeychainRelaunch', command)
+        self.assertNotIn('TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD', env)
+        self.assertNotIn('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', self.commands['unit'][1])
+        for changes in ({'paired_ui': False}, {'mode': 'signed'}, {'offline_recovery_ui': True},
+                        {'expired_pair_payload_file': str(pair_path)}, {'reinstall_ui': True}):
+            self.calls.clear()
+            with patch.multiple(self.args, **changes):
+                self.assertEqual(self.run_ci(), 1)
+                self.assertNotIn('build', self.calls)
+                self.assertIn('--workspace-switch-ui requires', self.latest()['error'])
 
     def test_simulator_pass_keeps_test_proof_without_archive_or_signing(self):
         self.args.mode = 'simulator'

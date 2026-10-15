@@ -428,6 +428,10 @@ def _execute(root, state, args):
             raise ValueError('Registered-device IPA export cannot be uploaded to App Store Connect')
         paired_env = None
         offline_recovery = getattr(args, 'offline_recovery_ui', False)
+        workspace_switch = getattr(args, 'workspace_switch_ui', False)
+        if workspace_switch and (not args.paired_ui or args.mode != 'simulator'
+                                 or args.expired_pair_payload_file or args.reinstall_ui or offline_recovery):
+            raise ValueError('--workspace-switch-ui requires simulator --paired-ui and a separate one-shot token')
         if offline_recovery and (not args.paired_ui or args.mode != 'simulator'
                                  or args.expired_pair_payload_file or args.reinstall_ui):
             raise ValueError('--offline-recovery-ui requires simulator --paired-ui and a separate one-shot token')
@@ -509,7 +513,8 @@ def _execute(root, state, args):
         ui_test(root, env, attempt, phases, 'ui-smoke', SMOKE_TESTS)
         if args.paired_ui:
             paired_env.update(env)
-            paired_case = ('testOwnedOperatorOfflineThenRecoversWithoutRepairing' if offline_recovery else
+            paired_case = ('testOwnedWorkspaceSwitchAndKeychainRelaunch' if workspace_switch else
+                           'testOwnedOperatorOfflineThenRecoversWithoutRepairing' if offline_recovery else
                            'testPublicExpiredPairThenFreshPair' if args.expired_pair_payload_file else
                            'testPairAndPairedNavigation')
             ui_test(root, paired_env, attempt, phases, 'paired-ui',
@@ -621,6 +626,8 @@ def main():
     parser.add_argument('--preflight', action='store_true')
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--paired-ui', action='store_true')
+    parser.add_argument('--workspace-switch-ui', action='store_true',
+                        help='With simulator --paired-ui, verify distinct owned workspaces and persisted switching')
     parser.add_argument('--offline-recovery-ui', action='store_true',
                         help='With simulator --paired-ui, verify the owned fixture operator stops and recovers')
     parser.add_argument('--reinstall-ui', action='store_true',
