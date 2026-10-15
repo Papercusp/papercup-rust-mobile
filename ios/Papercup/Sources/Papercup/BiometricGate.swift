@@ -17,7 +17,15 @@ final class BiometricGate: BiometricPrompt {
     func prompt(reason: String) -> BiometricResult {
         let ctx = LAContext()
         var err: NSError?
+        // The simulator has no usable passcode channel for XCTest. Its
+        // Face ID match notification is the native equivalent of approving
+        // this medium-risk gate. Production keeps the device-owner policy,
+        // which permits the user's configured device authentication method.
+        #if targetEnvironment(simulator)
+        let policy: LAPolicy = .deviceOwnerAuthenticationWithBiometrics
+        #else
         let policy: LAPolicy = .deviceOwnerAuthentication
+        #endif
         guard ctx.canEvaluatePolicy(policy, error: &err) else {
             let why = err?.localizedDescription ?? "biometric unavailable"
             os_log(.info, log: log, "biometric: unavailable — %{public}@", why)
