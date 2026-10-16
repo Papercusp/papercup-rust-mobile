@@ -44,6 +44,28 @@ class SigningCleanupError(RuntimeError):
     """Evidence was written, but temporary signing cleanup failed."""
 
 
+PAIR_INPUT_KEYS = ('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', 'TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD')
+
+
+def redact_private_text(text, env):
+    secrets = [env.get(key, '') for key in SIGNING_KEYS[1:]]
+    for key in PAIR_INPUT_KEYS:
+        payload = env.get(key, '')
+        if payload:
+            secrets.append(payload)
+            try:
+                values = json.loads(payload)
+                if isinstance(values, dict):
+                    secrets.extend(v for v in values.values() if isinstance(v, str))
+            except ValueError:
+                pass
+    for value in sorted(set(secrets), key=len, reverse=True):
+        if value:
+            text = text.replace(value, '[REDACTED]')
+            text = text.replace(json.dumps(value)[1:-1], '[REDACTED]')
+    return text
+
+
 def run_phase(name, command, root, env, attempt, phases, **kwargs):
     # Native tools can echo environment values on failure. Redact before hashing
     # or retaining a log, including when the shared process runner raises.
@@ -52,23 +74,7 @@ def run_phase(name, command, root, env, attempt, phases, **kwargs):
     finally:
         log = attempt / (name + '.log')
         if log.is_file():
-            text = log.read_text(errors='replace')
-            secrets = [env.get(key, '') for key in SIGNING_KEYS[1:]]
-            for key in ('TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD', 'TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD'):
-                payload = env.get(key, '')
-                if payload:
-                    secrets.append(payload)
-                    try:
-                        values = json.loads(payload)
-                        if isinstance(values, dict):
-                            secrets.extend(v for v in values.values() if isinstance(v, str))
-                    except ValueError:
-                        pass
-            for value in sorted(set(secrets), key=len, reverse=True):
-                if value:
-                    text = text.replace(value, '[REDACTED]')
-                    text = text.replace(json.dumps(value)[1:-1], '[REDACTED]')
-            log.write_text(text)
+            log.write_text(redact_private_text(log.read_text(errors='replace'), env))
             if not any(phase['name'] == name for phase in phases):
                 phases.append({'name': name, 'exitCode': None, 'log': str(log),
                                'status': 'interrupted'})
@@ -177,6 +183,35 @@ def toolchain(root, env, mode='check'):
 
 
 def ui_test(root, env, attempt, phases, name, tests, shared_simulator=False):
+    private = any(env.get(key) for key in PAIR_INPUT_KEYS)
+    failed = True
+    try:
+        result = _ui_test(root, env, attempt, phases, name, tests, shared_simulator)
+        failed = False
+        return result
+    finally:
+        if private:
+            # XCTest's opaque activity database may contain typed arguments or
+            # private launch inputs. Text log scrubbing cannot sanitize it.
+            # Keep the classified summary and successful UI screenshots instead.
+            bundle = attempt / (name + '.xcresult')
+            if bundle.is_dir():
+                shutil.rmtree(bundle)
+            summary = attempt / (name + '-summary.json')
+            if summary.is_file():
+                summary.write_text(redact_private_text(summary.read_text(), env))
+            attachments = attempt / (name + '-attachments')
+            if attachments.is_dir():
+                if failed:
+                    # Failure screenshots can show an unsubmitted pairing code.
+                    shutil.rmtree(attachments)
+                else:
+                    for path in attachments.rglob('*'):
+                        if path.is_file() and path.suffix.lower() != '.png':
+                            path.unlink()
+
+
+def _ui_test(root, env, attempt, phases, name, tests, shared_simulator=False):
     bundle = attempt / (name + '.xcresult')
     command = ['xcodebuild', 'test-without-building', '-project', 'ios/Papercup.xcodeproj',
                '-scheme', 'Papercup', '-destination', 'platform=iOS Simulator,id=' + env['PAPERCUP_IOS_SIM_UDID'],

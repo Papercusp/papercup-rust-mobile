@@ -480,6 +480,7 @@ final class PairFlowUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
+        defer { UIPasteboard.general.string = nil; app.terminate() }
         app.launchArguments = ["-com.papercuspai.uitests.wipeCredentials", "YES"]
         // WI-4984 regression rig: delay the converse SSE drain by 8s so the
         // chat leg below can prove the submitted turn renders BEFORE the
@@ -490,16 +491,7 @@ final class PairFlowUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Pair with your desktop"].waitForExistence(timeout: 10))
-        let paste = app.buttons["Paste manually"]
-        XCTAssertTrue(paste.waitForExistence(timeout: 5))
-        paste.tap()
-        let editor = app.textViews.firstMatch
-        XCTAssertTrue(editor.waitForExistence(timeout: 5), "manual pairing editor should appear")
-        editor.tap()
-        editor.typeText(payload)
-        let pair = app.buttons["Pair"]
-        XCTAssertTrue(pair.isEnabled, "entered Remote access payload should enable pairing")
-        pair.tap()
+        try pastePairPayload(app, payload: payload)
 
         // Tab-bar items combine icon + label into one accessibility element and
         // the label is title-case, so an exact `app.buttons["Operator"]` query

@@ -832,6 +832,56 @@ class NativeRunnerTests(unittest.TestCase):
         self.assertEqual(self.run_ci(), 1)
         self.assertNotIn('unit-stale.json', {a['path'] for a in self.latest()['artifacts']})
 
+    def test_generic_pairing_uses_private_paste_and_clears_the_clipboard(self):
+        source = (ROOT / 'ios/PapercupUITests/PairFlowUITests.swift').read_text()
+        generic = source.split('func testPairAndPairedNavigation() throws {', 1)[1].split(
+            'func testLiveRevocationAndRepairing()', 1)[0]
+        self.assertIn('try pastePairPayload(app, payload: payload)', generic)
+        self.assertNotIn('typeText(payload)', generic)
+        self.assertIn('defer { UIPasteboard.general.string = nil; app.terminate() }', generic)
+
+    def test_private_ui_discards_raw_results_and_failed_screenshots_before_artifact_retention(self):
+        payload = json.dumps({'pairToken': 'NONSECRET-CANARY-pair-token',
+                              'server': 'https://canary.invalid'})
+        env = {'TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD': payload, 'PAPERCUP_IOS_SIM_UDID': 'SIM'}
+        for failed in (False, True):
+            with self.subTest(failed=failed):
+                attempt = self.base / ('private-ui-' + str(failed))
+                attempt.mkdir()
+                phases = []
+                bundle = attempt / 'paired-ui.xcresult'
+
+                def native(name, command, root, env, attempt, phases):
+                    if name.endswith('-guard'):
+                        return
+                    self.phase(name, command, root, env, attempt, phases)
+                    if name == 'paired-ui':
+                        bundle.mkdir()
+                        (bundle / 'opaque-record').write_bytes(payload.encode('utf-16'))
+                        if failed:
+                            raise RuntimeError('canary native failure')
+
+                def summary(command, **kwargs):
+                    kwargs['stdout'].write(json.dumps({'passedTests': 1, 'failedTests': 0,
+                        'skippedTests': 0, 'diagnostic': 'NONSECRET-CANARY-pair-token'}))
+                    return subprocess.CompletedProcess(command, 0)
+
+                with patch.object(ci, 'run_phase', side_effect=native), \
+                        patch.object(ci.subprocess, 'run', side_effect=summary):
+                    if failed:
+                        with self.assertRaisesRegex(RuntimeError, 'canary native failure'):
+                            ci.ui_test(self.root, env, attempt, phases, 'paired-ui', ('selected-test',))
+                    else:
+                        ci.ui_test(self.root, env, attempt, phases, 'paired-ui', ('selected-test',))
+                self.assertFalse(bundle.exists(), 'Opaque native results must not retain private input')
+                self.assertEqual((attempt / 'paired-ui-attachments/candidate.png').exists(), not failed)
+                self.assertNotIn('NONSECRET-CANARY-pair-token',
+                                 (attempt / 'paired-ui-summary.json').read_text())
+                for artifact in ci.artifacts(attempt):
+                    data = (attempt / artifact['path']).read_bytes()
+                    self.assertNotIn(b'NONSECRET-CANARY-pair-token', data)
+                    self.assertNotIn(payload.encode('utf-16'), data)
+
     def test_paired_and_signing_failure_logs_are_redacted_before_hashing(self):
         attempt = self.base / 'logs'
         attempt.mkdir()
