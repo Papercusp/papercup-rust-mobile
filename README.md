@@ -54,8 +54,9 @@ Managed git-sync owns commits and pushes for this independent repository. Do not
 manually commit/push or create a feature worktree. Android verification runs
 independently of GitHub Actions through the maintained local native CI service
 and timer; see [automatic Android CI](docs/BUILD.md#automatic-android-ci).
-The iPhone-only private CI supports admitted macOS 26 native builds and explicit
-release-candidate dispatch.
+The iPhone native runner is `tools/ios-ci.py` on a Mac. Simulator checks require
+Xcode 16.3+/SDK 17+; current-SDK archive and signed-release checks require Xcode
+26+/SDK 26+. See [native iPhone checks and TestFlight delivery](docs/BUILD.md#native-iphone-checks-and-testflight-delivery).
 
 A successful simulator test or unsigned archive is preparation. Real hardware,
 production push, signed export, TestFlight processing and approved public App Store

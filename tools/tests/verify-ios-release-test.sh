@@ -11,6 +11,8 @@ TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 files=(
+    README.md
+    docs/COORDINATION.md
     tools/ios-ci.py
     docs/BUILD.md
     docs/TESTFLIGHT-DEVICE-CHECKLIST.md
@@ -112,7 +114,7 @@ copy_fixture
 rm "$TMP_ROOT/fixture/docs/TESTFLIGHT-DEVICE-CHECKLIST.md"
 expect_failure "missing release input: docs/TESTFLIGHT-DEVICE-CHECKLIST.md"
 
-for guide in docs/BUILD.md docs/TESTFLIGHT-DEVICE-CHECKLIST.md ios/README.md; do
+for guide in README.md docs/COORDINATION.md docs/BUILD.md docs/TESTFLIGHT-DEVICE-CHECKLIST.md ios/README.md; do
     copy_fixture
     printf '\nRun gh workflow run testflight.yml before acceptance.\n' >> "$TMP_ROOT/fixture/$guide"
     expect_failure "GitHub Actions execution instructions must remain retired"
@@ -120,5 +122,15 @@ for guide in docs/BUILD.md docs/TESTFLIGHT-DEVICE-CHECKLIST.md ios/README.md; do
     printf '\nGH  workflow  enable testflight.yml\n' >> "$TMP_ROOT/fixture/$guide"
     expect_failure "GitHub Actions execution instructions must remain retired"
 done
+
+copy_fixture
+printf '\n4. GitHub Actions org billing — workflow_dispatch-only.\n' >> \
+    "$TMP_ROOT/fixture/docs/COORDINATION.md"
+expect_failure "retired GitHub Actions billing must not be listed as a blocker"
+
+copy_fixture
+printf '\n5. Xcode 16.3 on Mac VM — unstick xcodebuild test -scheme post-Sentry.\n' >> \
+    "$TMP_ROOT/fixture/docs/COORDINATION.md"
+expect_failure "stale Xcode 16.3 Mac VM blocker must be removed"
 
 echo "OK: native iOS release verifier rejects unsafe transport, placeholders, stale versions, transparent icons, missing execution inputs and restored Actions workflows/instructions"

@@ -29,6 +29,8 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 required = [
+    "README.md",
+    "docs/COORDINATION.md",
     "tools/ios-ci.py",
     "docs/BUILD.md",
     "docs/TESTFLIGHT-DEVICE-CHECKLIST.md",
@@ -148,7 +150,7 @@ swift_text = "\n".join(path.read_text() for path in swift_root.rglob("*.swift"))
 require("SentrySDK.start" not in swift_text,
         "iPhone 1.0 privacy answers declare no crash collection, so Sentry must remain absent")
 
-all_release_text = "\n".join((root / relative).read_text() for relative in required if relative.endswith((".md", ".yml")) and not relative.startswith("docs/"))
+all_release_text = "\n".join((root / relative).read_text() for relative in required if relative.endswith((".md", ".yml")) and not relative.startswith("docs/") and relative != "README.md")
 require("https://papercusp.com/mobile/privacy" in all_release_text,
         "release materials must contain the final public privacy URL")
 require("https://papercusp.com/mobile/support" in all_release_text,
@@ -159,11 +161,26 @@ markers = re.compile(r"\b(TODO|TBD|CHANGEME|YOUR_TEAM_ID|DRAFT)\b|<[^\r\n<>]+@[^
 marker = markers.search(all_release_text)
 require(marker is None, f"release materials contain placeholder marker: {marker.group(0) if marker else ''}")
 
-# Operational delivery guides must not send a native-only release back to Actions.
-for relative in ('docs/BUILD.md', 'docs/TESTFLIGHT-DEVICE-CHECKLIST.md', 'ios/README.md'):
+# Operational project and delivery docs must name the native route and not send
+# an iPhone release back to Actions.
+for relative in ('README.md', 'docs/COORDINATION.md', 'docs/BUILD.md',
+                 'docs/TESTFLIGHT-DEVICE-CHECKLIST.md', 'ios/README.md'):
     guide = (root / relative).read_text()
     require(re.search(r'\bgh\s+workflow\s+(?:run|enable)\b', guide, re.IGNORECASE) is None,
             f'{relative}: GitHub Actions execution instructions must remain retired')
+
+readme = (root / 'README.md').read_text()
+require('tools/ios-ci.py' in readme,
+        'README.md: iPhone execution must identify the maintained native runner')
+require(re.search(r'Xcode\s+26\+/SDK\s+26+', readme, re.IGNORECASE) is not None,
+        'README.md: current-SDK archive and signed-release requirements must be explicit')
+
+coordination = (root / 'docs/COORDINATION.md').read_text()
+require(re.search(r'GitHub\s+Actions\s+org\s+billing', coordination, re.IGNORECASE) is None,
+        'docs/COORDINATION.md: retired GitHub Actions billing must not be listed as a blocker')
+require(re.search(r'Xcode\s+16\.3\s+on\s+Mac\s+VM|xcodebuild\s+test\s+-scheme.{0,80}post-Sentry',
+                  coordination, re.IGNORECASE) is None,
+        'docs/COORDINATION.md: stale Xcode 16.3 Mac VM blocker must be removed')
 
 # Runtime SDK and native execution admission are enforced by tools/ios-ci.py.
 workflow_dir = root / '.github/workflows'
