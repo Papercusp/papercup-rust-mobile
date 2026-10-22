@@ -25,8 +25,9 @@ truth; native projects consume generated bindings + the cross-compiled core.
 
 ### iOS (macOS only)
 
-- Xcode 16.2+ (16.3 recommended — resolves the destination-resolver race that breaks `xcodebuild test -scheme`)
-- iOS Simulator runtime 18.x
+- Simulator checks: Xcode 16.3+, iPhoneSimulator SDK17+ and an available iOS17+ iPhone runtime.
+- Current release checks: Xcode26+, iPhoneOS SDK26+ and an available iOS26+ iPhone runtime.
+- The selected Xcode must support the actual host macOS; check Apple's [SDK and system requirements](https://developer.apple.com/xcode/system-requirements/).
 - `brew install xcodegen` (Mac VM has it at `/usr/local/bin/xcodegen` — Intel brew location)
 - `rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios`
 
@@ -301,6 +302,54 @@ It does not build a device archive, export an IPA or emit a candidate manifest.
 Explicit `--mode check` adds the SDK26 unsigned device archive and archive
 validation; both check and signed modes still require Xcode26+, iPhoneOS SDK26+
 and an available iOS26+ iPhone simulator (Intel hosts need the universal runtime).
+
+#### Preparing the current-SDK toolchain on the shared Mac VM
+
+Read the current registered Mac lease before any guest installation, restart or
+simulator changes. The P-008 executor must finish its native run, restore and
+read back provider configuration, clean its owned fixture and explicitly release
+the lease before the toolchain lane acquires it. A successful older simulator
+run is retained evidence for those cases, not a current-SDK candidate.
+
+Measure `sw_vers`, `uname -m`, `xcode-select -p`, `xcodebuild -version` and both
+`xcrun --sdk iphoneos --show-sdk-version` and
+`xcrun --sdk iphonesimulator --show-sdk-version`. Inspect installed Xcode apps
+and available iPhone runtimes before deciding an OS upgrade is needed. The
+runner records measured macOS version, architecture and Darwin release in
+`result.json`'s `toolchain.host`; changed host identity prevents cached success
+reuse even when the Xcode version is unchanged.
+
+Apple's [upload minimum](https://developer.apple.com/news/upcoming-requirements/?id=04282026a)
+is Xcode26+/SDK26+, not a requirement to install the newest Xcode27 release.
+Choose a stable accepted Xcode whose documented host range includes the
+measured guest. For example, Apple's system table checked on 2026-10-22 lists
+Xcode26.6 with SDK26.5 on macOS26.2–26.x, and Xcode26.3 on macOS15.6–26.x.
+These are compatibility examples, not proof of installation or a higher minimum.
+
+Keep the existing Xcode app and simulator evidence intact. Install an authorized
+Apple toolchain beside it, then set `DEVELOPER_DIR` to that app's actual
+`Contents/Developer` directory for this process. Do not change the global
+`xcode-select` selection. Legal agreement acceptance, account login and paid
+downloads remain separate authorization gates. Take a snapshot with a verified
+restore route before any destructive guest OS change; do not upgrade a guest
+that already meets the selected toolchain's host requirements.
+
+After the coordinated install, select an available iOS26+ iPhone UDID from
+`xcrun simctl list devices available -j`, set `PAPERCUP_IOS_SIM_UDID`, and use
+the maintained runner in the same exact-source checkout:
+
+```sh
+python3 tools/ios-ci.py --mode check --preflight
+python3 tools/ios-ci.py --mode check --force
+```
+
+Preflight must pass before the full matrix. Retain the clean source commit and
+fingerprint, selected developer directory, host/toolchain/runtime identity,
+executed unit and UI summaries, screenshot inventory and SDK26 archive facts.
+Use a fresh private payload for each required paired journey; the generic smoke
+does not replace P-008. Unsigned check mode emits archive facts only; an
+installable manual IPA still requires the separately authorized signing route
+below and the existing signed candidate manifest.
 
 An exclusive native executor lock prevents overlap. Logs, XCTest bundles, summaries,
 screenshots, optional archive and SHA256 inventory are retained under

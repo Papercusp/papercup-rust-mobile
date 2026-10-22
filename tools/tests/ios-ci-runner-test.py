@@ -447,6 +447,34 @@ class NativeRunnerTests(unittest.TestCase):
             tools = ci.toolchain(self.root, {'PATH': '/fixture', 'DEVELOPER_DIR': '/Xcode'}, 'simulator')
         self.assertEqual(tools['simulator'], 'NEWER')
 
+    def test_toolchain_measures_host_for_simulator_and_release_without_switching_xcode(self):
+        for mode, sdk, xcode, runtime_version in (
+                ('simulator', '18.5', 'Xcode 16.4', '18-6'),
+                ('check', '26.5', 'Xcode 26.6', '26-5'),
+                ('signed', '26.5', 'Xcode 26.6', '26-5')):
+            sims = {'devices': {'com.apple.CoreSimulator.SimRuntime.iOS-' + runtime_version: [
+                {'udid': 'PHONE', 'name': 'iPhone 16', 'isAvailable': True}]}}
+            with self.subTest(mode=mode), \
+                    patch.object(ci.platform, 'system', return_value='Darwin'), \
+                    patch.object(ci.platform, 'mac_ver', return_value=('26.6.1', ('', '', ''), 'x86_64')), \
+                    patch.object(ci.platform, 'machine', return_value='x86_64'), \
+                    patch.object(ci.platform, 'release', return_value='25.6.0'), \
+                    patch.object(ci.shutil, 'which', return_value='/fixture/tool'), \
+                    patch.object(ci, 'output', side_effect=[sdk, xcode, json.dumps(sims)]) as output:
+                tools = ci.toolchain(self.root, {'PATH': '/fixture', 'DEVELOPER_DIR': '/SelectedXcode'}, mode)
+            self.assertEqual(tools['host'], {
+                'macOSVersion': '26.6.1', 'architecture': 'x86_64', 'darwinRelease': '25.6.0'})
+            self.assertEqual(tools['developerDir'], '/SelectedXcode')
+            self.assertFalse(any(call.args[0][0] == 'xcode-select' for call in output.call_args_list))
+
+    def test_host_upgrade_requires_new_evidence_even_with_unchanged_xcode(self):
+        self.native['host'] = {'macOSVersion': '26.6.1', 'architecture': 'x86_64',
+                               'darwinRelease': '25.6.0'}
+        self.assertEqual(self.run_ci(), 0)
+        self.assertIsNotNone(ci.reuse(self.state, self.identity, self.native, False))
+        upgraded = dict(self.native, host=dict(self.native['host'], macOSVersion='26.6.2'))
+        self.assertIsNone(ci.reuse(self.state, self.identity, upgraded, False))
+
     def test_simulator_runs_private_paired_ui_with_no_archive(self):
         self.args.mode = 'simulator'
         self.args.paired_ui = True

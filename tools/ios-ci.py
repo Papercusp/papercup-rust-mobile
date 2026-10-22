@@ -179,6 +179,9 @@ def toolchain(root, env, mode='check'):
     env['PAPERCUP_IOS_SIM_UDID'] = device['udid']
     return {'xcode': xcode, 'simulatorSDK' if simulator_only else 'iosSDK': sdk,
             'simulatorRuntime': runtime, 'simulator': device['udid'],
+            'host': {'macOSVersion': platform.mac_ver()[0],
+                     'architecture': platform.machine(),
+                     'darwinRelease': platform.release()},
             'developerDir': env.get('DEVELOPER_DIR') or output(['xcode-select', '-p'], root, env)}
 
 
