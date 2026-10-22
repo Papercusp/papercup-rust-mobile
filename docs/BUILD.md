@@ -326,6 +326,17 @@ measured guest. For example, Apple's system table checked on 2026-10-22 lists
 Xcode26.6 with SDK26.5 on macOS26.2–26.x, and Xcode26.3 on macOS15.6–26.x.
 These are compatibility examples, not proof of installation or a higher minimum.
 
+Match the Xcode archive to the measured host architecture as well as its OS.
+The `xcodes` catalog checked on 2026-10-22 lists both
+`Xcode_26.6_Apple_silicon.xip` and `Xcode_26.6_Universal.xip` for build17F113;
+the Intel VM needs the Universal archive. A version-only catalog match is not
+enough to establish the correct artifact. The Universal asset's official URL is
+`https://download.developer.apple.com/Developer_Tools/Xcode_26.6/Xcode_26.6_Universal.xip`.
+An unauthenticated check redirected to Apple's `/unauthorized/` HTML page with
+HTTP200: verify the final URL, archive content and Apple signature before
+treating a download as an installer. Prefer an existing approved artifact or
+authorized download session; do not acquire credentials to bypass this boundary.
+
 Keep the existing Xcode app and simulator evidence intact. Install an authorized
 Apple toolchain beside it, then set `DEVELOPER_DIR` to that app's actual
 `Contents/Developer` directory for this process. Do not change the global
@@ -333,6 +344,14 @@ Apple toolchain beside it, then set `DEVELOPER_DIR` to that app's actual
 downloads remain separate authorization gates. Take a snapshot with a verified
 restore route before any destructive guest OS change; do not upgrade a guest
 that already meets the selected toolchain's host requirements.
+
+Inspect the installer helper's post-install behavior before using it under a
+no-license-acceptance grant. The inspected `xcodes` installer workflow includes
+license approval in its normal post-install steps; its `--no-superuser` route
+skips those steps. Do not run normal automatic post-install or
+`xcodebuild -license accept` without the preserved legal-acceptance gate.
+Release the Mac lease when artifact availability or authorization prevents
+guest work, then reacquire it before installing; keep source preparation moving.
 
 After the coordinated install, select an available iOS26+ iPhone UDID from
 `xcrun simctl list devices available -j`, set `PAPERCUP_IOS_SIM_UDID`, and use
