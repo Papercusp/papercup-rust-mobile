@@ -182,7 +182,8 @@ impl Cache {
                                     value_json: None,
                                     generation: 0,
                                 });
-                                if !recovered && entry.value_json.as_deref() == Some(json.as_str()) {
+                                if !recovered && entry.value_json.as_deref() == Some(json.as_str())
+                                {
                                     None // unchanged — stay quiet
                                 } else {
                                     // Failed makes subscribers display an error. Recovery
@@ -405,21 +406,35 @@ mod tests {
         let cache = Cache::new(f);
         let mut rx = cache.inner.tx.subscribe();
         cache.refresh("k").await;
-        assert!(matches!(rx.recv().await.unwrap(), CacheUpdate::Updated { generation: 1, .. }));
+        assert!(matches!(
+            rx.recv().await.unwrap(),
+            CacheUpdate::Updated { generation: 1, .. }
+        ));
         cache.start_polling(std::time::Duration::from_millis(10));
         assert!(matches!(
-            tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await.unwrap().unwrap(),
+            tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
             CacheUpdate::Failed { .. }
         ));
         let recovered = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv()).await;
-        let stayed_quiet = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await.is_err();
+        let stayed_quiet = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv())
+            .await
+            .is_err();
         cache.stop_polling();
-        assert!(matches!(
-            recovered,
-            Ok(Ok(CacheUpdate::Updated { ref value_json, generation: 2, .. }))
-                if value_json == r#"{"v":1}"#
-        ), "unchanged data must notify subscribers once after an outage, got {recovered:?}");
-        assert!(stayed_quiet, "later unchanged successful polls must remain quiet");
+        assert!(
+            matches!(
+                recovered,
+                Ok(Ok(CacheUpdate::Updated { ref value_json, generation: 2, .. }))
+                    if value_json == r#"{"v":1}"#
+            ),
+            "unchanged data must notify subscribers once after an outage, got {recovered:?}"
+        );
+        assert!(
+            stayed_quiet,
+            "later unchanged successful polls must remain quiet"
+        );
         assert_eq!(cache.get("k").unwrap().generation, 2);
     }
 
