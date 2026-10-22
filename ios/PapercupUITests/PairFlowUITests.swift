@@ -473,6 +473,7 @@ final class PairFlowUITests: XCTestCase {
     /// /api/device/pair → DeviceCredentials persist across relaunch
     /// → PairedShell mounts → tab bar visible → Settings nav rows
     /// (Standing approvals / Voice / Diagnostics) open correctly.
+    @MainActor
     func testPairAndPairedNavigation() throws {
         guard let payload = ProcessInfo.processInfo.environment["PAPERCUP_PAIR_PAYLOAD"],
               !payload.isEmpty else {
