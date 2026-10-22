@@ -5,7 +5,7 @@ How the mobile agent syncs with backend, frontend, designer, and plugin agents.
 
 ## Coord log
 
-Authoritative location: `/home/marsh-office/papercupai-workspace/coord/<agent>.jsonl`.
+Authoritative location: `../coord/<agent>.jsonl`, relative to the repository root.
 
 Five files, one per agent: `backend.jsonl`, `frontend.jsonl`, `mobile.jsonl`,
 `designer.jsonl`, `plugin.jsonl`. The directory is **not** under git — it is a
@@ -111,8 +111,9 @@ where mobile routes its traffic.
 
 ## External blockers tracked here
 
+Native iPhone execution uses `tools/ios-ci.py`; simulator and current-SDK
+requirements are documented in `docs/BUILD.md`.
+
 1. Apple Developer Program enrollment — gates iOS push + mesh + TestFlight.
 2. Picovoice AccessKey approval — gates wake-word activation.
 3. Cloudflare 404 on `api.papercuspai.com/api/mobile/*` — blocks cellular pair via public tunnel.
-4. GitHub Actions org billing — workflow `workflow_dispatch`-only.
-5. Xcode 16.3 on Mac VM — unstick `xcodebuild test -scheme` post-Sentry.
