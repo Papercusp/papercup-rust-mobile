@@ -231,6 +231,83 @@ class NativeRunnerTests(unittest.TestCase):
             self.assertNotIn('build', self.calls)
             self.assertIn('owned private loopback', self.latest()['error'])
 
+    def prepare_revocation(self, server='https://native-iphone-test.example.org'):
+        self.args.mode = 'simulator'
+        self.args.paired_ui = True
+        self.args.revocation_ui = True
+        self.args.private_controls_url = 'http://127.0.0.1:48991'
+        payload = {'server': server, 'workspaceId': 'test-runtime-native-test', 'pairToken': 'private-revocation-token'}
+        path = self.base / 'revocation.json'
+        path.write_text(json.dumps(payload))
+        path.chmod(0o600)
+        self.args.pair_payload_file = str(path)
+        original_summary = self.summary
+        def summary(command, **kwargs):
+            if 'paired-ui.xcresult' in ' '.join(command):
+                kwargs['stdout'].write(json.dumps({'passedTests': 1, 'failedTests': 0, 'skippedTests': 0}))
+                return subprocess.CompletedProcess(command, 0)
+            return original_summary(command, **kwargs)
+        self.summary = summary
+        return path, payload
+
+    def test_revocation_keeps_https_phone_origin_and_scopes_private_controls_to_selected_ui(self):
+        _, payload = self.prepare_revocation()
+        with patch.dict(os.environ, {'TEST_RUNNER_PAPERCUP_PRIVATE_CONTROLS_URL': 'http://127.0.0.1:3070',
+                                     'PAPERCUP_PRIVATE_CONTROLS_URL': 'http://127.0.0.1:3170'}):
+            self.assertEqual(self.run_ci(), 0)
+        command, env = self.commands['paired-ui']
+        self.assertIn('-only-testing:PapercupUITests/PairFlowUITests/testLiveRevocationAndRepairing', command)
+        self.assertEqual(json.loads(env['TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD']), payload)
+        self.assertEqual(env['TEST_RUNNER_PAPERCUP_PRIVATE_CONTROLS_URL'], 'http://127.0.0.1:48991')
+        for phase in ('unit', 'ui-smoke', 'build'):
+            self.assertNotIn('TEST_RUNNER_PAPERCUP_PRIVATE_CONTROLS_URL', self.commands[phase][1])
+            self.assertNotIn('PAPERCUP_PRIVATE_CONTROLS_URL', self.commands[phase][1])
+        self.assertNotIn(payload['pairToken'], json.dumps(self.latest()))
+
+    def test_revocation_preserves_private_loopback_payload_compatibility(self):
+        _, payload = self.prepare_revocation('http://127.0.0.1:48991')
+        self.args.private_controls_url = None
+        self.assertEqual(self.run_ci(), 0)
+        self.assertEqual(self.commands['paired-ui'][1]['TEST_RUNNER_PAPERCUP_PRIVATE_CONTROLS_URL'], payload['server'])
+
+    def test_revocation_rejects_public_shared_or_decorated_control_origins_before_build(self):
+        self.prepare_revocation()
+        for origin in (None, 'https://native-iphone-test.example.org', 'http://localhost:48991',
+                       'http://127.0.0.1:3070', 'http://127.0.0.1:3170', 'http://127.0.0.1:3055',
+                       'http://127.0.0.1:0', 'http://127.0.0.1', 'http://127.0.0.1:48991/admin',
+                       'http://127.0.0.1:48991/?x=y', 'http://127.0.0.1:48991/#fragment',
+                       'http://private@127.0.0.1:48991'):
+            with self.subTest(origin=origin):
+                self.args.private_controls_url = origin
+                self.calls.clear()
+                self.assertEqual(self.run_ci(), 1)
+                self.assertNotIn('build', self.calls)
+                self.assertIn('owned private loopback', self.latest()['error'])
+
+    def test_revocation_rejects_foreign_phone_payloads_and_shared_token_journeys(self):
+        path, payload = self.prepare_revocation()
+        for change in ({'server': 'http://public.example.org'}, {'workspaceId': 'production'}, {'pairToken': ''},
+                       {'server': 'https://private@native-iphone-test.example.org'},
+                       {'server': 'https://native-iphone-test.example.org/admin'},
+                       {'server': 'https://native-iphone-test.example.org:0'}):
+            with self.subTest(change=change):
+                path.write_text(json.dumps(dict(payload, **change)))
+                self.calls.clear()
+                self.assertEqual(self.run_ci(), 1)
+                self.assertNotIn('build', self.calls)
+        path.write_text(json.dumps(payload))
+        for changes in ({'paired_ui': False}, {'mode': 'signed'}, {'offline_recovery_ui': True},
+                        {'workspace_switch_ui': True}, {'device_expiry_ui': True},
+                        {'expired_pair_payload_file': str(path)}, {'reinstall_ui': True}):
+            with patch.multiple(self.args, **changes):
+                self.calls.clear()
+                self.assertEqual(self.run_ci(), 1)
+                self.assertNotIn('build', self.calls)
+                self.assertIn('--revocation-ui requires', self.latest()['error'])
+        self.args.revocation_ui = False
+        self.assertEqual(self.run_ci(), 1)
+        self.assertIn('--private-controls-url requires', self.latest()['error'])
+
     def test_simulator_pass_keeps_test_proof_without_archive_or_signing(self):
         self.args.mode = 'simulator'
         with patch.dict(os.environ, {key: 'private-fixture' for key in ci.SIGNING_KEYS}):

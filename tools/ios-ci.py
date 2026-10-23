@@ -17,6 +17,7 @@ import sys
 import tempfile
 import uuid
 import zipfile
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.dont_write_bytecode = True  # Importing shared CI must not change candidate source identity.
@@ -472,6 +473,8 @@ def _execute(root, state, args):
     env.pop('PAPERCUP_PAIR_PAYLOAD', None)
     env.pop('TEST_RUNNER_PAPERCUP_EXPIRED_PAIR_PAYLOAD', None)
     env.pop('PAPERCUP_EXPIRED_PAIR_PAYLOAD', None)
+    env.pop('TEST_RUNNER_PAPERCUP_PRIVATE_CONTROLS_URL', None)
+    env.pop('PAPERCUP_PRIVATE_CONTROLS_URL', None)
     env['PAPERCUP_EXPORT_METHOD'] = args.distribution
     env['PAPERCUP_REQUIRE_UPLOAD_SECRETS'] = '1' if args.upload else '0'
     if args.mode != 'signed':
@@ -491,6 +494,14 @@ def _execute(root, state, args):
         offline_recovery = getattr(args, 'offline_recovery_ui', False)
         workspace_switch = getattr(args, 'workspace_switch_ui', False)
         device_expiry = getattr(args, 'device_expiry_ui', False)
+        revocation = getattr(args, 'revocation_ui', False)
+        private_controls = getattr(args, 'private_controls_url', None)
+        if revocation and (not args.paired_ui or args.mode != 'simulator' or device_expiry
+                           or workspace_switch or offline_recovery or args.expired_pair_payload_file
+                           or args.reinstall_ui):
+            raise ValueError('--revocation-ui requires simulator --paired-ui and a separate one-shot token')
+        if private_controls and not revocation:
+            raise ValueError('--private-controls-url requires --revocation-ui')
         if device_expiry and (not args.paired_ui or args.mode != 'simulator' or workspace_switch
                               or offline_recovery or args.expired_pair_payload_file or args.reinstall_ui):
             raise ValueError('--device-expiry-ui requires simulator --paired-ui and a separate one-shot token')
@@ -511,8 +522,25 @@ def _execute(root, state, args):
             if not payload or not isinstance(json.loads(payload), dict) or not json.loads(payload):
                 raise ValueError('Paired UI input must be a nonempty JSON object')
             paired_env = dict(env, TEST_RUNNER_PAPERCUP_PAIR_PAYLOAD=payload)
+            if revocation:
+                data = json.loads(payload)
+                phone = urlparse(data.get('server', ''))
+                controls = urlparse(private_controls or data.get('server', ''))
+                private_origin = (controls.scheme == 'http' and controls.hostname == '127.0.0.1'
+                                  and controls.port and controls.port not in (3070, 3170, 3055)
+                                  and controls.path in ('', '/') and not controls.query
+                                  and not controls.fragment and not controls.username and not controls.password)
+                phone_origin = (phone.scheme == 'https' and phone.hostname
+                                or phone.scheme == 'http' and phone.hostname == '127.0.0.1'
+                                and phone.port and phone.port not in (3070, 3170, 3055))
+                if (not private_origin or not phone_origin or phone.path not in ('', '/')
+                        or phone.port is not None and not 1 <= phone.port <= 65535
+                        or phone.query or phone.fragment or phone.username or phone.password
+                        or not str(data.get('workspaceId', '')).startswith('test-runtime-')
+                        or not isinstance(data.get('pairToken'), str) or not data['pairToken']):
+                    raise ValueError('Revocation requires an owned private loopback control origin and an isolated phone payload')
+                paired_env['TEST_RUNNER_PAPERCUP_PRIVATE_CONTROLS_URL'] = controls.geturl()
             if device_expiry:
-                from urllib.parse import urlparse
                 data = json.loads(payload)
                 base = urlparse(data.get('server', ''))
                 if (base.scheme != 'http' or base.hostname != '127.0.0.1' or not base.port
@@ -588,7 +616,8 @@ def _execute(root, state, args):
         ui_test(root, env, attempt, phases, 'ui-smoke', SMOKE_TESTS)
         if args.paired_ui:
             paired_env.update(env)
-            paired_case = ('testLiveDeviceExpiryAndRepairing' if device_expiry else
+            paired_case = ('testLiveRevocationAndRepairing' if revocation else
+                           'testLiveDeviceExpiryAndRepairing' if device_expiry else
                            'testOwnedWorkspaceSwitchAndKeychainRelaunch' if workspace_switch else
                            'testOwnedOperatorOfflineThenRecoversWithoutRepairing' if offline_recovery else
                            'testPublicExpiredPairThenFreshPair' if args.expired_pair_payload_file else
@@ -703,6 +732,10 @@ def main():
     parser.add_argument('--preflight', action='store_true')
     parser.add_argument('--force', action='store_true')
     parser.add_argument('--paired-ui', action='store_true')
+    parser.add_argument('--revocation-ui', action='store_true',
+                        help='With simulator --paired-ui, revoke and re-pair through owned private desktop controls')
+    parser.add_argument('--private-controls-url',
+                        help='Owned loopback control origin for --revocation-ui; the phone retains its payload server')
     parser.add_argument('--device-expiry-ui', action='store_true',
                         help='With simulator --paired-ui, verify real device JWT expiry and fresh pairing in the private fixture')
     parser.add_argument('--workspace-switch-ui', action='store_true',

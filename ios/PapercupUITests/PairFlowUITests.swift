@@ -662,14 +662,32 @@ final class PairFlowUITests: XCTestCase {
         let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
         let workspace = try XCTUnwrap(payload["workspaceId"] as? String)
         let server = try XCTUnwrap(payload["server"] as? String)
-        let base = try XCTUnwrap(URL(string: server))
+        let phone = try XCTUnwrap(URLComponents(string: server))
+        let controls = ProcessInfo.processInfo.environment["PAPERCUP_PRIVATE_CONTROLS_URL"] ?? server
+        let privateOrigin = try XCTUnwrap(URLComponents(string: controls))
+        let base = try XCTUnwrap(privateOrigin.url)
         // Loopback controls are safe only in the isolated operator-api fixture.
         // Refuse an arbitrary live desktop before listing or revoking anything.
-        XCTAssertTrue(workspace.hasPrefix("test-runtime-"), "Use an owned disposable workspace")
-        XCTAssertTrue(base.scheme == "http" && ["127.0.0.1", "localhost"].contains(base.host ?? ""),
-                      "Desktop controls require the private loopback route")
-        guard workspace.hasPrefix("test-runtime-"), base.scheme == "http",
-              ["127.0.0.1", "localhost"].contains(base.host ?? "") else { return }
+        let ownedControls = privateOrigin.scheme == "http" && privateOrigin.host == "127.0.0.1"
+            && privateOrigin.port.map { $0 > 0 && $0 <= 65535 && ![3070, 3170, 3055].contains($0) } == true
+        let phoneOrigin = phone.scheme == "https" && !(phone.host ?? "").isEmpty
+            || phone.scheme == "http" && phone.host == "127.0.0.1"
+            && phone.port.map { $0 > 0 && $0 <= 65535 && ![3070, 3170, 3055].contains($0) } == true
+        let validPhonePort = phone.port.map { $0 > 0 && $0 <= 65535 } ?? true
+        let cleanOrigins = [phone, privateOrigin].allSatisfy {
+            ["", "/"].contains($0.path) && $0.query == nil && $0.fragment == nil && $0.user == nil && $0.password == nil
+        }
+        _ = try XCTUnwrap(workspace.hasPrefix("test-runtime-") && ownedControls && phoneOrigin && validPhonePort && cleanOrigins ? true : nil,
+                          "Revocation requires owned private controls and an isolated phone origin")
+        var identityRequest = URLRequest(url: base.appendingPathComponent("api/workspaces"))
+        identityRequest.timeoutInterval = 15
+        let (identityData, identityResponse) = try await URLSession.shared.data(for: identityRequest)
+        let identityStatus = try XCTUnwrap(identityResponse as? HTTPURLResponse).statusCode
+        let identity = try XCTUnwrap(JSONSerialization.jsonObject(with: identityData) as? [String: Any])
+        let registered = try XCTUnwrap(identity["workspaces"] as? [[String: Any]])
+        _ = try XCTUnwrap(identityStatus == 200 && identity["current"] as? String == workspace
+                          && registered.compactMap { $0["id"] as? String } == [workspace] ? true : nil,
+                          "Desktop controls must identify the exact single-workspace disposable fixture")
 
         func control(_ path: String, method: String = "GET", body: [String: String]? = nil) async throws -> [String: Any] {
             var request = URLRequest(url: base.appendingPathComponent("api/device/desktop/" + path))
@@ -726,7 +744,7 @@ final class PairFlowUITests: XCTestCase {
         let minted = try await control("mint-pair-token", method: "POST", body: ["workspaceId": workspace])
         var fresh = try XCTUnwrap(minted["qrPayload"] as? [String: Any])
         XCTAssertEqual(fresh["workspaceId"] as? String, workspace)
-        fresh["server"] = server // same owned loopback forwarding route
+        fresh["server"] = server // preserve the phone's original HTTPS or loopback origin
         let freshJSON = try JSONSerialization.data(withJSONObject: fresh)
         try visiblePair(app, payload: try XCTUnwrap(String(data: freshJSON, encoding: .utf8)))
         let repairedDevices = try await ownedDevices()
