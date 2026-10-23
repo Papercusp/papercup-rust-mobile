@@ -207,6 +207,9 @@ def source_identity(root):
     # Check gitlinks before walking tracked paths.  An uninitialized copied
     # submodule has no own metadata; recursing into it would make Git resolve
     # the parent repository and enumerate the same tree indefinitely.
+    # This human-readable status is validation only: its describe suffix
+    # depends on available refs.  The recursive identity below already hashes
+    # each actual submodule commit, dirty state and source contents.
     modules = output(['git', 'submodule', 'status', '--recursive'], root)
     if any(line.startswith(('+', '-', 'U')) for line in modules.splitlines()):
         raise ValueError('Uninitialized or mismatched submodule; CI refused')
@@ -228,7 +231,6 @@ def source_identity(root):
         h.update(raw + b'\0')
         if path.is_file():
             h.update(path.read_bytes())
-    h.update(modules.encode())
     firebase = root / 'android/app/google-services.json'
     if firebase.is_file():
         h.update(b'firebase-config\0' + firebase.read_bytes())

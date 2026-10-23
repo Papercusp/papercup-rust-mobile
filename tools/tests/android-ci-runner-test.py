@@ -149,6 +149,63 @@ class AndroidCITest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Uninitialized or mismatched submodule'):
             ci.source_identity(self.root)
 
+    def test_submodule_ref_labels_do_not_change_identity_but_source_and_config_do(self):
+        def git(root, *args):
+            return subprocess.check_output(['git', '-c', 'user.name=CI',
+                '-c', 'user.email=ci@example.test', *args], cwd=root,
+                stderr=subprocess.STDOUT).decode().strip()
+
+        source = self.root / 'source'
+        origin = self.root / 'module-origin'
+        for root in (source, origin):
+            root.mkdir()
+            git(root, 'init', '-q')
+        (origin / 'lib.txt').write_text('original module source\n')
+        git(origin, 'add', 'lib.txt')
+        git(origin, 'commit', '-qm', 'module source')
+        (source / '.gitignore').write_text('/android/app/google-services.json\n')
+        git(source, '-c', 'protocol.file.allow=always', 'submodule', 'add',
+            '-q', str(origin), 'libs/module')
+        git(source, 'add', '.')
+        git(source, 'commit', '-qm', 'source with initialized module')
+        module = source / 'libs/module'
+        before_status = git(source, 'submodule', 'status', '--recursive')
+        before = ci.source_identity(source)
+        self.assertFalse(before['dirty'])
+
+        # Bundle/copy-out checkouts can have identical HEAD/content but none
+        # of the branch or remote refs used by Git's human-readable suffix.
+        git(module, 'checkout', '--detach', '-q', 'HEAD')
+        for ref in git(module, 'for-each-ref', '--format=%(refname)').splitlines():
+            git(module, 'update-ref', '-d', ref)
+        self.assertNotEqual(git(source, 'submodule', 'status', '--recursive'), before_status)
+        self.assertEqual(ci.source_identity(source), before)
+
+        (module / 'lib.txt').write_text('changed module source\n')
+        changed = ci.source_identity(source)
+        self.assertNotEqual(changed['fingerprint'], before['fingerprint'])
+        self.assertTrue(changed['dirty'])
+        (module / 'lib.txt').write_text('original module source\n')
+        self.assertEqual(ci.source_identity(source), before)
+
+        # The ignored private config was a separate incident variable; it
+        # must still participate without relying on Git's dirty flag.
+        config = source / 'android/app/google-services.json'
+        config.parent.mkdir(parents=True)
+        config.write_text('{"project_info":{"project_id":"fixture-one"}}\n')
+        configured = ci.source_identity(source)
+        self.assertNotEqual(configured['fingerprint'], before['fingerprint'])
+        self.assertFalse(configured['dirty'])
+        config.write_text('{"project_info":{"project_id":"fixture-two"}}\n')
+        self.assertNotEqual(ci.source_identity(source)['fingerprint'], configured['fingerprint'])
+        config.unlink()
+        self.assertEqual(ci.source_identity(source), before)
+
+        (module / 'lib.txt').write_text('different committed module source\n')
+        git(module, 'commit', '-qam', 'move module without updating parent gitlink')
+        with self.assertRaisesRegex(ValueError, 'Uninitialized or mismatched submodule'):
+            ci.source_identity(source)
+
     def executor_env(self):
         env = dict(os.environ, PAPERCUP_ANDROID_CI_STATE=str(self.root))
         env.pop('PAPERCUP_ANDROID_EXECUTOR_FD', None)
