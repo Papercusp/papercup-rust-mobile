@@ -10,11 +10,14 @@ cd "$ROOT"
 # shared build products and evidence. Nested build calls inherit this lease.
 case "${1:-full}" in
     host|full|connected|sealed-native|live|isolated-native|isolated-native-pinned|isolated-native-child|cloud-native)
+        # The Rust API smoke owns no Android products or Java process.
+        if [[ "${1:-full}" != live || "${3:-rust}" == native ]]; then
         if [[ -z "${PAPERCUP_ANDROID_EXECUTOR_FD:-}" ]]; then
             exec python3 tools/android-ci.py --exclusive-command bash "$0" "$@"
         fi
         JAVA_TOOL_OPTIONS="$(python3 tools/android-ci.py --verify-executor --java-tool-options)"
         export JAVA_TOOL_OPTIONS
+        fi
         ;;
 esac
 
@@ -273,22 +276,29 @@ print('Isolated paired native proof: source/counterpart/APK/JUnit/journey/cleanu
 PY
     exit $?
 fi
-if [[ "$mode" == isolated-native ]]; then
-    export PAPERCUP_ANDROID_NATIVE_SELECTION="${4:-historical}"
-    [[ "$PAPERCUP_ANDROID_NATIVE_SELECTION" == historical || "$PAPERCUP_ANDROID_NATIVE_SELECTION" == features ]] || {
-        echo 'Native selection must be historical or features' >&2; exit 2;
-    }
+if [[ "$mode" == isolated-native || "$mode" == isolated-rust ]]; then
+    if [[ "$mode" == isolated-native ]]; then
+        export PAPERCUP_ANDROID_NATIVE_SELECTION="${4:-historical}"
+        [[ "$PAPERCUP_ANDROID_NATIVE_SELECTION" == historical || "$PAPERCUP_ANDROID_NATIVE_SELECTION" == features ]] || {
+            echo 'Native selection must be historical or features' >&2; exit 2;
+        }
+    elif [[ -n "${4:-}" ]]; then
+        echo 'isolated-rust accepts only an operator checkout and fresh evidence directory' >&2
+        exit 2
+    fi
     # Resolve and pin under the same lock used by staging generation GC. An
     # exported variable is not visible in /proc/environ until exec, so retain
     # the shared lock through re-exec; the new process then owns the reference.
     exec 9>/tmp/papercup-staging-sync.lock
     flock -s 9
-    operator_root="$(realpath -e "${2:?isolated-native requires the operator checkout}")"
+    operator_root="$(realpath -e "${2:?isolated checks require the operator checkout}")"
     exec env PAPERCUSP_INTEGRATION_ROOT="$operator_root" \
-        bash "$ROOT/tools/run-android-checks.sh" isolated-native-pinned "$operator_root" "${3:-}"
+        bash "$ROOT/tools/run-android-checks.sh" "$mode-pinned" "$operator_root" "${3:-}"
 fi
-if [[ "$mode" == isolated-native-pinned ]]; then
-    operator_root="$(realpath -e "${2:?isolated-native requires the operator checkout}")"
+if [[ "$mode" == isolated-native-pinned || "$mode" == isolated-rust-pinned ]]; then
+    check_kind="${mode#isolated-}"
+    check_kind="${check_kind%-pinned}"
+    operator_root="$(realpath -e "${2:?isolated checks require the operator checkout}")"
     [[ "${PAPERCUSP_INTEGRATION_ROOT:-}" == "$operator_root" && -e /proc/$$/fd/9 ]] || {
         echo 'isolated-native requires an inherited staging lock and process reference' >&2
         exit 2
@@ -310,25 +320,33 @@ if [[ "$mode" == isolated-native-pinned ]]; then
         --manifest "$operator_root/apps/operator/dist-host/.bundle-fresh.json"
     # Catch fixture contract and high-risk approval regressions before the
     # expensive native leg. These are controls, not native acceptance.
-    bash tools/tests/run-android-checks-test.sh
-    cargo test -p papercup-core --lib biometric::tests -- --nocapture
+    if [[ "$check_kind" == native ]]; then
+        bash tools/tests/run-android-checks-test.sh
+        cargo test -p papercup-core --lib biometric::tests -- --nocapture
+    else
+        bash tools/tests/run-android-checks-test.sh generation
+    fi
     export PAPERCUP_ANDROID_RUNNER="$ROOT/tools/run-android-checks.sh"
     export PAPERCUP_OPERATOR_ROOT="$operator_root"
     PAPERCUP_ANDROID_EVIDENCE="$(realpath -m "${3:-android/app/build/ci-evidence/isolated-native-$(date -u +%Y%m%dT%H%M%SZ)}")"
     export PAPERCUP_ANDROID_EVIDENCE
     # The runtime's private HOME must not hide the explicitly selected build
     # toolchain. These paths contain toolchain state, not operator identity.
-    export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-    export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/27.0.12077973}"
-    if [[ -z "${JAVA_HOME:-}" ]]; then
-        JAVA_HOME="$(bash tools/build-scripts/resolve-java-home.sh)"
-        export JAVA_HOME
+    if [[ "$check_kind" == native ]]; then
+        export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+        export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$ANDROID_HOME/ndk/27.0.12077973}"
+        if [[ -z "${JAVA_HOME:-}" ]]; then
+            JAVA_HOME="$(bash tools/build-scripts/resolve-java-home.sh)"
+            export JAVA_HOME
+        fi
     fi
     exec node "$operator_root/scripts/with-test-pg.mjs" --isolated-runtime=operator-api \
-        -- bash "$PAPERCUP_ANDROID_RUNNER" isolated-native-child
+        -- bash "$PAPERCUP_ANDROID_RUNNER" "isolated-$check_kind-child"
 fi
 
-if [[ "$mode" == isolated-native-child ]]; then
+if [[ "$mode" == isolated-native-child || "$mode" == isolated-rust-child ]]; then
+    check_kind="${mode#isolated-}"
+    export PAPERCUP_ISOLATED_CHECK_KIND="${check_kind%-child}"
     python3 - <<'PY'
 import hashlib
 import json
@@ -340,6 +358,9 @@ import subprocess
 import time
 import urllib.request
 
+check_kind = os.environ.get('PAPERCUP_ISOLATED_CHECK_KIND')
+if check_kind not in ('native', 'rust'):
+    raise SystemExit('private operator child requires an explicit native or rust check kind')
 required = {'PAPERCUSP_BACKGROUND_WORKERS': '0', 'PAPERCUSP_DBOS_ENABLE': '0',
             'PAPERCUSP_CLUSTER': '0', 'PAPERCUSP_SKIP_PG_DISCOVERY': '1',
             'PAPERCUSP_BIND_HOST': '127.0.0.1'}
@@ -355,7 +376,8 @@ if base != 'http://127.0.0.1:' + os.environ.get('PAPERCUSP_HONO_PORT', ''):
 # Share one private, in-memory signing secret with the owned host and fixture
 # signer. Never read a production secret or persist this test-only credential.
 os.environ['MOBILE_JWT_SECRET'] = secrets.token_urlsafe(48)
-os.environ['PAPERCUP_ANDROID_AUTH_FIXTURE'] = '0' if os.environ.get('PAPERCUP_ANDROID_NATIVE_SELECTION') == 'features' else '1'
+os.environ['PAPERCUP_ANDROID_AUTH_FIXTURE'] = ('1' if check_kind == 'native'
+    and os.environ.get('PAPERCUP_ANDROID_NATIVE_SELECTION') != 'features' else '0')
 operator = Path(os.environ['PAPERCUP_OPERATOR_ROOT'])
 bundle = operator / 'apps/operator/dist-host/hono-host.mjs'
 evidence = Path(os.environ['PAPERCUP_ANDROID_EVIDENCE'])
@@ -366,12 +388,14 @@ runtime_evidence.mkdir(mode=0o700, parents=True, exist_ok=False)
 source = subprocess.run(['git', '-C', str(operator), 'rev-parse', 'HEAD'],
                         capture_output=True, text=True)
 proof = {'schemaVersion': 1, 'runtime': base, 'workspaceId': workspace,
+         'checkKind': check_kind,
          'operatorSourceCommit': source.stdout.strip() if source.returncode == 0 else None,
          'bundleSha256': hashlib.sha256(bundle.read_bytes()).hexdigest(),
          'profile': 'with-test-pg --isolated-runtime=operator-api',
          'backgroundDisabled': True, 'dbosDisabled': True,
          'executionStarted': False, 'exitCode': 1, 'hostCleanupVerified': False,
-         'scope': 'Private operator/debug native integration; not signed-candidate, physical-phone or Play acceptance'}
+         'scope': ('Private operator/debug native integration; not signed-candidate, physical-phone or Play acceptance'
+                   if check_kind == 'native' else 'Private operator Rust API contract; no native or release-candidate acceptance')}
 host = None
 native = None
 def interrupted(signum, frame):
@@ -408,13 +432,14 @@ try:
                 raise RuntimeError('private operator health/workspace readiness timed out')
             time.sleep(0.25)
         env = dict(os.environ, PAPERCUP_LIVE_BASE=base)
-        proof['executionStarted'] = True
         native = subprocess.Popen(['bash', os.environ['PAPERCUP_ANDROID_RUNNER'], 'live',
-                                   str(evidence), 'native'], env=env, start_new_session=True)
+                                   str(evidence), check_kind], env=env, start_new_session=True)
+        proof['executionStarted'] = True
         # The native child owns its own build budget (PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC);
         # wait for that plus the original 1800s test allowance, never less.
-        native_build_budget = int(os.environ.get('PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC', '2400'))
-        proof['exitCode'] = native.wait(timeout=1800 + native_build_budget)
+        budget = (1800 + int(os.environ.get('PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC', '2400'))
+                  if check_kind == 'native' else int(os.environ.get('PAPERCUP_LIVE_TIMEOUT_SEC', '240')) + 30)
+        proof['exitCode'] = native.wait(timeout=budget)
 except Exception as error:
     proof['error'] = str(error)
 finally:
@@ -428,7 +453,7 @@ finally:
         except subprocess.TimeoutExpired:
             os.killpg(native.pid, signal.SIGKILL)
             native.wait(timeout=10)
-        proof['nativeProcessCleanupVerified'] = native.poll() is not None
+        proof[check_kind + 'ProcessCleanupVerified'] = native.poll() is not None
     if host is not None:
         if host.poll() is None:
             os.killpg(host.pid, signal.SIGTERM)

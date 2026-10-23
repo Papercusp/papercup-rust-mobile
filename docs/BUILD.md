@@ -113,6 +113,23 @@ under `android/app/build/ci-evidence`. Only loopback operators are accepted;
 the containing runtime must be measured before invocation. API proof does not
 establish native, signed-candidate, physical-phone or Play acceptance.
 
+For Rust API execution with a disposable operator database, HOME, workspace and
+ports, use the same maintained private-host lifecycle without Android or Java:
+
+```sh
+bash tools/run-android-checks.sh isolated-rust \
+  /path/to/prepared/operator-checkout /tmp/private-p0-attempt
+```
+
+The launcher pins the prepared generation under the staging publication lock,
+checks its bundle freshness, runs the generation controls, then invokes
+`with-test-pg.mjs --isolated-runtime=operator-api` and the canonical P0 Cargo
+smoke. It retains separate test and runtime receipts, requires one executed test
+with no failures or ignores, revokes its pairing, removes its second workspace,
+and stops its private processes. A stale bundle or ambient runtime is refused.
+This route does not execute the public HTTPS sealed-attention smoke, whose fresh
+private QR and adopted customer runtime remain separate prerequisites.
+
 To run the maintained paired Inbox native journey against a prepared operator
 bundle with its own migrated database, workspace, HOME and embedding sidecar:
 

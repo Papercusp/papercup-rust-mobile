@@ -322,6 +322,7 @@ fi
 if [[ "$suite" == all || "$suite" == generation ]]; then
 python3 - "$runner" "$TMP_ROOT" <<'PY'
 import fcntl
+from itertools import product
 import os
 from pathlib import Path
 import shutil
@@ -360,6 +361,10 @@ if command == 'bundle-host-freshness.mjs':
     sys.exit(int(os.environ.get('FRESHNESS_EXIT', '0')))
 elif command == 'with-test-pg.mjs':
     assert str(Path(sys.argv[1]).parent.parent) == expected
+    kind = os.environ.get('EXPECTED_KIND', 'native')
+    assert sys.argv[-1] == 'isolated-' + kind + '-child'
+    if kind == 'rust':
+        assert not os.environ.get('JAVA_HOME') and not os.environ.get('JAVA_TOOL_OPTIONS')
     Path(os.environ['FIXTURE_RESULT']).write_text(expected)
 else:
     Path(os.environ['FIXTURE_MARKER']).write_text('started')
@@ -377,18 +382,22 @@ base['PAPERCUP_ANDROID_CI_STATE'] = str(temp / 'generation-executor')
 base.pop('PAPERCUP_ANDROID_EXECUTOR_FD', None)
 base.pop('PAPERCUP_ANDROID_EXECUTOR_PID', None)
 base.pop('PAPERCUSP_INTEGRATION_ROOT', None)
-for case in ('pass', 'stale', 'missing', 'unpinned', 'missing-cargo', 'broken-rustc'):
+for kind, case in product(('native', 'rust'), ('pass', 'stale', 'missing', 'unpinned', 'missing-cargo', 'broken-rustc')):
     alias.unlink(missing_ok=True); alias.symlink_to(old)
     marker.unlink(missing_ok=True); result.unlink(missing_ok=True)
-    env = dict(base, FRESHNESS_EXIT='19' if case == 'stale' else '0')
+    env = dict(base, FRESHNESS_EXIT='19' if case == 'stale' else '0', EXPECTED_KIND=kind)
+    if kind == 'rust':
+        env.pop('JAVA_HOME', None)
+        env.pop('JAVA_TOOL_OPTIONS', None)
     if case == 'missing-cargo':
         cargo.unlink()
         for tool in ('bash', 'dirname', 'realpath', 'flock', 'env', 'python3'):
-            (bin_dir / tool).symlink_to(shutil.which(tool))
+            if not (bin_dir / tool).exists():
+                (bin_dir / tool).symlink_to(shutil.which(tool))
         env.update(PATH=str(bin_dir), CARGO_HOME=str(temp / 'absent-cargo'))
     if case == 'broken-rustc':
         rustc.write_text('#!/bin/sh\nexit 17\n')
-    mode = 'isolated-native-pinned' if case == 'unpinned' else 'isolated-native'
+    mode = 'isolated-' + kind + ('-pinned' if case == 'unpinned' else '')
     candidate = temp / 'absent-generation' if case == 'missing' else alias
     run = subprocess.run(['bash', str(fixture_runner), mode, str(candidate)],
                          env=env, capture_output=True, text=True, timeout=15)
@@ -449,6 +458,7 @@ done
 echo 'Android API36 dependency guard: maintained version passed; old, preview, missing and ambiguous versions rejected'
 python3 - "$runner" "$TMP_ROOT" <<'PY'
 import json
+from itertools import product
 import os
 from pathlib import Path
 import signal
@@ -460,27 +470,29 @@ import time
 runner, temp = Path(sys.argv[1]), Path(sys.argv[2])
 # Execute the maintained private-host lifecycle against real HTTP/process
 # boundaries. Native execution is a stub here; these tests claim no JNI pass.
-source = runner.read_text().split('if [[ "$mode" == isolated-native-child ]]; then', 1)[1]
+source = runner.read_text().split('if [[ "$mode" == isolated-native-child || "$mode" == isolated-rust-child ]]; then', 1)[1]
 child = source.split("<<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
 operator = temp / 'operator'; (operator / 'apps/operator/dist-host').mkdir(parents=True)
 bundle = operator / 'apps/operator/dist-host/hono-host.mjs'
 native = temp / 'native.sh'
-native.write_text('''#!/bin/bash
-test "$1" = live && test "$3" = native || exit 93
+native_source = '''#!/bin/bash
+test "$1" = live && test "$3" = "$PAPERCUP_ISOLATED_CHECK_KIND" || exit 93
 test "$PAPERCUP_LIVE_BASE" = "$PAPERCUSP_OPERATOR_URL" || exit 94
 exit "$NATIVE_TEST_EXIT"
-''')
+'''
 with tempfile.TemporaryDirectory(prefix='papercusp-test-runtime-') as runtime:
     home = Path(runtime) / 'home'; home.mkdir()
     lifecycle_cases = ['pass', 'native-fail', 'host-fail', 'ambient', 'wrong-url',
-                       'wrong-home', 'existing-evidence', 'interrupt', 'wrong-counterpart']
-    for case in lifecycle_cases:
-        evidence = temp / case
+                       'wrong-home', 'existing-evidence', 'interrupt', 'wrong-counterpart', 'invalid-kind']
+    for kind, case in product(('native', 'rust'), lifecycle_cases):
+        native.write_text(native_source)
+        evidence = temp / (kind + '-' + case)
         env = dict(os.environ, HOME=str(home), PAPERCUSP_WORKSPACE_ID='test-runtime-fixture',
             PAPERCUSP_BACKGROUND_WORKERS='0', PAPERCUSP_DBOS_ENABLE='0', PAPERCUSP_CLUSTER='0',
             PAPERCUSP_SKIP_PG_DISCOVERY='1', PAPERCUSP_BIND_HOST='127.0.0.1',
             PAPERCUP_OPERATOR_ROOT=str(operator), PAPERCUP_ANDROID_RUNNER=str(native),
-            PAPERCUP_ANDROID_EVIDENCE=str(evidence), NATIVE_TEST_EXIT='17' if case=='native-fail' else '0')
+            PAPERCUP_ANDROID_EVIDENCE=str(evidence), NATIVE_TEST_EXIT='17' if case=='native-fail' else '0',
+            PAPERCUP_ISOLATED_CHECK_KIND='invalid' if case == 'invalid-kind' else kind)
         # The fake host has its own identity. An outer real-build pin must
         # not contaminate controls; test explicit pin refusal separately.
         env.pop('PAPERCUP_OPERATOR_SHA', None)
@@ -502,7 +514,7 @@ http.createServer((req,res)=>{
         if case=='wrong-url': env['PAPERCUSP_OPERATOR_URL']='http://public.example:3170'
         if case=='wrong-home': env['HOME']=str(temp)
         if case=='existing-evidence': evidence.mkdir(); (evidence/'owned').write_text('preserve')
-        marker=temp/'native-started'
+        marker=temp/(kind + '-started')
         if case=='interrupt':
             native.write_text('#!/bin/bash\ntouch "'+str(marker)+'"\nsleep 20\n')
         process = subprocess.Popen([sys.executable,'-c',child],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
@@ -515,19 +527,20 @@ http.createServer((req,res)=>{
             process.send_signal(signal.SIGTERM)
         stdout,stderr=process.communicate(timeout=8)
         proof_path=Path(str(evidence)+'-runtime')/'result.json'
-        if case in ['ambient','wrong-url','wrong-home','existing-evidence']:
+        if case in ['ambient','wrong-url','wrong-home','existing-evidence','invalid-kind']:
             assert process.returncode!=0 and not proof_path.exists(), (case,stderr)
         else:
             proof=json.loads(proof_path.read_text())
+            assert proof['checkKind'] == kind, (case, proof)
             assert proof['hostCleanupVerified'], (case,proof)
             assert (process.returncode==0)==(case=='pass'), (case,stdout,stderr,proof)
             assert proof['executionStarted']==(case in ['pass','native-fail','interrupt']), (case,proof)
-            if proof['executionStarted']: assert proof['nativeProcessCleanupVerified'], (case,proof)
+            if proof['executionStarted']: assert proof[kind + 'ProcessCleanupVerified'], (case,proof)
             if case=='native-fail': assert process.returncode==17
             with socket.socket() as sock:
                 assert sock.connect_ex(('127.0.0.1',port))!=0, 'owned host survived cleanup'
         if case=='existing-evidence': assert (evidence/'owned').read_text()=='preserve'
-print(f'Android private operator lifecycle: {len(lifecycle_cases)} launch/cleanup/refusal controls passed (native stub only)')
+print(f'Private operator lifecycle: {2 * len(lifecycle_cases)} native/Rust launch/cleanup/refusal controls passed (test processes stubbed)')
 PY
 python3 - "$runner" "$TMP_ROOT" <<'PY'
 import copy
