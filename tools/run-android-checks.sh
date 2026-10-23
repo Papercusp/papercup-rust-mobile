@@ -289,8 +289,19 @@ if [[ "$mode" == isolated-native || "$mode" == isolated-rust ]]; then
     # Resolve and pin under the same lock used by staging generation GC. An
     # exported variable is not visible in /proc/environ until exec, so retain
     # the shared lock through re-exec; the new process then owns the reference.
+    operator_lock_timeout="${PAPERCUP_OPERATOR_LOCK_TIMEOUT_SEC:-45}"
+    if [[ ! "$operator_lock_timeout" =~ ^[1-9][0-9]{0,2}$ ]] || (( operator_lock_timeout > 300 )); then
+        echo 'Operator generation lock wait must be between 1 and 300 seconds' >&2
+        exit 2
+    fi
     exec 9>/tmp/papercup-staging-sync.lock
-    flock -s 9
+    if flock -s -w "$operator_lock_timeout" -E 75 9; then
+        :
+    else
+        operator_lock_status=$?
+        echo "Operator generation lock admission failed (exit $operator_lock_status, budget ${operator_lock_timeout}s); no private runtime or test started" >&2
+        exit "$operator_lock_status"
+    fi
     operator_root="$(realpath -e "${2:?isolated checks require the operator checkout}")"
     exec env PAPERCUSP_INTEGRATION_ROOT="$operator_root" \
         bash "$ROOT/tools/run-android-checks.sh" "$mode-pinned" "$operator_root" "${3:-}"

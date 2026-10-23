@@ -6,7 +6,7 @@ run_android_fixture_suite() {
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 suite="${1:-all}"
-[[ "$suite" == all || "$suite" == boot || "$suite" == live || "$suite" == generation || "$suite" == toolchain || "$suite" == cloud ]] || { echo 'Expected all, boot, live, generation, toolchain or cloud suite' >&2; exit 2; }
+[[ "$suite" == all || "$suite" == boot || "$suite" == live || "$suite" == generation || "$suite" == lifecycle || "$suite" == toolchain || "$suite" == cloud ]] || { echo 'Expected all, boot, live, generation, lifecycle, toolchain or cloud suite' >&2; exit 2; }
 [[ "$suite" == live || -z "${2:-}" ]] || { echo 'Case selection requires the live suite' >&2; exit 2; }
 mkdir -p "$ROOT/android/app/build/ci-evidence"
 TMP_ROOT="$(mktemp -d "$ROOT/android/app/build/ci-evidence/runner-fixtures.XXXXXX")"
@@ -382,10 +382,12 @@ base['PAPERCUP_ANDROID_CI_STATE'] = str(temp / 'generation-executor')
 base.pop('PAPERCUP_ANDROID_EXECUTOR_FD', None)
 base.pop('PAPERCUP_ANDROID_EXECUTOR_PID', None)
 base.pop('PAPERCUSP_INTEGRATION_ROOT', None)
-for kind, case in product(('native', 'rust'), ('pass', 'stale', 'missing', 'unpinned', 'missing-cargo', 'broken-rustc')):
+for kind, case in product(('native', 'rust'), ('pass', 'stale', 'missing', 'unpinned', 'missing-cargo', 'broken-rustc', 'lock-timeout', 'invalid-lock-budget')):
     alias.unlink(missing_ok=True); alias.symlink_to(old)
     marker.unlink(missing_ok=True); result.unlink(missing_ok=True)
     env = dict(base, FRESHNESS_EXIT='19' if case == 'stale' else '0', EXPECTED_KIND=kind)
+    if case == 'lock-timeout': env['PAPERCUP_OPERATOR_LOCK_TIMEOUT_SEC'] = '1'
+    if case == 'invalid-lock-budget': env['PAPERCUP_OPERATOR_LOCK_TIMEOUT_SEC'] = '0'
     if kind == 'rust':
         env.pop('JAVA_HOME', None)
         env.pop('JAVA_TOOL_OPTIONS', None)
@@ -399,8 +401,10 @@ for kind, case in product(('native', 'rust'), ('pass', 'stale', 'missing', 'unpi
         rustc.write_text('#!/bin/sh\nexit 17\n')
     mode = 'isolated-' + kind + ('-pinned' if case == 'unpinned' else '')
     candidate = temp / 'absent-generation' if case == 'missing' else alias
-    run = subprocess.run(['bash', str(fixture_runner), mode, str(candidate)],
-                         env=env, capture_output=True, text=True, timeout=15)
+    with lock.open('a') as admission_lock:
+        if case == 'lock-timeout': fcntl.flock(admission_lock, fcntl.LOCK_EX)
+        run = subprocess.run(['bash', str(fixture_runner), mode, str(candidate)],
+                             env=env, capture_output=True, text=True, timeout=15)
     if case == 'pass':
         assert run.returncode == 0, run.stderr
         assert marker.exists() and result.read_text() == str(old)
@@ -410,6 +414,10 @@ for kind, case in product(('native', 'rust'), ('pass', 'stale', 'missing', 'unpi
         assert not marker.exists() and not result.exists(), case + ': expensive work began before refusal'
         if case in ('missing-cargo', 'broken-rustc'):
             assert run.returncode == 2 and 'Rust toolchain preflight failed:' in run.stderr, run.stderr
+        if case == 'lock-timeout':
+            assert run.returncode == 75 and 'no private runtime or test started' in run.stderr, run.stderr
+        if case == 'invalid-lock-budget':
+            assert run.returncode == 2 and 'lock wait must be between' in run.stderr, run.stderr
     cargo.write_text('#!/bin/sh\nexit 0\n'); cargo.chmod(0o755)
     rustc.write_text('#!/bin/sh\nexit 0\n'); rustc.chmod(0o755)
     with lock.open('a') as handle:
@@ -432,7 +440,7 @@ with lock.open('a') as handle:
         fcntl.flock(handle, fcntl.LOCK_UN)
         stdout, stderr = process.communicate(timeout=15)
     assert process.returncode == 0 and result.read_text() == str(new), (stdout, stderr)
-print('Android operator generation consumer: locked selection, process pin, early lock release, immutable alias, stale/missing/unpinned refusal passed')
+print('Android operator generation consumer: locked selection, bounded admission, process pin, early lock release, immutable alias, stale/missing/unpinned refusal passed')
 PY
 fi
 [[ "$suite" != generation ]] || exit 0
@@ -456,6 +464,8 @@ for fixture in "$TMP_ROOT"/espresso-*.kts; do
     grep -Fq 'API36 native tests require' "$TMP_ROOT/output"
 done
 echo 'Android API36 dependency guard: maintained version passed; old, preview, missing and ambiguous versions rejected'
+fi
+if [[ "$suite" == all || "$suite" == lifecycle ]]; then
 python3 - "$runner" "$TMP_ROOT" <<'PY'
 import json
 from itertools import product
@@ -542,6 +552,9 @@ http.createServer((req,res)=>{
         if case=='existing-evidence': assert (evidence/'owned').read_text()=='preserve'
 print(f'Private operator lifecycle: {2 * len(lifecycle_cases)} native/Rust launch/cleanup/refusal controls passed (test processes stubbed)')
 PY
+fi
+[[ "$suite" != lifecycle ]] || exit 0
+if [[ "$suite" == all ]]; then
 python3 - "$runner" "$TMP_ROOT" <<'PY'
 import copy
 import hashlib

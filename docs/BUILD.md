@@ -127,8 +127,15 @@ checks its bundle freshness, runs the generation controls, then invokes
 smoke. It retains separate test and runtime receipts, requires one executed test
 with no failures or ignores, revokes its pairing, removes its second workspace,
 and stops its private processes. A stale bundle or ambient runtime is refused.
+Generation-lock admission waits at most 45 seconds by default;
+`PAPERCUP_OPERATOR_LOCK_TIMEOUT_SEC` accepts 1–300 seconds. A busy lock exits 75
+before allocating the private runtime or starting a test, preserving the barrier.
 This route does not execute the public HTTPS sealed-attention smoke, whose fresh
 private QR and adopted customer runtime remain separate prerequisites.
+
+For focused launcher controls, run `bash tools/tests/run-android-checks-test.sh
+generation` or `bash tools/tests/run-android-checks-test.sh lifecycle`. These
+remain included in the default full suite and do not establish live acceptance.
 
 To run the maintained paired Inbox native journey against a prepared operator
 bundle with its own migrated database, workspace, HOME and embedding sidecar:
