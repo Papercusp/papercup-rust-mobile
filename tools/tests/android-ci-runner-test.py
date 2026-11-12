@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import select
 import shutil
 import subprocess
@@ -46,6 +47,52 @@ class AndroidCITest(unittest.TestCase):
     def test_exact_success_can_be_considered_for_revalidation(self):
         self.save()
         self.assertIsNotNone(ci.cached_proof(self.root, self.source, self.operator))
+
+    def test_gradle_worker_budget_is_bounded_on_large_hosts(self):
+        project = Path(SPEC.origin).parents[1]
+        properties = (project / 'android/gradle.properties').read_text()
+        # Use the installed distribution, with private configuration/caches so
+        # a developer's user-level properties cannot hide a missing repo policy.
+        cache = Path(os.environ.get('GRADLE_USER_HOME', str(Path.home() / '.gradle')))
+        distributions = (cache / 'wrapper/dists').resolve(strict=True)
+        gradle_home = self.root / 'gradle-home'
+        (gradle_home / 'wrapper').mkdir(parents=True)
+        (gradle_home / 'wrapper/dists').symlink_to(distributions, target_is_directory=True)
+        env = os.environ.copy()
+        env['GRADLE_USER_HOME'] = str(gradle_home)
+        env['JAVA_TOOL_OPTIONS'] = env.get('JAVA_TOOL_OPTIONS', '') + ' -XX:ActiveProcessorCount=128'
+        observed = {}
+        heaps = []
+        for name, contents in (
+            ('repository', properties),
+            ('unbounded-control', '\n'.join(line for line in properties.splitlines()
+                if line.partition('=')[0].strip() != 'org.gradle.workers.max')),
+        ):
+            root = self.root / name
+            root.mkdir()
+            (root / 'settings.gradle').write_text("rootProject.name = 'worker-budget-proof'\n")
+            (root / 'gradle.properties').write_text(contents)
+            (root / 'build.gradle').write_text('''
+tasks.register('workerBudgetProof') {
+    doLast {
+        println('WORKER_BUDGET=' + gradle.startParameter.maxWorkerCount)
+        println('MAX_HEAP=' + Runtime.runtime.maxMemory())
+    }
+}
+''')
+            ci.run_phase(name, [str(project / 'android/gradlew'), '-p', str(root),
+                         '--offline', '--no-daemon', '--console=plain', 'workerBudgetProof'],
+                         root, env, self.attempt, [], timeout=120)
+            output = (self.attempt / (name + '.log')).read_text()
+            worker = re.search(r'^WORKER_BUDGET=(\d+)$', output, re.M)
+            heap = re.search(r'^MAX_HEAP=(\d+)$', output, re.M)
+            self.assertIsNotNone(worker, output)
+            self.assertIsNotNone(heap, output)
+            observed[name] = int(worker[1])
+            heaps.append(int(heap[1]))
+        self.assertEqual(observed, {'repository': 4, 'unbounded-control': 128})
+        self.assertEqual(heaps[0], heaps[1], 'worker policy must not increase JVM heap')
+        self.assertLessEqual(heaps[0], 2 * 1024**3)
 
     def test_fixture_suite_keeps_loaded_source_across_mid_run_edits(self):
         project = Path(SPEC.origin).parents[1]
