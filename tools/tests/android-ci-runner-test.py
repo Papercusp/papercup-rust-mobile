@@ -95,6 +95,83 @@ tasks.register('workerBudgetProof') {
         self.assertLessEqual(heaps[0], 2 * 1024**3)
         print(json.dumps({'gradleWorkerBudget': observed, 'maxHeapBytes': heaps}), flush=True)
 
+    def test_lint_analysis_keeps_main_and_test_source_roots(self):
+        project = Path(SPEC.origin).parents[1]
+        properties = (project / 'android/gradle.properties').read_text()
+        plugin = re.search(r'id\("com.android.application"\) version "([^"]+)"',
+                           (project / 'android/build.gradle.kts').read_text())[1]
+        observed = {}
+        env = os.environ.copy()
+        env['JAVA_HOME'] = subprocess.check_output(
+            [str(project / 'tools/build-scripts/resolve-java-home.sh')], text=True).strip()
+        for name, contents in (
+            ('repository', properties),
+            ('component-control', '\n'.join(line for line in properties.splitlines()
+                if line.partition('=')[0].strip() != 'android.experimental.lint.analysisPerComponent')),
+        ):
+            root = self.root / name
+            app = root / 'app'
+            for source in ('main', 'test', 'androidTest'):
+                folder = app / 'src' / source / 'java'
+                folder.mkdir(parents=True)
+                (folder / 'Example.java').write_text('class Example {}\n')
+            # A retained build artifact must never become an analysis root.
+            artifact = app / 'build/ci-evidence/retained/native-root/Poison.kt'
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text('this is retained diagnostic evidence, not Kotlin source\n')
+            (root / 'settings.gradle').write_text('''
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+rootProject.name = 'lint-source-roots-proof'
+include ':app'
+''')
+            (root / 'build.gradle').write_text(
+                "plugins { id 'com.android.application' version '" + plugin + "' apply false }\n")
+            (root / 'gradle.properties').write_text(contents)
+            (app / 'build.gradle').write_text('''
+plugins { id 'com.android.application' }
+android { namespace 'test.lint.roots'; compileSdk 36 }
+tasks.register('lintSourceRootsProof') {
+    doLast {
+        def rows = tasks.findAll { it.name.startsWith('lintAnalyze') }.collect { task ->
+            def variant = task.variantInputs
+            def modelPaths = { input ->
+                input.'toLintModels$gradle_core'().collectMany { model ->
+                    model.javaDirectories.collect { it.absolutePath }
+                }
+            }
+            def paths = { provider -> provider.isPresent() ? modelPaths(provider.get()) : [] }
+            [name: task.name, main: paths(variant.mainSourceProvider),
+             sources: variant.sourceProviders.get().collectMany { modelPaths(it) },
+             unit: paths(variant.hostTestSourceProvider),
+             device: paths(variant.androidTestSourceProvider)]
+        }
+        println('LINT_SOURCE_ROOTS=' + groovy.json.JsonOutput.toJson(rows))
+    }
+}
+''')
+            ci.run_phase(name, [str(project / 'android/gradlew'), '-p', str(root),
+                         '--offline', '--no-daemon', '--console=plain', ':app:lintSourceRootsProof'],
+                         root, env, self.attempt, [], timeout=120)
+            output = (self.attempt / (name + '.log')).read_text()
+            match = re.search(r'^LINT_SOURCE_ROOTS=(.+)$', output, re.M)
+            self.assertIsNotNone(match, output)
+            observed[name] = json.loads(match[1])
+        rows = observed['repository']
+        by_name = {row['name']: row for row in rows}
+        self.assertEqual(set(by_name), {'lintAnalyzeDebug', 'lintAnalyzeRelease'})
+        app = self.root / 'repository/app'
+        for row in rows:
+            for kind, source in (('main', 'main'), ('unit', 'test')):
+                paths = row[kind]
+                self.assertIn(str(app / 'src' / source / 'java'), paths, (kind, rows))
+                self.assertTrue(all(Path(path).is_relative_to(app / 'src') for path in paths), rows)
+        self.assertIn(str(app / 'src/androidTest/java'), by_name['lintAnalyzeDebug']['device'], rows)
+        control = next(row for row in observed['component-control']
+                       if row['name'] == 'lintAnalyzeReleaseUnitTest')
+        self.assertEqual(control['main'] + control['sources'], [], control)
+        print(json.dumps({'lintSourceRoots': observed}), flush=True)
+
     def test_fixture_suite_keeps_loaded_source_across_mid_run_edits(self):
         project = Path(SPEC.origin).parents[1]
         source = (project / 'tools/tests/run-android-checks-test.sh').read_text()
