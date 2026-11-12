@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -94,6 +95,51 @@ tasks.register('workerBudgetProof') {
         self.assertEqual(heaps[0], heaps[1], 'worker policy must not increase JVM heap')
         self.assertLessEqual(heaps[0], 2 * 1024**3)
         print(json.dumps({'gradleWorkerBudget': observed, 'maxHeapBytes': heaps}), flush=True)
+
+    def test_rustc_source_paths_keep_askama_includes_resolvable(self):
+        project = Path(SPEC.origin).parents[1]
+        packages = tomllib.loads((project / 'Cargo.lock').read_text())['package']
+        version = next(package['version'] for package in packages if package['name'] == 'askama')
+        dependency = self.root / 'askama-dependency'
+        (dependency / 'src').mkdir(parents=True)
+        (dependency / 'src/lib.rs').write_text('')
+        (dependency / 'Cargo.toml').write_text(
+            '[package]\nname="askama-path-proof"\nversion="0.0.0"\nedition="2021"\n'
+            '[workspace]\n[dependencies]\naskama="=' + version + '"\n')
+        env = dict(os.environ, CARGO_TARGET_DIR=str(self.root / 'cargo-target'))
+        build = subprocess.run(['cargo', 'build', '--offline', '--manifest-path',
+            str(dependency / 'Cargo.toml'), '--message-format=json'], cwd=project,
+            env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180)
+        self.assertEqual(build.returncode, 0, build.stderr[-5000:])
+        artifacts = [json.loads(line) for line in build.stdout.splitlines() if line.startswith('{')]
+        library = next(Path(filename) for artifact in artifacts
+            if artifact.get('reason') == 'compiler-artifact' and artifact['target']['name'] == 'askama'
+            for filename in artifact['filenames'] if filename.endswith('.rlib'))
+        physical = self.root / 'offload/source/template-crate'
+        (physical / 'src').mkdir(parents=True)
+        (physical / 'askama.toml').write_text('[general]\ndirs=[]\n')
+        (physical / 'src/lib.rs').write_text(
+            '#[derive(askama::Template)]\n#[template(source="proof", ext="txt")]\npub struct Proof;\n')
+        logical = self.root / 'cargo-registry/template-crate'
+        logical.parent.mkdir()
+        logical.symlink_to(physical, target_is_directory=True)
+        rustc = subprocess.check_output(['rustup', 'which', 'rustc'], cwd=project, text=True).strip()
+        command = [rustc, '--crate-name', 'askama_symlink_proof', '--crate-type', 'lib',
+            '--edition=2021', str(logical / 'src/lib.rs'), '--extern', 'askama=' + str(library),
+            '-L', 'dependency=' + str(library.parent), '--emit=metadata',
+            '-o', str(self.root / 'proof.rmeta')]
+        env['CARGO_MANIFEST_DIR'] = str(logical)
+        control = subprocess.run(command, env=env, text=True, capture_output=True, timeout=30)
+        self.assertNotEqual(control.returncode, 0, 'control must expose the real Askama symlink defect')
+        self.assertIn('askama.toml', control.stderr)
+        self.assertIn('No such file or directory', control.stderr)
+        wrapper = project / 'tools/build-scripts/canonical-rustc.py'
+        fixed = subprocess.run([sys.executable, str(wrapper), *command], env=env,
+            text=True, capture_output=True, timeout=30)
+        self.assertEqual(fixed.returncode, 0, fixed.stderr)
+        self.assertTrue((self.root / 'proof.rmeta').is_file())
+        config = tomllib.loads((project / '.cargo/config.toml').read_text())
+        self.assertEqual(config['build']['rustc-wrapper'], 'tools/build-scripts/canonical-rustc.py')
 
     def test_lint_analysis_keeps_main_and_test_source_roots(self):
         project = Path(SPEC.origin).parents[1]
