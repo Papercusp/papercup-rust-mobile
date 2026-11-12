@@ -1718,7 +1718,52 @@ if [[ "$(grep -c 'check=True, timeout=build_timeout)' "$runner")" != 2 ]]; then
     echo 'FAIL: native build steps do not both use the dedicated build timeout' >&2
     exit 1
 fi
-grep -Fq 'native.wait(timeout=1800 + native_build_budget)' "$runner"
+python3 - "$runner" <<'PY'
+import ast, re, sys
+from pathlib import Path
+from types import SimpleNamespace
+
+# Execute the wrapper's actual budget and wait against a capture-only child.
+# Its expression spelling may change while the native/Rust deadline contract stays.
+matches = []
+for body in re.findall(r"(?ms)^[^\n]*<<'PY'\n(.*?)^PY$", Path(sys.argv[1]).read_text()):
+    tree = ast.parse(body)
+    budgets = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+               and any(isinstance(target, ast.Name) and target.id == 'budget'
+                       for target in node.targets)]
+    waits = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+             and isinstance(node.value, ast.Call)
+             and isinstance(node.value.func, ast.Attribute)
+             and isinstance(node.value.func.value, ast.Name)
+             and node.value.func.value.id == 'native' and node.value.func.attr == 'wait'
+             and any(kw.arg == 'timeout' and isinstance(kw.value, ast.Name)
+                     and kw.value.id == 'budget' for kw in node.value.keywords)]
+    if budgets and waits:
+        assert len(budgets) == len(waits) == 1
+        matches.append(ast.Module(body=[budgets[0], waits[0]], type_ignores=[]))
+assert len(matches) == 1, 'expected one isolated child deadline calculation and wait'
+program = compile(ast.fix_missing_locations(matches[0]), '<isolated child deadline>', 'exec')
+
+class Child:
+    def __init__(self):
+        self.calls = []
+    def wait(self, *, timeout):
+        self.calls.append(timeout)
+        return 0
+
+for kind, env, expected in [
+    ('native', {}, 4200),
+    ('native', {'PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC': '60', 'PAPERCUP_LIVE_TIMEOUT_SEC': '1'}, 1860),
+    ('native', {'PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC': '7200'}, 9000),
+    ('rust', {'PAPERCUP_NATIVE_BUILD_TIMEOUT_SEC': '7200'}, 270),
+    ('rust', {'PAPERCUP_LIVE_TIMEOUT_SEC': '30'}, 60),
+]:
+    child = Child()
+    scope = {'os': SimpleNamespace(environ=env), 'check_kind': kind, 'native': child, 'proof': {}}
+    exec(program, scope)
+    assert child.calls == [expected], (kind, env, child.calls, expected)
+    assert scope['proof']['exitCode'] == 0
+PY
 echo 'Android native build budget: out-of-range budgets rejected; build steps and isolated wrapper use the dedicated budget'
 }
 run_android_fixture_suite "$@"
