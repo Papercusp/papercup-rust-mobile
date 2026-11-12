@@ -93,6 +93,7 @@ tasks.register('workerBudgetProof') {
         self.assertEqual(observed, {'repository': 4, 'unbounded-control': 128})
         self.assertEqual(heaps[0], heaps[1], 'worker policy must not increase JVM heap')
         self.assertLessEqual(heaps[0], 2 * 1024**3)
+        print(json.dumps({'gradleWorkerBudget': observed, 'maxHeapBytes': heaps}), flush=True)
 
     def test_fixture_suite_keeps_loaded_source_across_mid_run_edits(self):
         project = Path(SPEC.origin).parents[1]
@@ -614,6 +615,55 @@ class BundleTempGuard {
         self.assertEqual(result['status'], 'failed')
         self.assertIn('missing source prerequisite', result['error'])
         self.assertTrue((Path(result['attempt']) / 'result.json').is_file())
+
+    def test_source_change_after_host_refuses_native_allocation(self):
+        sdk = self.root / 'sdk'
+        image = sdk / 'system-images/android-36/google_apis_ps16k/x86_64/system.img'
+        image.parent.mkdir(parents=True)
+        image.touch()
+        manager = sdk / 'cmdline-tools/fixture/bin/avdmanager'
+        manager.parent.mkdir(parents=True)
+        manager.touch()
+        for change in ('source', 'counterpart', 'unchanged'):
+            state = self.root / ('state-' + change)
+            state.mkdir()
+            host_finished = False
+
+            def identity(root):
+                return dict(self.source, fingerprint='changed') if host_finished and change == 'source' else self.source
+
+            def metadata(command, root, env=None):
+                if command == ['node', '--version']:
+                    return 'v25.0.0'
+                if command == ['git', 'rev-parse', 'HEAD']:
+                    return 'd' * 40 if host_finished and change == 'counterpart' else self.operator['commit']
+                return '/prepared/jdk'
+
+            def phase(name, command, root, env, attempt, phases, timeout=5400):
+                nonlocal host_finished
+                phases.append({'name': name, 'exitCode': 0})
+                if name == 'host':
+                    host_finished = True
+
+            with self.subTest(change=change), \
+                    patch.dict(os.environ, {'ANDROID_HOME': str(sdk)}), \
+                    patch.object(ci, 'required_tools'), \
+                    patch.object(ci, 'source_identity', side_effect=identity), \
+                    patch.object(ci, 'output', side_effect=metadata), \
+                    patch.object(ci, 'run_phase', side_effect=phase), \
+                    patch.object(ci.os, 'access', return_value=True), \
+                    patch.object(ci.tempfile, 'mkdtemp', side_effect=RuntimeError('native allocation boundary')) as allocate:
+                self.assertEqual(ci.execute(self.root, self.root, state), 1)
+            result = json.loads((state / 'latest.json').read_text())
+            self.assertTrue(host_finished)
+            if change == 'unchanged':
+                allocate.assert_called_once()
+                self.assertIn('native allocation boundary', result['error'])
+            else:
+                allocate.assert_not_called()
+                self.assertIn('Source/counterpart changed during host verification', result['error'])
+            self.assertFalse((state / 'success.json').exists())
+            self.assertFalse((self.root / ci.CI_ADMISSION).exists())
 
     def test_preflight_measures_owned_avd_filesystem_and_refuses_its_shortfall(self):
         state = self.root / 'owned state with spaces'

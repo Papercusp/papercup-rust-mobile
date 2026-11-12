@@ -427,6 +427,11 @@ def execute(root, operator, state, force=False, preflight_only=False):
         # Remove admission BEFORE executing: a failure cannot revive an older green.
         (state / 'success.json').unlink(missing_ok=True)
         run_phase('host', ['make', 'check-android-host', 'tokens-check'], root, env, attempt, result['phases'])
+        # Host checks can span source transfers/edits. Refuse changed inputs
+        # before allocating an emulator, while retaining the final check below
+        # for mutations during native execution itself.
+        if source_identity(root) != identity or output(['git', 'rev-parse', 'HEAD'], operator) != result['operator']['commit']:
+            raise RuntimeError('Source/counterpart changed during host verification; native execution refused')
         candidates = sorted(sdk.glob('cmdline-tools/*/bin/avdmanager'))
         if not candidates:
             raise ValueError('avdmanager is missing')
