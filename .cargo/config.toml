@@ -1,0 +1,4 @@
+[build]
+# Keep macro source locations and file lookups consistent when the registry or
+# checkout is relocated through a symlink. Cargo retains dependency resolution.
+rustc-wrapper = "tools/build-scripts/canonical-rustc.py"
